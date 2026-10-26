@@ -54,7 +54,11 @@ t_claude_md_imports_and_budget_fallback() {
   assert_contains "$c" "@api/INVARIANTS.md" "api"; assert_not_contains "$c" "@portal/INVARIANTS.md" "portal not present"
   head -c 21000 /dev/zero | tr '\0' a > "$WS_T/api/INVARIANTS.md"
   out="$(ws claude-md 2>&1)"
-  assert_contains "$out" "warn  member invariants exceed budget — linked from AGENTS.md instead" "warn"
+  assert_contains "$out" "warn  member invariants exceed budget — linked from AGENTS.md" "warn"
+  assert_contains "$(cat "$WS_T/AGENTS.md")" "- [api invariants](api/INVARIANTS.md)" "link written"
+  ws claude-md >/dev/null
+  assert_eq "$(grep -c 'api/INVARIANTS.md' "$WS_T/AGENTS.md")" 1 "link not duplicated"
+  assert_eq "$(grep -c '^## Member invariants' "$WS_T/AGENTS.md")" 1 "one heading"
   assert_not_contains "$(cat "$WS_T/CLAUDE.md")" "@api/INVARIANTS.md" "dropped"
   assert_contains "$(cat "$WS_T/CLAUDE.md")" "@INVARIANTS.md" "kept"
 }
@@ -86,4 +90,26 @@ t_missing_member_warns() {
 t_fallback_without_resolver() {
   WS_T="$(mk_ws)"; rm -rf "$WS_T/scripts"
   assert_contains "$(ws state api)" "present" "make fallback"
+}
+
+t_present_member_without_target_warns() {
+  WS_T="$(mk_ws)"; echo "# inv" > "$WS_T/portal/INVARIANTS.md"
+  printf 'check:\n\t@true\n' > "$WS_T/portal/Makefile"; echo x > "$WS_T/portal/new.txt"
+  out="$(ws check-fast)"; rc=$?
+  assert_eq "$rc" 0 "exit"
+  assert_contains "$out" "warn  portal: no 'check-fast' command — skipped" "check-fast reason"
+  assert_not_contains "$out" "FAIL" "no bare FAIL"
+  out="$(WSLOG="$WS_T/log" ws setup)"
+  assert_contains "$out" "warn  portal: no 'setup' command — skipped" "setup reason"
+}
+t_member_base_derived() {
+  WS_T="$(mk_ws)"
+  # api's default branch is master (origin/HEAD); committed work ahead of it counts as changed
+  sed -i.bak 's/"path": "api", "base": "main",/"path": "api",/' "$WS_T/harness-workspace.json"
+  ( cd "$WS_T/api" && git branch -q -m main master && git update-ref -d refs/remotes/origin/main \
+    && git update-ref refs/remotes/origin/master HEAD \
+    && git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/master \
+    && echo y > c.txt && git add -A && git -c core.hooksPath=/dev/null commit -qm c ) >/dev/null
+  assert_contains "$(ws changed)" "api" "ahead of origin/master"
+  assert_contains "$(grep '^api ' <<<"$(ws status)")" " 1 " "ahead count"
 }

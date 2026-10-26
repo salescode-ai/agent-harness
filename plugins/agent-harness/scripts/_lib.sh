@@ -28,7 +28,7 @@ workspace_members() { # prints "name<TAB>path<TAB>base" per member repo (paths r
 import json,sys
 m=json.load(open(sys.argv[1]))
 for r in m.get("repos",[]):
-    print("\t".join([r["name"], r.get("path", r["name"]), r.get("base","main")]))
+    print("\t".join([r["name"], r.get("path", r["name"]), r.get("base","")]))
 PY
 }
 plan_dirs() { # plan folders named in <root>/AGENTS.md (Work Artifacts), else docs/plans/active
@@ -48,6 +48,12 @@ active_plan() { # active_plan <root> <branch>: plan matching the branch, else ne
     grep -qE '^[[:space:]]*- \[ \]' "$root/$f" && { echo "$f"; return; }
   done <<<"$(head -10 <<<"$cands")"
 }
+default_base() { # default_base <dir>: origin/HEAD's branch, else origin/main, else origin/master
+  local b; b="$(git -C "$1" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)"
+  [[ -n "$b" ]] && { echo "$b"; return; }
+  git -C "$1" rev-parse -q --verify origin/main >/dev/null 2>&1 && { echo origin/main; return; }
+  echo origin/master
+}
 init_pending() { # init_pending <dir>: true while harness-init is mid-setup (init-state.json without "gate_wired": true)
   local f="$1/.harness/init-state.json"
   [[ -f "$f" ]] || return 1
@@ -58,7 +64,7 @@ except Exception: sys.exit(1)  # unreadable state file: ignore it, keep gating
 sys.exit(0 if isinstance(d,dict) and d.get('gate_wired') is not True else 1)" "$f" 2>/dev/null
 }
 harness_cmd() { # harness_cmd <dir> <target> [T]: print the command for a harness target (see harness-cmd.sh)
-  "$(dirname "${BASH_SOURCE[0]}")/harness-cmd.sh" "$@"
+  bash "$(dirname "${BASH_SOURCE[0]}")/harness-cmd.sh" "$@"
 }
 member_state() { # member_state <dir>: present (AGENTS.md + INVARIANTS.md + resolvable check) | partial | none
   local d="$1" n=0

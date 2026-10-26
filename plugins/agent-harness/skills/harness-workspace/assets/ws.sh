@@ -12,15 +12,22 @@ members() { python3 - "$MANIFEST" <<'PY'
 import json,sys
 m=json.load(open(sys.argv[1]))
 for r in m.get("repos",[]):
-    print("\t".join([r["name"], r.get("path", r["name"]), r.get("base","main"), r.get("remote","")]))
+    print("\t".join([r["name"], r.get("path", r["name"]), r.get("base",""), r.get("remote","")]))
 PY
 }
 merge_order() { python3 -c "import json,sys;print(' '.join(json.load(open(sys.argv[1])).get('mergeOrder',[])))" "$MANIFEST"; }
 is_repo() { git -C "$WS/$1" rev-parse --show-toplevel >/dev/null 2>&1 && [[ "$(git -C "$WS/$1" rev-parse --show-toplevel)" == "$(cd "$WS/$1" && pwd -P)" ]]; }
-changed() { # changed <path> <base>: true if uncommitted changes or commits ahead of origin/<base>
-  local p="$1" b="$2" ahead=0
+base_ref() { # base_ref <path> <manifest base>: origin/<base>; no base -> origin/HEAD, else origin/main, else origin/master
+  [[ -n "$2" ]] && { echo "origin/$2"; return; }
+  local b; b="$(git -C "$WS/$1" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)"
+  [[ -n "$b" ]] && { echo "$b"; return; }
+  git -C "$WS/$1" rev-parse -q --verify origin/main >/dev/null 2>&1 && { echo origin/main; return; }
+  echo origin/master
+}
+changed() { # changed <path> <base>: true if uncommitted changes or commits ahead of the base ref
+  local p="$1" b ahead=0; b="$(base_ref "$1" "$2")"
   [[ -n "$(git -C "$WS/$p" status --porcelain 2>/dev/null)" ]] && return 0
-  git -C "$WS/$p" rev-parse --verify -q "origin/$b" >/dev/null && ahead="$(git -C "$WS/$p" rev-list --count "origin/$b"..HEAD 2>/dev/null || echo 0)"
+  git -C "$WS/$p" rev-parse --verify -q "$b" >/dev/null && ahead="$(git -C "$WS/$p" rev-list --count "$b"..HEAD 2>/dev/null || echo 0)"
   [[ "$ahead" != "0" ]]
 }
 # resolve <dir> <target> [T]: print the command via the sibling resolver; falls back to a make probe when it is not installed
@@ -50,7 +57,7 @@ case "$cmd" in
     while IFS=$'\t' read -r name path base _; do
       if ! is_repo "$path"; then printf '%-18s %s\n' "$name" "not checked out ($path) — run: make bootstrap"; continue; fi
       br="$(git -C "$WS/$path" branch --show-current)"; dirty="$(git -C "$WS/$path" status --porcelain | wc -l | tr -d ' ')"
-      ahead="-"; git -C "$WS/$path" rev-parse --verify -q "origin/$base" >/dev/null && ahead="$(git -C "$WS/$path" rev-list --count "origin/$base"..HEAD)"
+      b="$(base_ref "$path" "$base")"; ahead="-"; git -C "$WS/$path" rev-parse --verify -q "$b" >/dev/null && ahead="$(git -C "$WS/$path" rev-list --count "$b"..HEAD)"
       h="$(state "$path")"
       printf '%-18s %-34s %-6s %-6s %s\n' "$name" "${br:-detached}" "$dirty" "$ahead" "$h"
     done <<<"$(members)" ;;
@@ -68,7 +75,9 @@ case "$cmd" in
       ran=$((ran+1))
       st="$(state "$path")"
       if [[ "$st" != present ]]; then skip_warn "$name" "$st" "$path"; continue; fi
-      out="$(run_target "$path" "$cmd" 2>&1)" && { echo "ok    $name: $cmd"; continue; }
+      out="$(run_target "$path" "$cmd" 2>&1)"; rc=$?
+      (( rc == 0 )) && { echo "ok    $name: $cmd"; continue; }
+      (( rc == 3 )) && { echo "warn  $name: no '$cmd' command — skipped"; continue; }
       fail=1; echo "FAIL  $name: $cmd"; tail -30 <<<"$out" | sed 's/^/      /'
     done <<<"$(members)"
     (( ran == 0 )) && echo "$cmd: no repo has changes"
@@ -80,17 +89,30 @@ case "$cmd" in
       if ! is_repo "$path"; then echo "warn  $n: not checked out ($path) — setup skipped (run: make bootstrap)"; continue; fi
       st="$(state "$path")"
       if [[ "$st" != present ]]; then skip_warn "$n" "$st" "$path"; continue; fi
-      out="$(run_target "$path" setup 2>&1)" && echo "ok    $n: setup" || { fail=1; echo "FAIL  $n: setup"; tail -30 <<<"$out" | sed 's/^/      /'; }
+      out="$(run_target "$path" setup 2>&1)"; rc=$?
+      if (( rc == 0 )); then echo "ok    $n: setup"
+      elif (( rc == 3 )); then echo "warn  $n: no 'setup' command — skipped"
+      else fail=1; echo "FAIL  $n: setup"; tail -30 <<<"$out" | sed 's/^/      /'; fi
     done
     exit $fail ;;
   claude-md)
-    imp="@AGENTS.md"$'\n'"@INVARIANTS.md"; files=("$WS/AGENTS.md" "$WS/INVARIANTS.md"); mimp=""
+    imp="@AGENTS.md"$'\n'"@INVARIANTS.md"; files=("$WS/AGENTS.md" "$WS/INVARIANTS.md"); mimp=""; links=""
     while IFS=$'\t' read -r name path _ _; do
       is_repo "$path" && [[ "$(state "$path")" == present ]] || continue
       mimp="$mimp"$'\n'"@$path/INVARIANTS.md"; files+=("$WS/$path/INVARIANTS.md")
+      grep -qF "($path/INVARIANTS.md)" "$WS/AGENTS.md" 2>/dev/null || links="$links- [$name invariants]($path/INVARIANTS.md)"$'\n'
     done <<<"$(members)"
     tok=$(( $(cat "${files[@]}" 2>/dev/null | wc -c) / 4 ))
-    if (( tok > 5000 )); then mimp=""; echo "warn  member invariants exceed budget — linked from AGENTS.md instead"; fi
+    if (( tok > 5000 )); then
+      mimp=""
+      # over budget: route through AGENTS.md instead of importing (append only the missing links)
+      # shortcut: links go to the end of AGENTS.md, which is under the heading only while it stays the last section
+      if [[ -n "$links" ]]; then
+        grep -q '^## Member invariants' "$WS/AGENTS.md" 2>/dev/null || printf '\n## Member invariants\n\n' >> "$WS/AGENTS.md"
+        printf '%s' "$links" >> "$WS/AGENTS.md"
+      fi
+      echo "warn  member invariants exceed budget — linked from AGENTS.md (## Member invariants) instead"
+    fi
     printf '# Claude Code entry point for this workspace — instructions live in AGENTS.md\n\n%s%s\n' "$imp" "$mimp" > "$WS/CLAUDE.md"
     echo "claude-md: written" ;;
   test)
@@ -108,7 +130,7 @@ case "$cmd" in
     while IFS=$'\t' read -r name path base remote; do
       if is_repo "$path"; then echo "ok    $name: present"; continue; fi
       [[ -n "$remote" ]] || { echo "skip  $name: no remote in manifest"; continue; }
-      git clone -q --branch "$base" "$remote" "$WS/$path" && echo "clone $name"
+      git clone -q ${base:+--branch "$base"} "$remote" "$WS/$path" && echo "clone $name"
     done <<<"$(members)" ;;
   lint)
     fail=0

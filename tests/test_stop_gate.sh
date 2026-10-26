@@ -64,7 +64,8 @@ t_workspace_skips_non_present_members() {
   echo '{"repos":[{"name":"good","path":"good"},{"name":"bare","path":"bare"}]}' > "$ws/harness-workspace.json"
   _run_gate "$ws"
   assert_eq "$RC" 2 "exit"; assert_contains "$ERR" "good" "present member blocks"
-  assert_not_contains "$ERR" "bare" "none member skipped"
+  assert_not_contains "$ERR" "---- bare" "none member not gated"
+  assert_contains "$ERR" "bare (none harness)" "skipped member named when blocking"
 }
 t_member_state() {
   . "$PLUGIN/scripts/_lib.sh" </dev/null
@@ -102,4 +103,16 @@ t_init_state_without_gate_key_silent() {
   echo '{"layers_done": [], "gate_wired": true}' > "$d/.harness/init-state.json"
   _run_gate "$d"
   assert_eq "$RC" 2 "gates once wired"
+}
+t_master_default_repo_gates_committed_work() {
+  local d; d="$(_gate_repo false)"
+  ( cd "$d" && git branch -q -m main master && git update-ref -d refs/remotes/origin/main \
+    && git update-ref refs/remotes/origin/master HEAD && git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/master \
+    && git add -A && git -c core.hooksPath=/dev/null commit -qm work ) >/dev/null
+  [ -z "$(git -C "$d" status --porcelain)" ] || _fail "tree should be clean"
+  _run_gate "$d"
+  assert_eq "$RC" 2 "committed failing work on master-default repo blocks"
+  git -C "$d" symbolic-ref -d refs/remotes/origin/HEAD
+  _run_gate "$d"
+  assert_eq "$RC" 2 "origin/master fallback"
 }
