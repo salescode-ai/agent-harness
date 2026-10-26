@@ -24,7 +24,9 @@ put() { # put <src> <dest-relative-to-repo>
 while IFS= read -r f; do put "$f" "scripts/harness/${f#"$A"/harness/}"; done < <(find "$A/harness" -type f)
 put "$SRC/scripts/harness-cmd.sh" scripts/harness/cmd.sh
 # the skills' scripts: scan.sh finds ../../../scripts/scan.py, and ${CLAUDE_PLUGIN_ROOT} maps to .agents
-for f in scan.py level.py harness-cmd.sh; do put "$SRC/scripts/$f" ".agents/scripts/$f"; done
+# assets.py (init's install/refresh step) reads asset-history.json beside it and ../.claude-plugin/plugin.json
+for f in scan.py level.py harness-cmd.sh assets.py asset-history.json; do put "$SRC/scripts/$f" ".agents/scripts/$f"; done
+put "$SRC/.claude-plugin/plugin.json" .agents/.claude-plugin/plugin.json
 put "$A/lint.sh" scripts/harness/lint.sh
 for h in "$A"/githooks/*; do put "$h" ".githooks/$(basename "$h")"; chmod +x "$DEST/.githooks/$(basename "$h")"; done
 chmod +x "$DEST"/scripts/harness/*.sh "$DEST"/scripts/harness/sensors/*.sh 2>/dev/null || true

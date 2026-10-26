@@ -43,6 +43,11 @@ t_install_local_end_to_end() {
   (cd "$A" && tar cf - AGENTS.md INVARIANTS.md CLAUDE.md GLOSSARY.md docs harness.mk) | (cd "$d" && tar xf -)
   printf 'include harness.mk\n' > "$d/Makefile"
   (cd "$d" && bash scripts/harness/lint.sh >/dev/null)
+  # init's install and refresh steps, as the skill runs them with ${CLAUDE_PLUGIN_ROOT} = .agents
+  local a; a="$(cd "$d" && python3 .agents/scripts/assets.py install .)" || _fail "assets.py install runs"
+  assert_contains "$a" "assets: " "assets summary"; assert_not_contains "$a" "missing" "every asset installed"
+  assert_contains "$(cat "$d/scripts/harness/assets.json")" "\"plugin\": \"$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"])' "$PLUGIN/.claude-plugin/plugin.json")\"" "version recorded"
+  assert_contains "$(cd "$d" && python3 .agents/scripts/assets.py status .)" "current" "status runs"
   local out; out="$(python3 "$PLUGIN/scripts/level.py" "$d" --json)"
   assert_not_contains "$out" '"level": "none"' "level measured"
 }
