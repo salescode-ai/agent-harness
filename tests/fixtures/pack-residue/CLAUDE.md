@@ -1,0 +1,20 @@
+# Project
+Guideline 1: always write small, focused changes and verify them.
+Guideline 2: always write small, focused changes and verify them.
+Guideline 3: always write small, focused changes and verify them.
+Guideline 4: always write small, focused changes and verify them.
+Guideline 5: always write small, focused changes and verify them.
+Guideline 6: always write small, focused changes and verify them.
+Guideline 7: always write small, focused changes and verify them.
+Guideline 8: always write small, focused changes and verify them.
+Guideline 9: always write small, focused changes and verify them.
+Guideline 10: always write small, focused changes and verify them.
+Guideline 11: always write small, focused changes and verify them.
+Guideline 12: always write small, focused changes and verify them.
+Guideline 13: always write small, focused changes and verify them.
+Guideline 14: always write small, focused changes and verify them.
+Guideline 15: always write small, focused changes and verify them.
+Guideline 16: always write small, focused changes and verify them.
+Guideline 17: always write small, focused changes and verify them.
+Guideline 18: always write small, focused changes and verify them.
+Guideline 19: always write small, focused changes and verify them.

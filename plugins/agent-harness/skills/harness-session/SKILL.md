@@ -10,7 +10,7 @@ Agents lose memory between sessions; the repo must not. Work state lives in `doc
 ## Start or resume
 
 1. **Where am I.** `git status --short`, `git branch --show-current`, `git log --oneline -10`.
-2. **What was I doing.** Open the plan in `docs/plans/active/` that matches the branch (or the newest). Read Goal, unchecked Steps, and the last 3 Progress log lines. No plan and the task needs more than ~3 steps → create one from `docs/plans/TEMPLATE.md` before coding (use `superpowers:writing-plans` if installed).
+2. **What was I doing.** Open the plan in `docs/plans/active/` that matches the branch (or the newest). Read Goal, unchecked Steps, and the last 3 Progress log lines. No plan and the task needs more than ~3 steps → create one from `docs/plans/TEMPLATE.md` before coding.
 3. **Is the repo healthy.** `make check-fast`, and `make smoke` if it exists. If it fails on work you did not start, stop and fix that first, or report it — never build on a broken base.
 4. **Pick exactly one step.** The first unchecked step whose dependencies are done. State it and its `verify:` command in one line, then work.
 

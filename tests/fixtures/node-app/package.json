@@ -1,0 +1,8 @@
+{
+  "name": "node-app",
+  "version": "1.0.0",
+  "scripts": {
+    "lint": "echo lint ok",
+    "test": "echo test ok"
+  }
+}
