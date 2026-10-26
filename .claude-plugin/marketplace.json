@@ -1,7 +1,7 @@
 {
   "name": "agent-harness",
   "owner": { "name": "Salescode Platform Engineering" },
-  "metadata": { "description": "Repository harness for AI coding agents: guides, sensors, verification agents.", "version": "2.0.0" },
+  "metadata": { "description": "Repository harness for AI coding agents: guides, sensors, verification agents.", "version": "2.0.1" },
   "plugins": [
     { "name": "agent-harness", "source": "./plugins/agent-harness" }
   ]
