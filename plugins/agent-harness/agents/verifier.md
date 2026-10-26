@@ -15,9 +15,10 @@ If acceptance criteria are missing, derive them from the request in one line eac
 
 ## Procedure
 
-1. Read `AGENTS.md` section **Verification** for the repo's commands. Use only those commands, resolved with `bash scripts/harness/cmd.sh . check` / `bash scripts/harness/cmd.sh . test <path>` (default `make check`, `make test T=<path>`). If the section is missing, report FAIL: "harness has no Verification section".
+**Resolver** (`$R` below): `R=scripts/harness/cmd.sh; [ -f "$R" ] || R="${CLAUDE_PLUGIN_ROOT}/scripts/harness-cmd.sh"` — a v1 repo without `scripts/harness/cmd.sh` uses the plugin's copy (same contract); if `CLAUDE_PLUGIN_ROOT` is unset, locate `scripts/harness-cmd.sh` in the agent-harness plugin.
+1. Read `AGENTS.md` section **Verification** for the repo's commands. Use only those commands, resolved with `bash "$R" . check` / `bash "$R" . test <path>` (default `make check`, `make test T=<path>`). If the section is missing, report FAIL: "harness has no Verification section".
 2. Get the change: `git status --short` and `git diff` (or `git diff <base>...HEAD`). List the changed files.
-3. Run the full gate: `c="$(bash scripts/harness/cmd.sh . check)"`; exit 3/4 (not wired, make missing) is FAIL "check not wired", never a pass; otherwise `eval "$c"`. Capture the exit code and the last 60 lines on failure.
+3. Run the full gate: `c="$(bash "$R" . check)"`; exit 3/4 (not wired, make missing) is FAIL "check not wired", never a pass; otherwise `eval "$c"`. Capture the exit code and the last 60 lines on failure.
 4. For each acceptance criterion, find the evidence:
    - a test that exercises it (name the test and the file), and
    - proof the test is meaningful: it asserts the behavior, it is not skipped, and it would fail without the change. When cheap, prove this by reverting the production hunk in a scratch worktree or by reading the assertion; say which.

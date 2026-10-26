@@ -42,7 +42,7 @@ t_everyday_skills_use_resolved_commands() {
   for s in verify session garden learn; do
     grep -q 'scripts/harness/cmd.sh' "$PLUGIN/skills/harness-$s/SKILL.md" || _fail "harness-$s: no cmd.sh"
     # a literal make check is fine only as the resolver's default or the workspace gate
-    if grep -E '`make (check|check-fast|smoke)`' "$PLUGIN/skills/harness-$s/SKILL.md" | grep -vqE 'cmd\.sh|workspace'; then _fail "harness-$s: hard-coded make check"; fi
+    if grep -E '`make (check|check-fast|smoke)`' "$PLUGIN/skills/harness-$s/SKILL.md" | grep -vqE 'cmd\.sh|"\$R"|workspace'; then _fail "harness-$s: hard-coded make check"; fi
   done
 }
 t_scripts_referenced_exist() {
@@ -82,7 +82,7 @@ PY
 t_no_false_green_eval() {
   # eval "$(cmd.sh …)" turns an unresolved target (exit 3/4, empty output) into exit 0
   local out
-  out="$(grep -rn 'eval "$(bash scripts/harness/cmd.sh' "$PLUGIN/skills" "$PLUGIN/agents" || true)"
+  out="$(grep -rnE 'eval "\$\(bash (scripts\/harness\/cmd.sh|"\$R")' "$PLUGIN/skills" "$PLUGIN/agents" || true)"
   assert_eq "$out" "" "two-step cmd.sh form only"
 }
 t_logged_level_uses_run_checks() {
@@ -105,4 +105,13 @@ t_init_state_first_and_declined_tools() {
   grep -qF 'lint: none (declined' "$PLUGIN/skills/harness-init/references/layout.md" || _fail "layout: declined form"
   grep -qF 'declined' "$PLUGIN/skills/harness-init/references/layers.md" || _fail "layers: declined option"
   if grep -qF 'run `git config core.hooksPath .githooks` now' "$PLUGIN/skills/harness-init/references/layers.md"; then _fail "hooksPath at install"; fi
+}
+t_resolver_falls_back_to_plugin_copy() {
+  local f
+  for f in skills/harness-garden/SKILL.md skills/harness-learn/SKILL.md skills/harness-session/SKILL.md \
+           skills/harness-verify/SKILL.md agents/verifier.md agents/harness-auditor.md; do
+    grep -qF '[ -f "$R" ] || R="${CLAUDE_PLUGIN_ROOT}/scripts/harness-cmd.sh"' "$PLUGIN/$f" || _fail "$f: no resolver fallback"
+    if grep -qF 'bash scripts/harness/cmd.sh' "$PLUGIN/$f"; then _fail "$f: hard-wired repo resolver"; fi
+  done
+  grep -qF 'level.py" . --json --run-checks' "$PLUGIN/agents/harness-auditor.md" || _fail "auditor: --run-checks"
 }

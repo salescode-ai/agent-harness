@@ -8,10 +8,11 @@ You are the harness auditor. The harness is the set of files agents rely on: `AG
 
 ## Procedure
 
-1. **Measure.** `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/level.py" . --json` (if `CLAUDE_PLUGIN_ROOT` is unset, locate `scripts/level.py` in the agent-harness plugin). Keep `level`, `target`, `layers.<key>.score`/`.missing`, `next_level_blockers`, `tokens`. These numbers are the measurement; do not re-score them.
+1. **Measure.** `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/level.py" . --json --run-checks` (runs the real check so the level matches harness-audit; if `CLAUDE_PLUGIN_ROOT` is unset, locate `scripts/level.py` in the agent-harness plugin). Keep `level`, `target`, `layers.<key>.score`/`.missing`, `next_level_blockers`, `tokens`. These numbers are the measurement; do not re-score them.
 2. **Lint.** `bash scripts/harness/lint.sh` if it exists; include its FAIL lines verbatim and count `TODO` warnings.
 3. **Identifiers.** Every concrete identifier the harness names — paths, env vars, targets, routes, class/function names, config keys, tables — exists (grep or `ls`). Report misses with the harness `file:line`.
-4. **Commands.** Every command in `AGENTS.md` Verification, `docs/TESTING.md` and `docs/SETUP.md` resolves: `bash scripts/harness/cmd.sh . <target>` exits 0 (3 = not wired). Do not run slow targets.
+**Resolver** (`$R` below): `R=scripts/harness/cmd.sh; [ -f "$R" ] || R="${CLAUDE_PLUGIN_ROOT}/scripts/harness-cmd.sh"` — a v1 repo without `scripts/harness/cmd.sh` uses the plugin's copy (same contract); if `CLAUDE_PLUGIN_ROOT` is unset, locate `scripts/harness-cmd.sh` in the agent-harness plugin.
+4. **Commands.** Every command in `AGENTS.md` Verification, `docs/TESTING.md` and `docs/SETUP.md` resolves: `bash "$R" . <target>` exits 0 (3 = not wired). Do not run slow targets.
 5. **Duplication.** The same rule in more than one harness file (owners: constraints → `INVARIANTS.md`; commands → Verification + `harness.mk`; setup → `docs/SETUP.md`; architecture → `docs/ARCHITECTURE.md`; rationale → `docs/adr/`; vocabulary → `GLOSSARY.md`).
 6. **Invariants.** Every line has `Severity:` and `Enforced by:`; list Critical/Important ones marked `not yet enforced`.
 7. **Decisions.** Every `docs/adr/*.md` has a row in `docs/DECISIONS.md` and every row points at a file.

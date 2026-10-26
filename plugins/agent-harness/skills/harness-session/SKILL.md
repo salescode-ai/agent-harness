@@ -11,7 +11,8 @@ Agents lose memory between sessions; the repo must not. Work state lives in `doc
 
 1. **Where am I.** `git status --short`, `git branch --show-current`, `git log --oneline -10`.
 2. **What was I doing.** Open the plan in `docs/plans/active/` that matches the branch (or the newest). Read Goal, unchecked Steps, and the last 3 Progress log lines. No plan and the task needs more than ~3 steps → create one from `docs/plans/TEMPLATE.md` before coding.
-3. **Is the repo healthy.** Run the check command in two steps: `c="$(bash scripts/harness/cmd.sh . check-fast)" || { echo "check-fast not wired (exit $?)"; exit 1; }; eval "$c"` (default `make check-fast`); `smoke` the same way if it is wired. Not wired is not healthy: report it. If it fails on work you did not start, stop and fix that first, or report it — never build on a broken base.
+**Resolver** (`$R` below): `R=scripts/harness/cmd.sh; [ -f "$R" ] || R="${CLAUDE_PLUGIN_ROOT}/scripts/harness-cmd.sh"` — a v1 repo without `scripts/harness/cmd.sh` uses the plugin's copy (same contract).
+3. **Is the repo healthy.** Run the check command in two steps: `c="$(bash "$R" . check-fast)" || { echo "check-fast not wired (exit $?)"; exit 1; }; eval "$c"` (default `make check-fast`); `smoke` the same way if it is wired. Not wired is not healthy: report it. If it fails on work you did not start, stop and fix that first, or report it — never build on a broken base.
 4. **Pick exactly one step.** The first unchecked step whose dependencies are done. State it and its `verify:` command in one line, then work.
 
 In a multi-repo workspace (a `harness-workspace.json` above you): run `make status` instead of the git commands, read the cross-repo plan in `plans/active/`, check health with the workspace `make check-fast` (it runs each changed repo's resolved gate), and pick one step in one repo.

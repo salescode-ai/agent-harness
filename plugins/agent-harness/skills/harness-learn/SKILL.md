@@ -38,7 +38,8 @@ Write rules as instructions with the reason, not just prohibitions: *"Use `Money
    Every new invariant carries a severity (Critical fails `check`; Important goes to a human in `harness-verify`; Nice-to-have shows in the audit) — ask the developer which.
 2. Check you did not duplicate an existing rule (one owner per fact). Update instead of adding.
 3. Changes to `INVARIANTS.md` or Agent Authorization need a human yes — propose, don't write.
-4. Run `bash scripts/harness/lint.sh` and the check command (default `make check`): `c="$(bash scripts/harness/cmd.sh . check)" || { echo "check not wired (exit $?)"; exit 1; }; eval "$c"`.
+**Resolver** (`$R` below): `R=scripts/harness/cmd.sh; [ -f "$R" ] || R="${CLAUDE_PLUGIN_ROOT}/scripts/harness-cmd.sh"` — a v1 repo without `scripts/harness/cmd.sh` uses the plugin's copy (same contract).
+4. Run `bash scripts/harness/lint.sh` and the check command (default `make check`): `c="$(bash "$R" . check)" || { echo "check not wired (exit $?)"; exit 1; }; eval "$c"`.
 
 ## 4. Prune
 

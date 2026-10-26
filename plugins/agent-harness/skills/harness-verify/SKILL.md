@@ -16,7 +16,9 @@ Write down, in three lines:
 
 ## 2. Computational gate (deterministic, cheap first)
 
-Commands are resolved, not assumed: `bash scripts/harness/cmd.sh . <target>` prints the repo's command (from `.agents/harness.json`, default `make <target>`); run it in two steps so an unwired target can't pass silently: `c="$(bash scripts/harness/cmd.sh . check)" || { echo "check not wired (exit $?)"; exit 1; }; eval "$c"`. Exit 3 (not wired) or 4 (make missing) is **not** a pass: say so under Open, and never report the gate green.
+**Resolver** (`$R` below): `R=scripts/harness/cmd.sh; [ -f "$R" ] || R="${CLAUDE_PLUGIN_ROOT}/scripts/harness-cmd.sh"` — a v1 repo without `scripts/harness/cmd.sh` uses the plugin's copy (same contract).
+
+Commands are resolved, not assumed: `bash "$R" . <target>` prints the repo's command (from `.agents/harness.json`, default `make <target>`); run it in two steps so an unwired target can't pass silently: `c="$(bash "$R" . check)" || { echo "check not wired (exit $?)"; exit 1; }; eval "$c"`. Exit 3 (not wired) or 4 (make missing) is **not** a pass: say so under Open, and never report the gate green.
 
 Run in order, stop at the first failure and fix it before going on:
 1. `check-fast`
@@ -41,7 +43,7 @@ No subagents in your tool (Codex, Cursor, others)? Run each agent's procedure yo
 
 If `harness-workspace.json` sits above the current folder and the current folder is not itself a repo, you are in a multi-repo workspace:
 
-1. `make changed` lists the repos with changes. Steps 2–3 run **per changed repo**, from inside it: `check-fast`, then `check`, each resolved with that repo's `scripts/harness/cmd.sh`; and the three reviewers get that repo's diff and read that repo's `INVARIANTS.md` and `AGENTS.md`.
+1. `make changed` lists the repos with changes. Steps 2–3 run **per changed repo**, from inside it: `check-fast`, then `check`, each resolved with `$R` from inside that repo; and the three reviewers get that repo's diff and read that repo's `INVARIANTS.md` and `AGENTS.md`.
 2. When more than one repo changed, also dispatch `cross-repo-reviewer` (`agent-harness:cross-repo-reviewer`) with the workspace root, the request and the cross-repo plan. It checks ownership, contract consistency, backward compatibility and merge order.
 3. Report one block per repo plus the cross-repo verdict. The work is done only when every repo passes and the cross-repo verdict is ALIGNED.
 
