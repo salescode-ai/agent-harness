@@ -102,3 +102,40 @@ t_proof_skipped_without_docker() {
   out="$(cd "$d" && PATH="/usr/bin:/bin" bash scripts/harness/setup-proof.sh 2>&1)"
   assert_contains "$out" "SKIPPED (docker not available)" "skip"
 }
+
+t_proof_uses_distinct_project() {
+  local d bin; d="$(_su)"; bin="$(mktemp -d)"; cp "$FIXTURES/node-app/docker-compose.yml" "$d/"
+  ( cd "$d" && git add -A && git -c core.hooksPath=/dev/null commit -qm c ) >/dev/null
+  printf '#!/bin/sh\necho "$@" >> "%s/args"\n' "$bin" > "$bin/docker"; chmod +x "$bin/docker"
+  # even with shared services exported and kept in .env.local, the proof must not use the dev project
+  printf 'HARNESS_SHARED_SERVICES=1\n' > "$d/.env.local"
+  ( cd "$d" && PATH="$bin:$PATH" HARNESS_SHARED_SERVICES=1 HARNESS_PROOF_KEEP_ENV=1 bash scripts/harness/setup-proof.sh ) >/dev/null 2>&1
+  assert_contains "$(grep ' up ' "$bin/args")" "-p node-app-proof" "up project"
+  assert_contains "$(grep ' down ' "$bin/args")" "-p node-app-proof down -v" "down project"
+  assert_not_contains "$(cat "$bin/args")" "-p node-app " "never the dev project"
+}
+t_proof_cleans_up_on_failure() {
+  local d tmp; d="$(_su 'setup-migrate:
+	@false')"; tmp="$(mktemp -d)"
+  ( cd "$d" && TMPDIR="$tmp" bash scripts/harness/setup-proof.sh ) >/dev/null 2>&1 && return 1
+  [ -z "$(ls "$tmp")" ] || _fail "tmp left behind"
+}
+t_local_guard() {
+  local d g; d="$(mktemp -d)"; g="$S/local-guard.sh"
+  run() { ( cd "$d" && env -i PATH="$PATH" "$@" bash "$g" 2>&1 ); }
+  assert_exit 1 "prod url" -- bash -c "cd '$d' && env -i PATH=\"\$PATH\" DATABASE_URL=postgres://u:p@db.prod.example.com:5432/x bash '$g'"
+  assert_contains "$(run DATABASE_URL=postgres://u:p@db.prod.example.com:5432/x || true)" "DATABASE_URL=db.prod.example.com" "names var and host"
+  run DATABASE_URL=postgres://u@localhost/x >/dev/null
+  run DATABASE_URL=postgres://u@postgres:5432/x REDIS_URL=redis://[::1]:6379 DB_HOST=127.0.0.1 >/dev/null
+  run API_URL=https://api.example.com >/dev/null   # not a db scheme
+  printf 'DB_HOST=rds.amazonaws.com\n' > "$d/.env"
+  assert_exit 1 ".env checked" -- bash -c "cd '$d' && bash '$g'"
+  run HARNESS_ALLOW_SEED=1 | grep -q WARNING
+}
+t_make_seed_guarded() {
+  local d; d="$(mktemp -d)"; mkdir -p "$d/scripts/harness"; cp "$S/local-guard.sh" "$d/scripts/harness/"; cp "$S/../harness.mk" "$d/"
+  printf 'HARNESS_SEED = @echo seeded\ninclude harness.mk\n' > "$d/Makefile"
+  assert_exit 2 "prod refused" -- bash -c "cd '$d' && DATABASE_URL=postgres://u@prod.example.com/x make seed"
+  assert_exit 2 "reset refused" -- bash -c "cd '$d' && DATABASE_URL=postgres://u@prod.example.com/x make reset"
+  assert_contains "$(cd "$d" && DATABASE_URL=postgres://u@localhost/x make -s seed)" seeded "local ok"
+}

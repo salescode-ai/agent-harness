@@ -79,6 +79,7 @@ import socket,sys
 s=[socket.socket() for _ in range(int(sys.argv[1]))]
 for x in s: x.bind(("",0))
 print(*[x.getsockname()[1] for x in s])' "$n" 2>/dev/null)"
+      [ -z "$free" ] && need "python3 missing: set $(printf '%s ' $pk)in .env.local yourself"
       set -- $free
       for k in $pk; do
         p="$(ev .env.local "$k")"; [ -z "$p" ] && p="${1:-}"; shift 2>/dev/null

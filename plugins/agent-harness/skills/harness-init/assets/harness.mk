@@ -119,6 +119,7 @@ ifneq ($(HARNESS_DEFINE_SEED),0)
 _HARNESS_TARGETS += seed
 _HELP_seed := Load local sample data (local targets only)
 seed: ## Load local sample data (local targets only)
+	@[ ! -f scripts/harness/local-guard.sh ] || bash scripts/harness/local-guard.sh
 	$(HARNESS_SEED)
 endif
 
@@ -127,6 +128,7 @@ ifneq ($(HARNESS_DEFINE_RESET),0)
 _HARNESS_TARGETS += reset
 _HELP_reset := Reset local state (local targets only)
 reset: ## Reset local state (local targets only)
+	@[ ! -f scripts/harness/local-guard.sh ] || bash scripts/harness/local-guard.sh
 	$(HARNESS_RESET)
 endif
 
