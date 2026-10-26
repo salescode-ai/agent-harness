@@ -165,6 +165,29 @@ $(sed 's/^/        /' <<<"$out")"
   fi
 fi
 
+# 13. check-fast tests the changed source files (make runner with harness.mk only; runs no tests)
+if (( reg_ok )) && [[ "$runner" == make && -f harness.mk ]] && command -v make >/dev/null \
+   && plan=$(make -s --no-print-directory harness-test-plan 2>/dev/null); then
+  secs=$(sed -n 's/^secs=//p' <<<"$plan"); mode=$(sed -n 's/^mode=//p' <<<"$plan")
+  src_re='\.(java|kt|groovy|scala|py|go|[cm]?[jt]sx?|rb|cs|php|rs|swift)$'
+  test_re='(^|/)(src/test[^/]*|tests?|__tests__|spec)/|\.(test|spec)\.|_test\.(go|py)$|(^|/)test_[^/]*\.py$|Tests?\.[a-z]+$|IT\.[a-z]+$'
+  srcs=$(sed -n 's/^file=//p' <<<"$plan" | grep -E "$src_re" | grep -vE "$test_re" | sort -u)
+  if [[ "$secs" =~ ^[0-9]+$ ]] && (( secs <= 60 )) && [[ "$mode" == none ]]; then srcs=""; fi  # full suite runs
+  if [[ -n "$srcs" ]] && git ls-files --cached --others --exclude-standard 2>/dev/null | grep -qE "$test_re"; then
+    case "$mode" in
+      related) untested=$(sed -n 's/^none: //p' <<<"$plan") ;;
+      custom)  untested=""; warn "check-fast: HARNESS_TEST_CHANGED does not use related-tests.sh, so changed source files ($(head -1 <<<"$srcs")…) may select no tests; wire scripts/harness/related-tests.sh (see layout.md)" ;;
+      *)       untested="$srcs" ;;
+    esac
+    n=0
+    while IFS= read -r f; do
+      [[ -n "$f" ]] || continue; n=$((n+1))
+      (( n <= 5 )) && warn "check-fast tests nothing for $f; wire scripts/harness/related-tests.sh (see layout.md)"
+    done <<<"$untested"
+    (( n > 5 )) && warn "check-fast tests nothing for $((n-5)) more changed source file(s)"
+  fi
+fi
+
 # 8. Gitignore covers harness scratch
 if [[ -f .gitignore ]]; then
   grep -qE '^/?\.harness/?$' .gitignore || warn ".harness/ is not in .gitignore"

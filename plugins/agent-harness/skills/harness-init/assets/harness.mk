@@ -72,6 +72,16 @@ endif
 	@echo "check-fast: OK"
 endif
 
+# Used by harness-lint (not listed in help): which changed files check-fast would test. Runs no tests.
+.PHONY: harness-test-plan
+harness-test-plan:
+	$(info secs=$(strip $(HARNESS_TEST_SECS)))
+	$(info mode=$(if $(strip $(HARNESS_TEST_CHANGED)),$(if $(findstring related-tests.sh,$(HARNESS_TEST_CHANGED)),related,custom),none))
+	$(foreach f,$(CHANGED),$(info file=$(f)))
+ifneq ($(findstring related-tests.sh,$(HARNESS_TEST_CHANGED)),)
+	@RELATED_TESTS_DRY=1; export RELATED_TESTS_DRY; $(patsubst @%,%,$(HARNESS_TEST_CHANGED)) $(CHANGED)
+endif
+
 ifneq ($(HARNESS_DEFINE_LINT),0)
 .PHONY: lint
 _HARNESS_TARGETS += lint

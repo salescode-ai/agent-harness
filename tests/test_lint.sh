@@ -91,3 +91,24 @@ t_clean_template_passes() {
   out="$(_run "$d")" || { echo "$out" >&2; return 1; }
   assert_contains "$out" "harness-lint: OK" "template lints clean"
 }
+_tp() { # _tp <makefile vars>: lint repo with harness.mk + related-tests.sh, a tested and an untested changed source
+  local d A="$PLUGIN/skills/harness-init/assets"; d="$(_lr)"
+  cp "$A/harness.mk" "$d/"; cp "$A/harness/related-tests.sh" "$d/scripts/harness/"
+  printf '%b\ninclude harness.mk\n' "$1" > "$d/Makefile"
+  mkdir -p "$d/src/main/java/a" "$d/src/test/java/a"
+  : > "$d/src/main/java/a/Foo.java"; : > "$d/src/main/java/a/Bar.java"; : > "$d/src/test/java/a/FooTest.java"
+  echo "$d"
+}
+t_check_fast_untested_source_warns() {
+  local d out; d="$(_tp 'HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh maven "false"')"
+  out="$(_run "$d")"
+  assert_contains "$out" "warn  check-fast tests nothing for src/main/java/a/Bar.java; wire scripts/harness/related-tests.sh (see layout.md)" "untested source named"
+  assert_not_contains "$out" "nothing for src/main/java/a/Foo.java" "tested source quiet"
+  assert_contains "$out" "harness-lint: OK" "warning only"
+  d="$(_tp '')"; out="$(_run "$d")"
+  assert_contains "$out" "check-fast tests nothing for src/main/java/a/Foo.java" "no test wiring: every source"
+  d="$(_tp 'HARNESS_TEST_SECS = 12')"; out="$(_run "$d")"
+  assert_not_contains "$out" "check-fast tests nothing" "fast full suite covers all"
+  d="$(_tp 'HARNESS_TEST_CHANGED = ./mvnw test $(TEST_FILES)')"; out="$(_run "$d")"
+  assert_contains "$out" "does not use related-tests.sh" "custom wiring flagged once"
+}

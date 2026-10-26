@@ -112,7 +112,7 @@ HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh jest "CI=true npx j
 HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh -C backend maven "mvn -B -q test"  # monorepo module: runs inside backend/
 ```
 
-A failing suite (legacy debt) still uses the helper: only the tests of what you touched run. `HARNESS_TEST_CHANGED` wins over `HARNESS_TEST_SECS`; with both empty check-fast runs no tests.
+A failing suite (legacy debt) still uses the helper: only the tests of what you touched run. `HARNESS_TEST_CHANGED` wins over `HARNESS_TEST_SECS`; with both empty check-fast runs no tests. `harness-lint` warns `check-fast tests nothing for <file>` for each changed source file no test selects (it asks `make harness-test-plan`, which runs no tests), and once when a custom `HARNESS_TEST_CHANGED` bypasses `related-tests.sh`.
 
 `HARNESS_SEED`, `HARNESS_RESET` and `HARNESS_DEV` must be set **above** `include harness.mk`: their targets are defined only when set, so an unconfigured repo has no `seed` target and `make setup` skips that step.
 
