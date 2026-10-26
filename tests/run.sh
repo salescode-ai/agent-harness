@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Usage: tests/run.sh [pattern]  -- runs t_* functions from tests/test_*<pattern>*.sh
+export PYTHONDONTWRITEBYTECODE=1
 HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/lib.sh"
 pass=0; failed=0; skipped=0
