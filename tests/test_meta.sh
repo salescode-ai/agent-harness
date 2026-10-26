@@ -34,3 +34,13 @@ t_install_local() {
   assert_contains "$out" "skip  scripts/harness/cmd.sh" "second run skips"
   assert_not_contains "$out" "added" "second run adds nothing"
 }
+t_install_local_end_to_end() {
+  local d A="$PLUGIN/skills/harness-init/assets"
+  d="$(mk_repo node-app)"
+  bash "$ROOT/install-local.sh" "$d" >/dev/null
+  (cd "$A" && tar cf - AGENTS.md INVARIANTS.md CLAUDE.md GLOSSARY.md docs harness.mk) | (cd "$d" && tar xf -)
+  printf 'include harness.mk\n' > "$d/Makefile"
+  (cd "$d" && bash scripts/harness/lint.sh >/dev/null)
+  local out; out="$(python3 "$PLUGIN/scripts/level.py" "$d" --json)"
+  assert_not_contains "$out" '"level": "none"' "level measured"
+}

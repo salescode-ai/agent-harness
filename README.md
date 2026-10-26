@@ -17,7 +17,7 @@ claude plugin install agent-harness@agent-harness --scope project
 bash install-local.sh /path/to/repo
 ```
 
-This copies skills to `.agents/skills/`, agent checklists to `.agents/agents/`, the harness scripts to `scripts/harness/` and the git hooks to `.githooks/`. Existing files are skipped. Agent hooks are Claude Code only.
+This copies skills to `.agents/skills/`, agent checklists to `.agents/agents/`, the harness scripts to `scripts/harness/` and the git hooks to `.githooks/`. Existing files are skipped. It provides only scripts, skills, agent checklists and git hooks; run `harness-init` (or fill in the templates yourself) to reach Experimental. Agent hooks are Claude Code only.
 
 ## Commands you run
 

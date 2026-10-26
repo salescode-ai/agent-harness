@@ -48,7 +48,7 @@ while IFS= read -r m; do
   n=$(wc -l < "$m" | tr -d ' ')
   (( n > m_fail )) && fail "$m is $n lines (max $m_fail)"
   (( n > m_warn && n <= m_fail )) && warn "$m is $n lines (module target ≤ $m_warn)"
-done < <(find . -name AGENTS.md -not -path './AGENTS.md' -not -path '*/node_modules/*' -not -path './.git/*' -not -path './.worktrees/*' 2>/dev/null)
+done < <(find . -name AGENTS.md -not -path './AGENTS.md' -not -path '*/node_modules/*' -not -path './.git/*' -not -path './.worktrees/*' -not -path './.agents/*' -not -path './.claude/*' 2>/dev/null)
 while IFS= read -r m; do
   n=$(wc -l < "$m" | tr -d ' ')
   (( n > s_fail )) && fail "$m is $n lines (max $s_fail)"
@@ -84,7 +84,7 @@ done < <(find .agents/skills -name SKILL.md 2>/dev/null)
 
 # 6. Relative links in harness docs resolve
 harness_docs=(AGENTS.md INVARIANTS.md GLOSSARY.md CONTRIBUTING.md)
-while IFS= read -r f; do harness_docs+=("$f"); done < <(find docs -maxdepth 2 -name '*.md' 2>/dev/null; find . -name AGENTS.md -not -path './AGENTS.md' -not -path '*/node_modules/*' -not -path './.git/*' -not -path './.worktrees/*' 2>/dev/null)
+while IFS= read -r f; do harness_docs+=("$f"); done < <(find docs -maxdepth 2 -name '*.md' 2>/dev/null; find . -name AGENTS.md -not -path './AGENTS.md' -not -path '*/node_modules/*' -not -path './.git/*' -not -path './.worktrees/*' -not -path './.agents/*' -not -path './.claude/*' 2>/dev/null)
 for f in "${harness_docs[@]}"; do
   [[ -f "$f" ]] || continue
   dir=$(dirname "$f")
@@ -145,7 +145,7 @@ fi
 
 # 11. TODO / [verify] markers in harness files are warnings
 todo_files=(INVARIANTS.md GLOSSARY.md)
-while IFS= read -r f; do todo_files+=("$f"); done < <(find . \( -name AGENTS.md -o -path './docs/*.md' \) -not -path '*/node_modules/*' -not -path './.git/*' -not -path './.worktrees/*' 2>/dev/null | sed 's|^\./||')
+while IFS= read -r f; do todo_files+=("$f"); done < <(find . \( -name AGENTS.md -o -path './docs/*.md' \) -not -path '*/node_modules/*' -not -path './.git/*' -not -path './.worktrees/*' -not -path './.agents/*' -not -path './.claude/*' 2>/dev/null | sed 's|^\./||')
 for f in "${todo_files[@]}"; do
   [[ -f "$f" ]] || continue
   c=$(grep -cE 'TODO|\[verify\]' "$f")
