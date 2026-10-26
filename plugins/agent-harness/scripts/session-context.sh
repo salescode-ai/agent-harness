@@ -11,6 +11,12 @@ print_plan() { # print_plan <root> <branch> <label>
   [[ -n "$next" ]] && echo "[agent-harness] ${3}next unchecked: $next"
   [[ -n "$last" ]] && echo "[agent-harness] ${3}last progress: ${last#- }"
 }
+stale_assets() { # stale_assets <root>: one line when plugin-owned harness scripts there are older than the plugin
+  [[ -f "$1/scripts/harness/cmd.sh" ]] && command -v python3 >/dev/null || return 0
+  local n; n="$(python3 "$(dirname "$0")/assets.py" count "$1" 2>/dev/null)"
+  [[ "$n" =~ ^[0-9]+$ ]] && (( n > 0 )) && echo "[agent-harness] harness scripts are older than the plugin ($n files) — run /agent-harness:harness-init to refresh"
+  return 0
+}
 ws="$(workspace_root)"
 if [[ -n "$ws" && -z "$(git -C "$HOOK_CWD" rev-parse --show-toplevel 2>/dev/null)" ]]; then
   echo "[agent-harness] workspace: $(basename "$ws") — each change goes to the repo that owns it (see AGENTS.md); read that repo's AGENTS.md before editing it"
@@ -22,6 +28,7 @@ if [[ -n "$ws" && -z "$(git -C "$HOOK_CWD" rev-parse --show-toplevel 2>/dev/null
     echo "[agent-harness]   $name: ${br:-detached} · $dirty uncommitted · harness $(member_state "$ws/$path")"
   done <<<"$(workspace_members "$ws")"
   print_plan "$ws" "" ""
+  stale_assets "$ws"
   echo "[agent-harness] workspace gate: make check (runs each changed repo's own gate) · before claiming done: harness-verify"
   exit 0
 fi
@@ -34,6 +41,7 @@ if [[ -d "$root/.githooks" && -z "$(git -C "$root" config core.hooksPath 2>/dev/
   mgr=""; for m in .husky lefthook.yml lefthook.yaml .lefthook.yml .pre-commit-config.yaml; do [[ -e "$root/$m" ]] && mgr=1; done
   [[ -z "$mgr" ]] && echo "[agent-harness] git hooks not installed — run: make setup"
 fi
+stale_assets "$root"
 log="$root/docs/harness/AUDIT-LOG.md"
 if [[ -f "$log" ]] && command -v python3 >/dev/null; then
   cad="$(grep -oE 'quick audit: every [0-9]+ days' "$root/AGENTS.md" 2>/dev/null | head -1 | grep -oE '[0-9]+')"
