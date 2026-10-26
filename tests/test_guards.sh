@@ -22,10 +22,12 @@ t_claude_md_reads_allowed() {
 t_hookspath_githooks_allowed_only() {
   local c
   for c in 'git config core.hooksPath .githooks' 'git config --local core.hooksPath ./.githooks/' \
-           'git config set core.hooksPath .githooks'; do
+           'git config set core.hooksPath .githooks' 'git config core.hooksPath' 'git config --get core.hooksPath' \
+           'git config get core.hooksPath' 'git config --local --get core.hooksPath'; do
     assert_eq "$(guard "$c")" "" "allow: $c"
   done
-  for c in 'git config core.hooksPath /dev/null' 'git config --unset core.hooksPath' 'git config unset core.hooksPath' \
+  for c in 'git config core.hooksPath /dev/null' 'git config --unset core.hooksPath' 'git config unset core.hooksPath' 'git config --unset-all core.hooksPath' \
+           'git config --global --unset core.hooksPath' 'git config set core.hooksPath' 'git config unset core.hooksPath .githooks' \
            'git config --global core.hooksPath .githooks' 'git config core.hooksPath ../.githooks' \
            'git -c core.hooksPath=.githooks commit -m x' 'git -c core.hooksPath=/dev/null commit -m x'; do
     assert_contains "$(guard "$c")" '"deny"' "deny: $c"

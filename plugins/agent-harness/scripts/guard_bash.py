@@ -106,9 +106,13 @@ def check_git(argv, env, cwd):
         decide("deny", "Bypassing git hooks (--no-verify / -n) is blocked by INVARIANTS.md. Fix the failing check instead.")
     if sub == "config" and any(a.lower() == "core.hookspath" for a in args):
         # the one allowed write: point this checkout at the repo's own .githooks (what make setup does)
-        rest = args[[a.lower() for a in args].index("core.hookspath") + 1:]
+        k = [a.lower() for a in args].index("core.hookspath")
+        pre = [a for a in args[:k] if not a.startswith("-")]  # "get"/"set"/"unset" subcommand form
+        rest = args[k + 1:]
         opts = {a for a in args if a.startswith("-")}
-        if not (len(rest) == 1 and rest[0].rstrip("/") in (".githooks", "./.githooks") and opts <= {"--local"}):
+        reading = not rest and pre in ([], ["get"]) and opts <= {"--get", "--local"}
+        if not reading and not (len(rest) == 1 and rest[0].rstrip("/") in (".githooks", "./.githooks")
+                                and pre in ([], ["set"]) and opts <= {"--local"}):
             decide("deny", "Changing core.hooksPath bypasses git hooks. Only `git config core.hooksPath .githooks` is allowed; ask a human otherwise.")
     if sub == "push":
         refspecs = [a for a in args if not a.startswith("-")]
