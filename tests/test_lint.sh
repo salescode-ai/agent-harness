@@ -138,6 +138,19 @@ t_plan_ticket_link_and_list_forms() {
   _plan "$d" done old.md '**Ticket**: #1'; _plan "$d" active p.md '**Ticket**: #2'
   out="$(_run "$d")"; assert_not_contains "$out" "Verification" "lint does not look for local evidence"
 }
+t_plan_check_fresh_workspace_evidence() {
+  local w pc="$PLUGIN/skills/harness-init/assets/harness/plan-check.sh" a b out
+  w="$(mktemp -d)"; a="$(mk_repo node-app)"; b="$(mk_repo node-app)"; mv "$a" "$w/api"; mv "$b" "$w/web-ui"
+  printf '{"repos":[{"name":"api","path":"api"},{"name":"portal","path":"web-ui"}]}\n' > "$w/harness-workspace.json"
+  mkdir -p "$w/.harness/evidence"; a="$(git -C "$w/api" rev-parse --short HEAD)"; b="$(git -C "$w/web-ui" rev-parse --short HEAD)"
+  printf '### 2026-10-27 · api · %s · FAIL\n### 2026-10-27 · portal · %s · PASS\n### 2026-10-28 · api · %s · PASS\n' "$a" "$b" "$a" > "$w/.harness/evidence/p.md"
+  ( cd "$w" && bash "$pc" fresh .harness/evidence/p.md ) || _fail "every repo's latest PASS is fresh"
+  echo x >> "$w/web-ui/package.json"
+  out="$( cd "$w" && bash "$pc" fresh .harness/evidence/p.md )" && _fail "dirty member counted as verified"
+  assert_contains "$out" "(portal): uncommitted code changes" "names the repo (path from the manifest)"
+  printf '### 2026-10-29 · api · %s · FAIL\n' "$a" >> "$w/.harness/evidence/p.md"
+  assert_contains "$( cd "$w" && bash "$pc" fresh .harness/evidence/p.md )" "(api): latest entry is not PASS" "per-repo latest"
+}
 t_plan_check_fresh_evidence() {
   local d pc="$PLUGIN/skills/harness-init/assets/harness/plan-check.sh" e c out
   d="$(mk_repo node-app)"; e="$d/.harness/evidence/p.md"; mkdir -p "$d/.harness/evidence"
