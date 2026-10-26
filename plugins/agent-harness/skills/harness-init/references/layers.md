@@ -47,7 +47,7 @@ Scope by target level: `Functional` → Guides and Sensors; `Robust` → all fiv
 3. Only when services are needed and there is no compose file — generate a local-only `compose.harness.yml` (versions from config)? a) show it first, decide then ➡️ b) no, I run them myself. Never written without an explicit yes; "defaults" and one-shot do not count as one.
 4. Each external service that can't run locally: a) stub from OpenAPI or recorded responses ➡️ when a contract exists b) shared dev environment URL c) not needed (noted unavailable).
 5. Permission rules for `.claude/settings.json`: a) apply ➡️ b) show only. Proposed rules:
-   - deny `Read(./.env)`, `Read(./.env.*)`, `Read(./**/secrets/**)`, `Read(./**/*.pem)`, `Read(./**/*.key)`;
+   - deny `Read(./.env)`, `Read(./**/.env)`, `Read(./**/.env.local)`, `Read(./**/.env.*.local)`, `Read(./**/.env.prod*)`, `Read(./**/.env.staging*)` (not `.env.*`: `.env.example`/`.env.sample` must stay readable), `Read(./**/secrets/**)`, `Read(./**/*.pem)`, `Read(./**/*.key)`;
    - deny the dangerous infrastructure and production commands found in the repo (e.g. `Bash(terraform apply:*)`, `Bash(kubectl delete:*)`, a deploy script), each with its `file:line`;
    - allow the runner's commands, e.g. `Bash(make check:*)`, `Bash(make test:*)`.
    Start from `assets/claude-settings.json`. Claude Code may refuse the write: then show the full JSON for the developer to add, and do not work around the refusal.

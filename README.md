@@ -64,8 +64,8 @@ Register commands in `.agents/harness.json`. Hooks, the verifier, the audit and 
 
 - `HARNESS_STOP_GATE=0`: turn off the stop gate for a session.
 - `HARNESS_GUARD=0`: turn off the command and file guards for a session (not recommended).
-- `HARNESS_SHARED_SERVICES=1`: `make setup` shares local services instead of giving the checkout its own compose project and ports.
-- `HARNESS_ALLOW_SEED=1`: let `seed` and `reset` run when `scripts/harness/local-guard.sh` is missing (otherwise they refuse).
+- `HARNESS_SHARED_SERVICES=1`: `make setup` shares local services instead of giving the checkout its own compose project (and each linked worktree its own free ports; the main checkout keeps the `.env.example` ports).
+- `HARNESS_ALLOW_SEED=1`: let `seed` and `reset` run when `scripts/harness/local-guard.sh` is missing, **and** override its refusal of a non-local database target (it prints a warning). Use only when you are sure.
 
 ## Self-test
 

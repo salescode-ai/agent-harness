@@ -59,6 +59,17 @@ def ci_text(repo):
     return "\n".join(read(f) for g in CI_FILES for f in repo.glob(g))
 
 
+def ci_runs_check(repo, ci):
+    """CI runs the harness gate: `make … check`, `cmd.sh <dir> check`, or the registered check command."""
+    if re.search(r"\bmake\b[^\n]*?\scheck\b(?!-)", ci) or re.search(r"cmd\.sh\s+\S+\s+check\b(?!-)", ci):
+        return True
+    try:
+        reg = json.loads(read(repo / ".agents/harness.json")).get("commands", {}).get("check")
+    except (ValueError, AttributeError):
+        reg = None
+    return isinstance(reg, str) and bool(reg.strip()) and reg.strip() in ci
+
+
 def tokens(repo):
     return sum(len(read(repo / f)) for f in ("CLAUDE.md", "AGENTS.md", "INVARIANTS.md")) // 4
 
@@ -127,7 +138,7 @@ def measure(repo, run_checks=False, ws_check=None, seen=frozenset()):
         hp = run(["git", "config", "core.hooksPath"], repo, 10)[1].strip()
         mgr = "".join(read(repo / f) for f in ("lefthook.yml", ".pre-commit-config.yaml")) + "".join(
             read(f) for f in (repo / ".husky").glob("*") if f.is_file())
-        ok = ((repo / ".githooks/pre-commit").is_file() and hp == ".githooks") or "check-fast" in mgr or re.search(r"\bcheck\b(?!-)", ci)
+        ok = ((repo / ".githooks/pre-commit").is_file() and hp == ".githooks") or "check-fast" in mgr or ci_runs_check(repo, ci)
         return bool(ok), "no automatic enforcement (git hook, hook manager running check-fast, or CI running check)"
 
     def crit_enforced():
@@ -160,7 +171,7 @@ def measure(repo, run_checks=False, ws_check=None, seen=frozenset()):
         return n == 0, f"{n} security/data invariants not yet enforced"
 
     def crit_ci():
-        return bool(re.search(r"\bcheck\b(?!-)", ci)), "no CI file runs check"
+        return ci_runs_check(repo, ci), "no CI file runs check"
 
     def crit_plugins():
         return any("agent-harness" in k for k in settings.get("enabledPlugins", {})), "enabledPlugins does not pin the harness"

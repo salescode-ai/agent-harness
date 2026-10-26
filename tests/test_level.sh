@@ -115,3 +115,11 @@ t_workspace_wrong_types() {
     case "$(_lv "$ws" --json | _field "d['layers']['observability']['missing']")" in *"missing name/path"*|*unreadable*) ;; *) _fail "$f";; esac
   done
 }
+t_ci_checkstyle_is_not_the_gate() {
+  local d; d="$(_lvrepo)"; _pass "$d"
+  mkdir -p "$d/.github/workflows"; printf 'run: mvn -B checkstyle:check\n' > "$d/.github/workflows/ci.yml"
+  assert_eq "$(_lv "$d" --json | _field "d['level']")" Experimental "checkstyle:check is not make check"
+  mkdir -p "$d/.agents"; echo '{"commands":{"check":"just verify"}}' > "$d/.agents/harness.json"
+  printf 'run: just verify\n' > "$d/.github/workflows/ci.yml"
+  assert_eq "$(_lv "$d" --json | _field "d['level']")" Functional "registered check command counts"
+}

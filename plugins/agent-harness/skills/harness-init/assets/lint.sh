@@ -156,8 +156,12 @@ done
 if [[ -f scripts/harness/sensors/registry.json ]]; then
   if [[ ! -f scripts/harness/sensor-proof.sh ]]; then fail "sensor registry present but scripts/harness/sensor-proof.sh missing"
   else
-    out=$(bash scripts/harness/sensor-proof.sh --recheck 2>&1) || fail "sensor recheck failed — a sensor no longer fires on its fixture:
+    if ! out=$(bash scripts/harness/sensor-proof.sh --recheck 2>&1); then
+      why="a sensor no longer fires on its fixture"
+      grep -q 'FAIL step 3' <<<"$out" && why="a sensor fails on the current code (real violations: fix the code, not the sensor)"
+      fail "sensor recheck failed — $why:
 $(sed 's/^/        /' <<<"$out")"
+    fi
   fi
 fi
 

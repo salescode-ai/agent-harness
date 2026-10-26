@@ -25,6 +25,9 @@ t_invariants_has_target_and_budgets() {
   grep -q 'No real customer or production data in seeds or fixtures — Severity: Critical — Enforced by: sensor no-prod-data' "$A/INVARIANTS.md" || _fail "no-prod-data"
   grep -q '\.env\.local' "$A/gitignore.append" || _fail "gitignore"
   grep -q 'Read(./\*\*/.env.local)' "$A/claude-settings.json" || _fail "deny"
+  if grep -qF 'Read(./.env.*)' "$A/claude-settings.json"; then _fail "deny .env.* hides .env.example"; fi
+  python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$A/claude-settings.json" || _fail "settings json"
+  if grep -qF '.env.*)' "$PLUGIN/skills/harness-workspace/assets/claude/settings.json"; then _fail "workspace deny .env.*"; fi
 }
 t_templates_level_experimental() {
   local d; d="$(mk_template_repo)"

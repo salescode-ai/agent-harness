@@ -80,6 +80,9 @@ t_sensor_recheck_failure_fails() {
   local d; d="$(_lr)"; mkdir -p "$d/scripts/harness/sensors"; echo '{}' > "$d/scripts/harness/sensors/registry.json"
   echo 'echo "sensor x silent"; exit 1' > "$d/scripts/harness/sensor-proof.sh"
   assert_exit 1 "recheck fails lint" -- bash -c "cd '$d' && bash scripts/harness/lint.sh"
+  assert_contains "$(cd "$d" && bash scripts/harness/lint.sh 2>&1)" "no longer fires on its fixture" "fixture msg"
+  echo 'echo "proof x: FAIL step 3 (clean must pass again, got exit 1)"; exit 1' > "$d/scripts/harness/sensor-proof.sh"
+  assert_contains "$(cd "$d" && bash scripts/harness/lint.sh 2>&1)" "fails on the current code (real violations" "clean msg"
   echo 'exit 0' > "$d/scripts/harness/sensor-proof.sh"
   assert_exit 0 "recheck ok" -- bash -c "cd '$d' && bash scripts/harness/lint.sh"
 }

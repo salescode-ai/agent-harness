@@ -30,6 +30,8 @@ t_install_local() {
   [ -f "$d/scripts/harness/setup.sh" ]
   [ -f "$d/scripts/harness/sensors/registry.json" ]
   [ -x "$d/.githooks/pre-commit" ]
+  [ -f "$d/.agents/scripts/level.py" ] && [ -f "$d/.agents/scripts/harness-cmd.sh" ]
+  (cd "$d" && bash .agents/skills/harness-init/scripts/scan.sh . >/dev/null) || _fail "installed scan.sh wrapper"
   out="$(bash "$ROOT/install-local.sh" "$d")"
   assert_contains "$out" "skip  scripts/harness/cmd.sh" "second run skips"
   assert_not_contains "$out" "added" "second run adds nothing"
