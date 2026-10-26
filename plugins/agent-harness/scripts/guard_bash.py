@@ -29,7 +29,7 @@ def segments(cmd):
     lex.whitespace_split = True
     seg = []
     for tok in lex:
-        if tok in SEPARATORS or set(tok) <= set(";&|()"):
+        if tok in SEPARATORS or (tok and set(tok) <= set(";&|()")):
             if seg:
                 yield seg
             seg = []
@@ -144,6 +144,39 @@ def check_rm(argv):
         decide("deny", "Recursive delete of /, ~, $HOME, ., .. or * is blocked. Delete specific paths.")
 
 
+CLAUDE_MD_MSG = ('CLAUDE.md files are shims (@-references only). Put instructions in AGENTS.md — '
+                 'skill/pack setup blocks go under "## Agent skills", working guidelines under "Working Principles".')
+
+
+def _is_claude_md(t):
+    return os.path.basename(t.rstrip("/")) == "CLAUDE.md"
+
+
+def writes_claude_md(cmd, segs):
+    # shortcut: redirect regex runs on quote-stripped text; heredoc bodies / escaped quotes can fool it
+    bare = re.sub(r"\"[^\"]*\"|'[^']*'", " ", cmd)
+    if re.search(r"(?<![0-9&<])>>?\s*[^\s;&|()<>]*CLAUDE\.md(?=[\s;&|()]|$)", bare):
+        return True
+    for seg in segs:
+        _, argv = strip_prefix(seg)
+        if not argv:
+            continue
+        prog, args = os.path.basename(argv[0]), argv[1:]
+        files = [a for a in args if not a.startswith("-")]
+        if prog == "tee" and any(_is_claude_md(a) for a in files):
+            return True
+        if prog == "curl" and any(_is_claude_md(a.split("=", 1)[-1]) for a in args if a.startswith("--output")):
+            return True
+        if prog == "curl" and any(a == "-o" and _is_claude_md(n) for a, n in zip(args, args[1:])):
+            return True
+        if prog in ("cp", "mv", "install") and files and _is_claude_md(files[-1]):
+            return True
+        if prog in ("sed", "perl") and any(re.match(r"-[A-Za-z]*i", a) for a in args) \
+                and any(_is_claude_md(a) for a in files):
+            return True
+    return False
+
+
 def main():
     if os.environ.get("HARNESS_GUARD", "1") == "0":
         return
@@ -177,6 +210,8 @@ def main():
             check_git(argv, env, cwd)
         elif prog == "rm":
             check_rm(argv)
+    if writes_claude_md(cmd, segs):
+        decide("deny", CLAUDE_MD_MSG)
     # SQL lives inside quoted strings, so check the raw text here
     if re.search(r"(?i)(^|[^A-Za-z_])(drop|truncate)\s+(table|database|schema)\b", cmd):
         decide("ask", "Destructive SQL detected. Confirm this targets a local or dev database.")

@@ -10,7 +10,7 @@ case "$base" in
   CLAUDE.md)
     new="$(json_get "chr(10).join([d['tool_input'].get('content') or '', d['tool_input'].get('new_string') or ''] + [e.get('new_string','') for e in d['tool_input'].get('edits',[])])")"
     if [[ -n "$new" ]] && grep -vE '^[[:space:]]*$|^[[:space:]]*#|^[[:space:]]*@[^ ]+[[:space:]]*$|^[[:space:]]*<!--.*-->[[:space:]]*$' <<<"$new" | grep -q .; then
-      decide deny "CLAUDE.md files are shims (@-references only). Put instructions in the AGENTS.md next to it — see AGENTS.md Conventions."
+      decide deny "CLAUDE.md files are shims (@-references only). Put instructions in AGENTS.md — skill/pack setup blocks go under \"## Agent skills\", working guidelines under \"Working Principles\"."
     fi ;;
   INVARIANTS.md)
     [[ -f "$path" ]] && decide ask "INVARIANTS.md changes need human sign-off (Harness Integrity). Confirm this edit was requested." ;;
