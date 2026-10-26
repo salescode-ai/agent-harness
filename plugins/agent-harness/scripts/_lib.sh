@@ -51,3 +51,10 @@ active_plan() { # active_plan <root> <branch>: plan matching the branch, else ne
 harness_cmd() { # harness_cmd <dir> <target> [T]: print the command for a harness target (see harness-cmd.sh)
   "$(dirname "${BASH_SOURCE[0]}")/harness-cmd.sh" "$@"
 }
+member_state() { # member_state <dir>: present (AGENTS.md + INVARIANTS.md + resolvable check) | partial | none
+  local d="$1" n=0
+  [[ -f "$d/AGENTS.md" ]] && n=$((n+1))
+  [[ -f "$d/INVARIANTS.md" ]] && n=$((n+1))
+  harness_cmd "$d" check >/dev/null 2>&1 && n=$((n+1))
+  case $n in 3) echo present;; 0) echo none;; *) echo partial;; esac
+}
