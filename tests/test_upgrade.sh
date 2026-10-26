@@ -126,3 +126,15 @@ miss = [m[0] for m in migrate.MIGRATIONS if "`%s`" % m[0] not in doc]
 assert not miss, "migrations.md lacks %s" % miss
 PY
 }
+t_upgrade_keeps_valid_ticket_forms() {
+  local d t; d="$(_upgraded harness-2.0.3)"; python3 "$MIG" accept "$d" >/dev/null
+  for t in '[SHOP-12](https://x.atlassian.net/browse/SHOP-12)' 'SHOP-12, SHOP-13' 'https://github.com/o/r/issues/5' '#5 (gh)'; do
+    printf '# Plan: x\n\n**Status**: active\n**Ticket**: %s\n%s\n' "$t" '**Evidence**: local `.harness/evidence/<this file name>` (never committed; shared via the PR description and the tracker comment)' > "$d/docs/plans/active/x.md"
+    assert_not_contains "$(python3 "$MIG" status "$d")" "plan-ticket" "valid ticket left alone: $t"
+  done
+}
+t_upgrade_one_shot_banner_template_is_unedited() {
+  local d; d="$(_fx harness-2.0.0)"
+  { echo '<!-- generated in one pass: verify before trusting -->'; cat "$d/docs/plans/TEMPLATE.md"; } > "$d/t" && mv "$d/t" "$d/docs/plans/TEMPLATE.md"
+  assert_contains "$(python3 "$MIG" status "$d")" "auto     templates (2.0.4, context) docs/plans/TEMPLATE.md" "banner ignored when hashing"
+}

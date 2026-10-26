@@ -13,7 +13,7 @@ In a workspace (harness-workspace.json, not a git repo) only workspace files are
 member whose harness is behind is listed with the command that upgrades it; members are never written.
 The recorded plugin version is "plugin" in scripts/harness/assets.json (written by assets.py refresh).
 """
-import difflib, hashlib, json, os, re, subprocess, sys
+import difflib, hashlib, json, os, re, subprocess, sys, tempfile
 
 PLUGIN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.dont_write_bytecode = True  # never leave __pycache__ in the plugin folder
@@ -45,6 +45,7 @@ NEW_WS_VERIFY = [
 ]
 EVIDENCE = "**Evidence**: local `.harness/evidence/<this file name>` (never committed; shared via the PR description and the tracker comment)"
 DEV_VERIFY = re.compile(r"(?s)\n*## Verification\n<!-- harness-verify appends one evidence block per run.*?-->[ \t]*\n*$")  # 2.0.4-dev, empty
+BANNER = "<!-- generated in one pass: verify before trusting -->"
 ENV_DENY = ["Read(./**/.env)", "Read(./**/.env.local)", "Read(./**/.env.*.local)", "Read(./**/.env.prod*)", "Read(./**/.env.staging*)"]
 RUNNER_HELP = {"just": "just --list", "task": "task --list", "npm": "npm run", "pnpm": "pnpm run", "yarn": "yarn run"}
 
@@ -104,7 +105,8 @@ def m_templates(root, ws):
         have, want = read(root, dest), src(s)
         if have == want:
             continue
-        if have is None or hashlib.sha256(have.encode("utf-8")).hexdigest() in hist.get(s, {}):
+        bare = None if have is None else have.replace(BANNER + "\n", "", 1)  # one-shot init prepends it
+        if have is None or hashlib.sha256(bare.encode("utf-8")).hexdigest() in hist.get(s, {}):
             out.append(act("auto", dest, want, "unedited plugin template → current"))
             continue
         new = have
@@ -136,10 +138,18 @@ def ticket_of(text):  # same reading as lint.sh check 14
     return re.sub(r"\s+·.*$", "", m.group(2)).strip() if m else None
 
 
-def ticket_ok(v):
-    if not v or "<" in v or re.match(r"^(TODO|tbd|TBD|\[verify\]|none|none *\( *\))$", v):
-        return False
-    return bool(re.match("^(%s|#[0-9]+|\\.scratch/.*|none \\(.+\\))$" % KEY, v))
+def ticket_ok(root, text):
+    """lint's own reading (plan-check.sh ticket): 0 valid, 2 valid with a key from another project → leave the plan alone."""
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as f:
+        f.write(text)
+    try:
+        rc = subprocess.run(["bash", os.path.join(PLUGIN, A, "harness", "plan-check.sh"), "ticket", f.name],
+                            cwd=root, capture_output=True).returncode
+    except OSError:
+        rc = 0  # no bash: never rewrite a ticket we could not read
+    finally:
+        os.unlink(f.name)
+    return rc in (0, 2)
 
 
 def add_ticket_line(text, value):
@@ -165,7 +175,7 @@ def m_plan_ticket(root, ws):
     for p in plans:
         text = read(root, p) or ""
         v = ticket_of(text)
-        if ticket_ok(v):
+        if ticket_ok(root, text):
             continue
         m = re.search(r"\d{4}-\d\d-\d\d-(%s)" % KEY, os.path.basename(p))
         if m:
@@ -378,7 +388,7 @@ MIGRATIONS = [  # id, since, layer, function
     ("decisions-ticket", "2.0.4", "context", m_decisions_ticket),
     ("agents-verification", "2.0.4", "guides", m_agents_verification),
     ("harness-json-help", "2.0.4", "tools", m_harness_json_help),
-    ("env-deny", "2.0.0", "tools", m_env_deny),
+    ("env-deny", "2.0.1", "tools", m_env_deny),
     ("harness-base", "2.0.1", "tools", m_harness_base),
     ("init-state-target", "2.0.2", "context", m_init_state_target),
     ("check-fast-tests", "2.0.3", "sensors", m_check_fast_tests),
@@ -461,6 +471,9 @@ def main(argv):
         k = [a["kind"] for _, _, _, a in rows]
         print("migrations: %d needed (%d auto, %d propose, %d manual)" % (len(k), k.count("auto"), k.count("propose"), k.count("manual")))
         return 0
+    # apply writes a path's last auto text and accept its last propose text; one path with both would lose an edit
+    clash = set(a["path"] for *_, a in rows if a["kind"] == "auto") & set(a["path"] for *_, a in rows if a["kind"] == "propose")
+    assert not clash, "migrate.py: auto and propose migrations both edit %s" % sorted(clash)
     kind = "auto" if cmd == "apply" else "propose"
     paths = sorted(set(a["path"] for _, _, _, a in rows if a["kind"] == kind))
     final = dict((a["path"], a["new"]) for _, _, _, a in rows if a["kind"] == kind)  # last edit holds every earlier one
