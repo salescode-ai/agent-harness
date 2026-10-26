@@ -96,3 +96,12 @@ t_no_prod_data_allows_org_net_case() {
   local d; d="$(mktemp -d)"; printf "a@Example.COM\nb@example.org\nc@example.net\n" > "$d/o.txt"
   assert_exit 0 "allowed" -- bash "$H/sensors/no-prod-data.sh" "$d"
 }
+t_no_prod_data_host_contexts_only() {
+  local d out; d="$(mktemp -d)"
+  printf -- "-- leave schema; mirrors production tables\n-- not prod data\nCREATE TABLE prod_items (id int);\n" > "$d/leave-schema.sql"
+  assert_exit 0 "prose is clean" -- bash "$H/sensors/no-prod-data.sh" "$d"
+  printf "url=jdbc:postgresql://prod-db:5432/x\nDB_HOST=db.production.internal\njdbc:oracle:thin:@prod:1521/X\n\"host\": \"prod\"\n" > "$d/c.txt"
+  out="$(bash "$H/sensors/no-prod-data.sh" "$d")" && return 1
+  for n in 1 2 3 4; do assert_contains "$out" "c.txt:$n: production hostname" "line $n"; done
+  assert_not_contains "$out" "leave-schema.sql" "comment not flagged"
+}
