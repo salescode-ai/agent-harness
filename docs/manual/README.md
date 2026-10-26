@@ -23,7 +23,7 @@ This manual is for:
 1. **Install the plugin** in the repo (project scope, so the whole team gets the same hooks):
 
    ```bash
-   claude plugin marketplace add <your-org>/agent-harness
+   claude plugin marketplace add salescode-ai/agent-harness
    claude plugin install agent-harness@agent-harness --scope project
    ```
 

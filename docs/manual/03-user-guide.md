@@ -7,7 +7,7 @@
 Push the `agent-harness` repository somewhere your team can read it, then in each repo:
 
 ```bash
-claude plugin marketplace add <your-org>/agent-harness
+claude plugin marketplace add salescode-ai/agent-harness
 claude plugin install agent-harness@agent-harness --scope project
 ```
 
