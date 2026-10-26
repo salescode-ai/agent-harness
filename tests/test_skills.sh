@@ -143,3 +143,21 @@ t_one_shot_never_runs_make_setup() {
   grep -qF 'Next: make setup' "$s" || _fail "make setup is the first Next step"
   grep -qF 'pending make setup' "$s" && grep -qF 'pending make setup' "$l" || _fail "hooks recorded pending"
 }
+t_tracker_comment_carries_verification_evidence() {
+  local s="$PLUGIN/skills/harness-session/SKILL.md" v="$PLUGIN/skills/harness-verify/SKILL.md" t
+  grep -qF 'the harness-verify **evidence block** (Verified · Gate with test count · Criteria k/n → proving test/command · Reviewers · Open)' "$s" || _fail "session Close: evidence in comment"
+  grep -qF '**post only after the developer says yes**' "$s" || _fail "approval gate"
+  grep -qF 'Never store or ask for tokens; no connector → print the text for copy-paste' "$s" || _fail "no tokens / copy-paste"
+  grep -qF 'The PR description and the tracker comment reuse this same block with the plan path' "$v" || _fail "verify: same block"
+  for t in jira github gitlab; do
+    grep -qF 'the harness-verify evidence block (Verified · Gate with test count' "$PLUGIN/skills/harness-init/assets/docs/agents/issue-tracker-$t.md" || _fail "issue-tracker-$t"
+  done
+}
+t_verify_appends_evidence_to_plan() {
+  local s="$PLUGIN/skills/harness-session/SKILL.md" v="$PLUGIN/skills/harness-verify/SKILL.md"
+  grep -qF "**appends** this block to the active plan's \`## Verification\` section" "$v" || _fail "append rule"
+  grep -qF 'never invent a plan' "$v" || _fail "no invented plan"
+  grep -qF 'one block per repo' "$v" || _fail "workspace per repo"
+  grep -qF '**Never set Status: done or move the plan to `docs/plans/done/` without a PASS entry' "$s" || _fail "done needs PASS entry"
+  grep -qF 'branch `<KEY>-<n>-<slug>` and the plan `docs/plans/active/YYYY-MM-DD-<KEY>-<n>-<slug>.md`' "$s" || _fail "ticket-keyed naming"
+}

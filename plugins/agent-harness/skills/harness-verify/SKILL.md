@@ -66,6 +66,13 @@ Gate: check ✓ `<resolved command>` (<n> tests) · smoke ✓|n/a
 Criteria: <k>/<n> with evidence — <criterion → test/command>, …
 Reviewers: verifier PASS · invariants CLEAN · scope TIGHT
 Open: <anything not verified, and why>
+Plan: <docs/plans/active/<plan>.md#verification>
 ```
 
 Never write "should work", "looks good" or "tests should pass". If you could not verify something, say so under Open.
+
+## 6. Persist the evidence
+
+Every run that reaches a verdict **appends** this block to the active plan's `## Verification` section (create the heading at the end if missing; never edit earlier entries): `### <YYYY-MM-DD> · <git rev-parse --short HEAD, or "uncommitted"> · <PASS | FAIL | NEEDS-HUMAN>`, then the Gate, Criteria, Reviewers and Open lines above. No active plan → say so and suggest creating one from `docs/plans/TEMPLATE.md`; never invent a plan. Workspace mode: append to the cross-repo plan in `plans/active/`, one block per repo (`### <date> · <repo> · <commit> · <verdict>`).
+
+The PR description and the tracker comment reuse this same block with the plan path. On "done" with a ticketed plan, offer the tracker comment exactly as harness-session Close step 4 says: show the draft (evidence block + plan path + next step, and a proposed transition when the plan is done), post only after the developer says yes via an available connector or CLI, never store tokens, else print it for copy-paste.

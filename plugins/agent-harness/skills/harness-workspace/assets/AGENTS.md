@@ -33,7 +33,7 @@ Before editing files in a repo, read that repo's `AGENTS.md` and `INVARIANTS.md`
 
 ## Work Artifacts
 
-- Cross-repo plans: `plans/active/YYYY-MM-DD-<feature>.md` (template `plans/TEMPLATE.md`; move to `plans/done/` when shipped). This folder is not versioned, so each PR description carries its repo's part of the plan.
+- Cross-repo plans: `plans/active/YYYY-MM-DD-<KEY>-<n>-<slug>.md` with `Ticket:` (default: `issueKey` in `harness-workspace.json`; template `plans/TEMPLATE.md`; move to `plans/done/` when shipped). This folder is not versioned, so each PR description carries its repo's part of the plan.
 - Decisions: an ADR in the repo that owns the decision (for a contract, the provider repo), linked from the other repos' PRs.
 - Repo-only work (specs, plans, ADRs inside one repo): follow that repo's own Work Artifacts.
 
