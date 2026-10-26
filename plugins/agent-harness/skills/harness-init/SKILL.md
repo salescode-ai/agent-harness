@@ -102,9 +102,9 @@ Level: <measured> · target: <target> · blocked by: <first blockers>
 Applied automatically: <n> — <one line each>
 Assumed — change any time: <list>
 Still open: <TODOs with file:line> · <invariants "not yet enforced">
-Next: /harness-audit in a month · /harness-garden weekly
+Next: make setup (you run it: git config + services; hooks pending until then) · /harness-audit in a month · /harness-garden weekly
 ```
 
 ## one-shot mode
 
-Same flow without step 4: every ➡️ default is taken, nothing is asked, and every new file starts with `<!-- generated in one pass: verify before trusting -->`. Always-asked items with no safe default (Authorization, incidents, glossary meanings, CI, settings.json, new dependencies, compose file or seed generation) are never applied by default: they are left as `TODO` and listed under Still open. Save `init-state.json` with all layer keys and `"answers": {"mode": "one-shot"}`.
+Same flow without step 4: every ➡️ default is taken, nothing is asked, and every new file starts with `<!-- generated in one pass: verify before trusting -->`. Always-asked items with no safe default (Authorization, incidents, glossary meanings, CI, settings.json, new dependencies, compose file or seed generation) are never applied by default: they are left as `TODO` and listed under Still open. Save `init-state.json` with all layer keys and `"answers": {"mode": "one-shot"}`. One-shot **never runs `make setup`** (it changes git config and starts services) nor sets `core.hooksPath`: Still open says `git hooks: pending make setup`, and `make setup` is the first Next step.

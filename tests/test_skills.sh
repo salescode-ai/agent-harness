@@ -137,3 +137,9 @@ t_init_wires_related_tests_and_skipped_tools() {
   done
   if grep -qF '`skipped` tools are not wired' "$f"; then _fail "skipped tools left unwired"; fi
 }
+t_one_shot_never_runs_make_setup() {
+  local s="$PLUGIN/skills/harness-init/SKILL.md" l="$PLUGIN/skills/harness-init/references/layers.md"
+  grep -qF 'One-shot **never runs `make setup`**' "$s" || _fail "one-shot make setup rule"
+  grep -qF 'Next: make setup' "$s" || _fail "make setup is the first Next step"
+  grep -qF 'pending make setup' "$s" && grep -qF 'pending make setup' "$l" || _fail "hooks recorded pending"
+}

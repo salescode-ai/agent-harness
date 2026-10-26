@@ -130,7 +130,7 @@ Next: /harness-audit in a month · /harness-garden weekly
 
 It runs `level.py . --json --run-checks --log`, which also writes the first `AUDIT-LOG.md` row.
 
-Then **run `make setup` yourself** if you chose "git hooks: on" without a hook manager. It sets `core.hooksPath .githooks`. The agent may also run `git config core.hooksPath .githooks`: the guard allows exactly that value and denies any other.
+Then **run `make setup` yourself** if you chose "git hooks: on" without a hook manager. A one-shot init never runs `make setup` (it changes git config and starts services): its report lists hooks as `pending make setup` and `make setup` as the first Next step. It sets `core.hooksPath .githooks`. The agent may also run `git config core.hooksPath .githooks`: the guard allows exactly that value and denies any other.
 
 ### One-shot, resume, upgrade
 
