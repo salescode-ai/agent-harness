@@ -7,7 +7,7 @@ description: Add, sharpen or check domain terms in GLOSSARY.md (or a per-context
 
 One concept, one word, everywhere: code, tests, tickets, specs, commit messages. The glossary is where that word is decided.
 
-If another installed skill also manages domain terms, it must write to the same `GLOSSARY.md` (see `AGENTS.md` → Skills and plugins).
+If another installed skill also manages domain terms, it must write to the same `GLOSSARY.md` (see `AGENTS.md` → Agent skills).
 
 ## Which glossary
 

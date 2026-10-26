@@ -36,3 +36,16 @@ mk_repo() {
   ) >/dev/null
   echo "$d"
 }
+
+# mk_template_repo: git repo with all v2 templates, lint.sh, harness.mk included from a Makefile; echoes path
+mk_template_repo() {
+  local d A="$PLUGIN/skills/harness-init/assets"
+  d="$(mktemp -d)"
+  ( cd "$A" && tar cf - AGENTS.md INVARIANTS.md CLAUDE.md GLOSSARY.md docs harness.mk ) | ( cd "$d" && tar xf - )
+  mkdir -p "$d/scripts/harness" "$d/scripts"
+  cp "$A/lint.sh" "$d/scripts/harness/lint.sh"
+  cat "$A/gitignore.append" > "$d/.gitignore"
+  printf 'include harness.mk\n' > "$d/Makefile"
+  ( cd "$d" && git init -q -b main ) >/dev/null
+  echo "$d"
+}

@@ -2,3 +2,4 @@
 # agent harness
 .harness/
 .worktrees/
+.env.local

@@ -83,4 +83,8 @@ t_sensor_recheck_failure_fails() {
   echo 'exit 0' > "$d/scripts/harness/sensor-proof.sh"
   assert_exit 0 "recheck ok" -- bash -c "cd '$d' && bash scripts/harness/lint.sh"
 }
-t_clean_template_passes() { skip "t_clean_template_passes" "needs Task 14 templates"; }
+t_clean_template_passes() {
+  local d out; d="$(mk_template_repo)"
+  out="$(_run "$d")" || { echo "$out" >&2; return 1; }
+  assert_contains "$out" "harness-lint: OK" "template lints clean"
+}
