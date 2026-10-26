@@ -42,3 +42,16 @@ t_default_goal_help() {
   local d; d="$(mk_dir 'include harness.mk')"
   assert_contains "$(cd "$d" && make 2>&1)" "  check " "bare make shows help"
 }
+
+t_help_respects_guards() {
+  local d out
+  d="$(mk_dir 'HARNESS_DEFINE_SEED=0
+HARNESS_DEFINE_LINT=0
+include harness.mk
+lint: ## repo lint
+	@true')"
+  out="$(cd "$d" && make help 2>&1)"
+  assert_not_contains "$out" "  seed " "no phantom seed"
+  assert_eq "$(printf '%s\n' "$out" | grep -c '^  lint ')" "1" "exactly one lint line"
+  assert_contains "$out" "repo lint" "repo lint described"
+}

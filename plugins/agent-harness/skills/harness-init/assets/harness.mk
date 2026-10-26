@@ -3,6 +3,10 @@
 # Point the HARNESS_* variables at this repo's real commands (keep them quiet on success).
 # To keep a target your Makefile already defines, set HARNESS_DEFINE_<NAME>=0 before the include
 # (NAME upper-case, - becomes _), e.g. HARNESS_DEFINE_HELP=0 or HARNESS_DEFINE_CHECK_FAST=0.
+# Include harness.mk after your own default target (an early include makes its first target the default goal).
+
+HARNESS_MK := $(lastword $(MAKEFILE_LIST))
+_HARNESS_TARGETS :=
 
 HARNESS_LINT      ?= @echo "lint: not configured" && false
 HARNESS_TYPECHECK ?= @true
@@ -31,19 +35,26 @@ ifeq ($(.DEFAULT_GOAL),)
 .DEFAULT_GOAL := help
 endif
 .PHONY: help
+_HARNESS_TARGETS += help
+_HELP_help := List targets (delete this one if your Makefile already defines help)
 help: ## List targets (delete this one if your Makefile already defines help)
 	@echo "Agents: run only these make targets."
-	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS=":.*## "} {printf "  %-14s %s\n", $$1, $$2}'
+	@$(foreach t,$(_HARNESS_TARGETS),printf '  %-14s %s\n' '$(t)' '$(_HELP_$(t))';)
+	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(filter-out $(HARNESS_MK),$(MAKEFILE_LIST)) | awk 'BEGIN {FS=":.*## "} {printf "  %-14s %s\n", $$1, $$2}' || true
 endif
 
 ifneq ($(HARNESS_DEFINE_CHECK),0)
 .PHONY: check
+_HARNESS_TARGETS += check
+_HELP_check := Completion gate: lint + typecheck + all tests + harness lint
 check: lint typecheck test harness-lint ## Completion gate: lint + typecheck + all tests + harness lint
 	@echo "check: OK"
 endif
 
 ifneq ($(HARNESS_DEFINE_CHECK_FAST),0)
 .PHONY: check-fast
+_HARNESS_TARGETS += check-fast
+_HELP_check-fast := Quick gate (< 60 s): lint + typecheck + tests for changed files if configured
 check-fast: lint typecheck ## Quick gate (< 60 s): lint + typecheck + tests for changed files if configured
 ifneq ($(strip $(HARNESS_TEST_CHANGED)),)
 	$(HARNESS_TEST_CHANGED) $(CHANGED)
@@ -53,18 +64,24 @@ endif
 
 ifneq ($(HARNESS_DEFINE_LINT),0)
 .PHONY: lint
+_HARNESS_TARGETS += lint
+_HELP_lint := Lint
 lint: ## Lint
 	$(HARNESS_LINT)
 endif
 
 ifneq ($(HARNESS_DEFINE_TYPECHECK),0)
 .PHONY: typecheck
+_HARNESS_TARGETS += typecheck
+_HELP_typecheck := Type check
 typecheck: ## Type check
 	$(HARNESS_TYPECHECK)
 endif
 
 ifneq ($(HARNESS_DEFINE_TEST),0)
 .PHONY: test
+_HARNESS_TARGETS += test
+_HELP_test := All tests, or one file/test with T=<path>
 test: ## All tests, or one file/test with T=<path>
 ifeq ($(strip $(T)),)
 	$(HARNESS_TEST_ALL)
@@ -75,36 +92,48 @@ endif
 
 ifneq ($(HARNESS_DEFINE_SMOKE),0)
 .PHONY: smoke
+_HARNESS_TARGETS += smoke
+_HELP_smoke := Start the app and hit one real path
 smoke: ## Start the app and hit one real path
 	$(HARNESS_SMOKE)
 endif
 
 ifneq ($(HARNESS_DEFINE_HARNESS_LINT),0)
 .PHONY: harness-lint
+_HARNESS_TARGETS += harness-lint
+_HELP_harness-lint := Structural checks on the harness files themselves
 harness-lint: ## Structural checks on the harness files themselves
 	@bash scripts/harness/lint.sh
 endif
 
 ifneq ($(HARNESS_DEFINE_SETUP),0)
 .PHONY: setup
+_HARNESS_TARGETS += setup
+_HELP_setup := One-time local setup
 setup: ## One-time local setup
 	$(HARNESS_SETUP)
 endif
 
 ifneq ($(HARNESS_DEFINE_SEED),0)
 .PHONY: seed
+_HARNESS_TARGETS += seed
+_HELP_seed := Load local sample data (local targets only)
 seed: ## Load local sample data (local targets only)
 	$(HARNESS_SEED)
 endif
 
 ifneq ($(HARNESS_DEFINE_RESET),0)
 .PHONY: reset
+_HARNESS_TARGETS += reset
+_HELP_reset := Reset local state (local targets only)
 reset: ## Reset local state (local targets only)
 	$(HARNESS_RESET)
 endif
 
 ifneq ($(HARNESS_DEFINE_DEV),0)
 .PHONY: dev
+_HARNESS_TARGETS += dev
+_HELP_dev := Start the dev server
 dev: ## Start the dev server
 	$(HARNESS_DEV)
 endif
