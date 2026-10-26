@@ -67,3 +67,32 @@ t_workspace_member_below_functional() {
   echo '{"repos":[{"name":"a","path":"a"},{"name":"b","path":"b"}]}' > "$ws/harness-workspace.json"
   assert_contains "$(_lv "$ws" --json | _field "d['layers']['observability']['missing']")" "below Functional" "ws"
 }
+t_human_review_not_functional() {
+  local d; d="$(_lvrepo)"; _pass "$d"; echo 'check:' >/dev/null
+  mkdir -p "$d/.github/workflows"; echo 'run: make check' > "$d/.github/workflows/ci.yml"
+  printf '# i\n\n## Security\n\n- a — Severity: Critical — Enforced by: human review\n- b — Severity: Important — Enforced by: verifier agent\n' > "$d/INVARIANTS.md"
+  local out; out="$(_lv "$d" --json)"
+  assert_eq "$(echo "$out" | _field "d['level']")" Experimental "level"
+  assert_contains "$(echo "$out" | _field "d['next_level_blockers']")" "machine-enforced" "blocker"
+}
+t_workspace_malformed_manifest() {
+  local ws; ws="$(mktemp -d)"; echo '{oops' > "$ws/harness-workspace.json"
+  assert_contains "$(_lv "$ws" --json | _field "d['layers']['observability']['missing']")" "unreadable" "ws"
+}
+t_workspace_entry_missing_path() {
+  local ws; ws="$(mktemp -d)"; echo '{"repos":[{"name":"a"}]}' > "$ws/harness-workspace.json"
+  assert_contains "$(_lv "$ws" --json | _field "d['layers']['observability']['missing']")" "missing name/path" "ws"
+}
+t_workspace_self_loop() {
+  local ws; ws="$(mktemp -d)"; echo '{"repos":[{"name":"a","path":"."}]}' > "$ws/harness-workspace.json"
+  assert_contains "$(_lv "$ws" --json | _field "d['layers']['observability']['missing']")" "below Functional" "ws"
+}
+t_workspace_member_last_check() {
+  local ws; ws="$(mktemp -d)"; mkdir "$ws/a"
+  cp -R "$(_lvrepo)/." "$ws/a/"; mkdir -p "$ws/a/.githooks" "$ws/.harness"
+  echo '#!/bin/sh' > "$ws/a/.githooks/pre-commit"; rm -rf "$ws/a/.git"; ( cd "$ws/a"; git init -q; git config core.hooksPath .githooks )
+  echo '{"repos":[{"name":"a b","path":"a"}]}' > "$ws/harness-workspace.json"
+  assert_contains "$(_lv "$ws" --json | _field "d['layers']['observability']['missing']")" "below Functional" "no pass yet"
+  echo "x pass 2026-01-01" > "$ws/.harness/last-check-a_b"
+  assert_not_contains "$(_lv "$ws" --json | _field "d['layers']['observability']['missing']")" "below Functional" "member Functional"
+}

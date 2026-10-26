@@ -41,6 +41,11 @@ def unenforced(ln):
     return v.startswith("not yet enforced") or v.startswith("<")
 
 
+def machine_enforced(ln):
+    v = ln.split("Enforced by:", 1)[1].strip().lower()
+    return not unenforced(ln) and not re.match(r"(human|verifier|reviewer|manual)", v)
+
+
 def lint(repo):
     p = repo / "scripts/harness/lint.sh"
     if not p.is_file():
@@ -68,20 +73,28 @@ def audit_rows(repo):
     return [LEVELS.index(r) for r in rows if r in LEVELS]
 
 
-def members(repo, run_checks):
+def members(repo, run_checks, seen):
+    """({name: level}, [notes]) or None when the manifest is unreadable."""
     try:
-        reps = json.loads(read(repo / "harness-workspace.json")).get("repos", [])
-    except ValueError:
+        reps = json.loads(read(repo / "harness-workspace.json"))["repos"]
+        assert isinstance(reps, list)
+    except (ValueError, KeyError, AssertionError, TypeError):
         return None
-    res = {}
+    res, notes = {}, []
     for m in reps:
-        lab = re.sub(r"[^A-Za-z0-9_-]", "_", m["name"])
-        res[m["name"]] = measure(repo / m["path"], run_checks, repo / f".harness/last-check-{lab}")["level"]
-    return res
+        if not isinstance(m, dict) or not m.get("name") or not m.get("path"):
+            notes.append(f"workspace entry missing name/path: {m!r}")
+            continue
+        lab = re.sub(r"[^A-Za-z0-9_-]", "_", str(m["name"]))
+        res[m["name"]] = measure(repo / m["path"], run_checks, repo / f".harness/last-check-{lab}", seen)["level"]
+    return res, notes
 
 
-def measure(repo, run_checks=False, ws_check=None):
+def measure(repo, run_checks=False, ws_check=None, seen=frozenset()):
     repo = Path(repo).resolve()
+    if repo in seen:  # member path loops back to an ancestor workspace
+        return {"level": "none"}
+    seen = seen | {repo}
     inv = invariants(repo)
     settings = {}
     try:
@@ -92,12 +105,6 @@ def measure(repo, run_checks=False, ws_check=None):
     agents = read(repo / "AGENTS.md")
     claude = repo / "CLAUDE.md"
     ci = ci_text(repo)
-    cache = {}
-
-    def lazy(k, f):
-        if k not in cache:
-            cache[k] = f()
-        return cache[k]
 
     # --- criteria: (layer, bool, reason shown when failing) ---
     def crit_files():
@@ -121,7 +128,7 @@ def measure(repo, run_checks=False, ws_check=None):
         return bool(ok), "no automatic enforcement (git hook, hook manager running check-fast, or CI running check)"
 
     def crit_enforced():
-        return any(not unenforced(l) for _, l in inv), "no invariant is enforced by a make target, sensor, hook or CI job"
+        return any(machine_enforced(l) for _, l in inv), "no invariant is machine-enforced (make target, sensor, hook, lint, test or CI job); human review does not count"
 
     def crit_plans():
         return (repo / "docs/plans").is_dir(), "docs/plans/ missing"
@@ -166,9 +173,11 @@ def measure(repo, run_checks=False, ws_check=None):
     def crit_workspace():
         if not (repo / "harness-workspace.json").is_file():
             return True, ""
-        m = lazy("members", lambda: members(repo, run_checks)) or {}
-        low = [n for n, v in m.items() if LEVELS.index(v) < 2]
-        return not low, "workspace members below Functional: " + ", ".join(low)
+        r = members(repo, run_checks, seen)
+        if r is None:
+            return False, "harness-workspace.json unreadable"
+        low = [n for n, v in r[0].items() if LEVELS.index(v) < 2]
+        return not low and not r[1], "; ".join(r[1] + (["workspace members below Functional: " + ", ".join(low)] if low else []))
 
     tiers = [
         ("Experimental", [("guides", crit_files), ("guides", crit_shim), ("context", crit_lint)]),
