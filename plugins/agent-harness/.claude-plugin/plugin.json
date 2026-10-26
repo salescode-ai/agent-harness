@@ -2,7 +2,17 @@
   "name": "agent-harness",
   "description": "Builds and runs a repository harness for AI coding agents: AGENTS.md map, invariants, verification gate, independent reviewer agents, guard and stop-gate hooks, and harness gardening. Works with any skill pack; supports multi-repo workspaces.",
   "version": "2.0.0",
-  "author": { "name": "Salescode Platform Engineering" },
+  "author": {
+    "name": "Salescode Platform Engineering"
+  },
   "license": "MIT",
-  "keywords": ["harness", "agents", "verification", "AGENTS.md", "hooks"]
+  "keywords": [
+    "harness",
+    "agents",
+    "verification",
+    "AGENTS.md",
+    "hooks"
+  ],
+  "homepage": "https://github.com/salescode-ai/agent-harness",
+  "repository": "https://github.com/salescode-ai/agent-harness"
 }

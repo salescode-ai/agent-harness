@@ -7,7 +7,7 @@ A repository harness for AI coding agents, packaged as a Claude Code plugin mark
 **Claude Code** (push this folder to a repo your team can read):
 
 ```bash
-claude plugin marketplace add <your-org>/agent-harness
+claude plugin marketplace add salescode-ai/agent-harness
 claude plugin install agent-harness@agent-harness --scope project
 ```
 
