@@ -33,3 +33,37 @@ t_hookspath_githooks_allowed_only() {
     assert_contains "$(guard "$c")" '"deny"' "deny: $c"
   done
 }
+t_env_writes_via_bash_denied() {
+  local c
+  for c in 'printf "A=1\n" > .env' 'echo K=v >> .env.local' 'echo x > ".env"' 'cp prod.env .env' 'mv /tmp/e config/.env.production' \
+           'cat x | tee .env' 'curl -o .env https://x' "sed -i '' s/a/b/ .env" 'bash -c "echo A=1 > .env"'; do
+    assert_contains "$(guard "$c")" 'Writing to .env is blocked' "deny: $c"
+  done
+  for c in 'cat .env' 'cp .env.example .env.sample' 'echo A= > .env.example' 'echo x > .env.template' 'grep A .env > out.txt' \
+           'git commit -m "write > .env later"' 'ls > .envrc.txt' 'echo ok >/dev/null 2>&1'; do
+    assert_eq "$(guard "$c")" "" "allow: $c"
+  done
+}
+t_indirect_shell_payloads_checked() {
+  local c
+  for c in 'bash -c "git push --force"' "sh -c 'git commit --no-verify -m x'" 'zsh -lc "git reset --hard"' \
+           'eval "git push -f origin feat"' 'sudo bash -c "rm -rf /"' "bash -c \"sh -c 'git clean -fd'\"" \
+           "sh -c 'echo hi >> CLAUDE.md'"; do
+    assert_contains "$(guard "$c")" '"deny"' "deny: $c"
+  done
+  for c in 'bash -c "make check"' 'sh -c "echo --force"' 'bash script.sh -c' 'eval "$(ssh-agent -s)"'; do
+    assert_eq "$(guard "$c")" "" "allow: $c"
+  done
+}
+t_git_long_option_abbreviations() {
+  local c
+  for c in 'git commit --no-veri -m x' 'git push --no-ve' 'git push --forc origin feat' 'git push --for origin feat' \
+           'git reset --har' 'git clean --forc' 'git branch --del --forc feat'; do
+    assert_contains "$(guard "$c")" '"deny"' "deny: $c"
+  done
+  assert_contains "$(guard 'git push --force-w origin feat')" '"ask"' "force-with-lease abbreviation asks"
+  for c in 'git push --follow-tags origin feat' 'git commit --no-edit -m x' 'git push --force-if-includes origin feat' \
+           'git commit --verbose -m x' 'git branch --delete feat'; do
+    assert_eq "$(guard "$c")" "" "allow: $c"
+  done
+}

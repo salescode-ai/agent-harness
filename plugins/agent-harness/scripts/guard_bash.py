@@ -14,6 +14,16 @@ import sys
 
 SEPARATORS = {";", "&&", "||", "|", "&", "\n", "(", ")"}
 WRAPPERS = {"sudo", "env", "command", "time", "nice", "nohup", "xargs"}
+SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+MAX_DEPTH = 3  # nested `bash -c` / `eval` payloads checked
+# guarded git long options -> shortest prefix git could accept for them (git takes unambiguous abbreviations)
+LONG_MIN = {"--no-verify": "--no-ve", "--force": "--for", "--force-with-lease": "--force-w",
+            "--hard": "--ha", "--delete": "--de"}
+
+
+def has_long(longs, opt):
+    """True if any long option is `opt` or an abbreviation git could expand to it."""
+    return any(l == opt or (len(l) >= len(LONG_MIN[opt]) and opt.startswith(l)) for l in longs)
 
 
 def decide(kind, reason):
@@ -102,7 +112,7 @@ def check_git(argv, env, cwd):
     flags = short_flags(args)
     longs = {a.split("=", 1)[0] for a in args if a.startswith("--")}
 
-    if "--no-verify" in longs or (sub == "commit" and "n" in flags):
+    if has_long(longs, "--no-verify") or (sub == "commit" and "n" in flags):
         decide("deny", "Bypassing git hooks (--no-verify / -n) is blocked by INVARIANTS.md. Fix the failing check instead.")
     if sub == "config" and any(a.lower() == "core.hookspath" for a in args):
         # the one allowed write: point this checkout at the repo's own .githooks (what make setup does)
@@ -116,25 +126,25 @@ def check_git(argv, env, cwd):
             decide("deny", "Changing core.hooksPath bypasses git hooks. Only `git config core.hooksPath .githooks` is allowed; ask a human otherwise.")
     if sub == "push":
         refspecs = [a for a in args if not a.startswith("-")]
-        force = "--force" in longs or "f" in flags or any(r.startswith("+") for r in refspecs)
+        force = has_long(longs, "--force") or "f" in flags or any(r.startswith("+") for r in refspecs)
         if force:
             decide("deny", "Force-push is blocked by the harness. Use --force-with-lease on your own branch, or ask a human.")
         target = default_branch(cwd)
         names = [r.split(":")[-1] for r in refspecs[1:]]
         if target in names or f"refs/heads/{target}" in names or (not names and current_branch(cwd) == target):
             decide("ask", f"Pushing to {target}. AGENTS.md Agent Authorization normally requires a human for this.")
-        if "--force-with-lease" in longs:
+        if has_long(longs, "--force-with-lease"):
             decide("ask", "Force-with-lease push rewrites remote history. Confirm this is your own branch.")
-    if sub == "reset" and "--hard" in longs:
+    if sub == "reset" and has_long(longs, "--hard"):
         decide("deny", "git reset --hard is blocked: it destroys uncommitted work. Use git stash, or ask a human.")
-    if sub == "clean" and ("f" in flags or "--force" in longs):
+    if sub == "clean" and ("f" in flags or has_long(longs, "--force")):
         decide("deny", "git clean -f is blocked: it deletes untracked files permanently. List them with git clean -n and ask.")
     if sub in ("checkout", "restore"):
         paths = [a for a in args if not a.startswith("-")]
         staged_only = sub == "restore" and ("--staged" in longs or "S" in flags) and not ("--worktree" in longs or "W" in flags)
         if not staged_only and any(p in (".", "./", ":/", "*") for p in paths):
             decide("deny", "Discarding all working-tree changes is blocked. Restore specific files, or ask a human.")
-    if sub == "branch" and ("D" in flags or ("--delete" in longs and ("--force" in longs or "f" in flags))):
+    if sub == "branch" and ("D" in flags or (has_long(longs, "--delete") and (has_long(longs, "--force") or "f" in flags))):
         decide("deny", "Force-deleting a branch can drop unmerged work. Use git branch -d, or ask a human.")
     if sub == "stash" and args[:1] == ["clear"]:
         decide("deny", "git stash clear deletes every stash permanently. Drop specific stashes, or ask a human.")
@@ -156,52 +166,71 @@ CLAUDE_MD_MSG = ('CLAUDE.md files are shims (@-references only). Put instruction
                  'skill/pack setup blocks go under "## Agent skills", working guidelines under "Working Principles".')
 
 
+ENV_MSG = "Writing to .env is blocked: secrets files are human-managed. Update .env.example instead."
+ENV_TEMPLATES = {".env.example", ".env.sample", ".env.template"}
+
+
 def _is_claude_md(t):
     return os.path.basename(t.rstrip("/")) == "CLAUDE.md"
 
 
-def writes_claude_md(cmd, segs):
-    # shortcut: redirect regex runs on quote-stripped text; heredoc bodies / escaped quotes can fool it
-    bare = re.sub(r"\"[^\"]*\"|'[^']*'", " ", cmd)
-    if re.search(r"(?<![0-9&<])>>?\s*[^\s;&|()<>]*CLAUDE\.md(?=[\s;&|()]|$)", bare):
-        return True
+def _is_env(t):
+    b = os.path.basename(t.rstrip("/"))
+    return (b == ".env" or b.startswith(".env.")) and b not in ENV_TEMPLATES
+
+
+def writes_target(cmd, segs, is_target):
+    """True if the command writes a file matching is_target (redirect, tee, cp/mv/install, curl -o, sed/perl -i)."""
+    # shortcut: redirects are found in text whose quoted strings became placeholders (so a `>` inside a
+    # commit message is ignored, but `> ".env"` is not); heredoc bodies / escaped quotes can fool it
+    quoted = []
+
+    def hide(m):
+        quoted.append(m.group(1) if m.group(1) is not None else m.group(2))
+        return "\0%d\0" % (len(quoted) - 1)
+    bare = re.sub(r"\"([^\"]*)\"|'([^']*)'", hide, cmd)
+    for t in re.findall(r"(?<![0-9&<])>>?\s*([^\s;&|()<>]+)", bare):
+        if is_target(re.sub(r"\0(\d+)\0", lambda m: quoted[int(m.group(1))], t)):
+            return True
     for seg in segs:
         _, argv = strip_prefix(seg)
         if not argv:
             continue
         prog, args = os.path.basename(argv[0]), argv[1:]
         files = [a for a in args if not a.startswith("-")]
-        if prog == "tee" and any(_is_claude_md(a) for a in files):
+        if prog == "tee" and any(is_target(a) for a in files):
             return True
-        if prog == "curl" and any(_is_claude_md(a.split("=", 1)[-1]) for a in args if a.startswith("--output")):
+        if prog == "curl" and any(is_target(a.split("=", 1)[-1]) for a in args if a.startswith("--output")):
             return True
-        if prog == "curl" and any(a == "-o" and _is_claude_md(n) for a, n in zip(args, args[1:])):
+        if prog == "curl" and any(a == "-o" and is_target(n) for a, n in zip(args, args[1:])):
             return True
-        if prog in ("cp", "mv", "install") and files and _is_claude_md(files[-1]):
+        if prog in ("cp", "mv", "install") and files and is_target(files[-1]):
             return True
         if prog in ("sed", "perl") and any(re.match(r"-[A-Za-z]*i", a) for a in args) \
-                and any(_is_claude_md(a) for a in files):
+                and any(is_target(a) for a in files):
             return True
     return False
 
 
-def main():
-    if os.environ.get("HARNESS_GUARD", "1") == "0":
-        return
-    try:
-        data = json.load(sys.stdin)
-        cmd = data.get("tool_input", {}).get("command", "") or ""
-    except Exception:
-        return
+def payloads(argv):
+    """Command strings a segment runs indirectly: `bash|sh|zsh -c '<cmd>'` and `eval <cmd>`."""
+    prog = os.path.basename(argv[0])
+    if prog == "eval":
+        return [" ".join(argv[1:])]
+    if prog in SHELLS:
+        for k, a in enumerate(argv[1:-1], 1):
+            if a.startswith("-") and not a.startswith("--") and "c" in a[1:]:
+                return [argv[k + 1]]
+    return []
+
+
+def check(cmd, cwd, depth=0):
     if not cmd.strip():
         return
     try:
         segs = list(segments(cmd))
     except ValueError:  # unbalanced quotes: let the shell report it
         return
-    cwd = data.get("cwd") or os.getcwd()
-    if not os.path.isdir(cwd):
-        cwd = os.getcwd()
     for seg in segs:
         env, argv = strip_prefix(seg)
         if argv[:1] == ["cd"] and len(argv) > 1:
@@ -218,11 +247,30 @@ def main():
             check_git(argv, env, cwd)
         elif prog == "rm":
             check_rm(argv)
-    if writes_claude_md(cmd, segs):
+        elif depth < MAX_DEPTH:
+            for p in payloads(argv):
+                check(p, cwd, depth + 1)
+    if writes_target(cmd, segs, _is_claude_md):
         decide("deny", CLAUDE_MD_MSG)
+    if writes_target(cmd, segs, _is_env):
+        decide("deny", ENV_MSG)
     # SQL lives inside quoted strings, so check the raw text here
     if re.search(r"(?i)(^|[^A-Za-z_])(drop|truncate)\s+(table|database|schema)\b", cmd):
         decide("ask", "Destructive SQL detected. Confirm this targets a local or dev database.")
+
+
+def main():
+    if os.environ.get("HARNESS_GUARD", "1") == "0":
+        return
+    try:
+        data = json.load(sys.stdin)
+        cmd = data.get("tool_input", {}).get("command", "") or ""
+    except Exception:
+        return
+    cwd = data.get("cwd") or os.getcwd()
+    if not os.path.isdir(cwd):
+        cwd = os.getcwd()
+    check(cmd, cwd)
 
 
 if __name__ == "__main__":

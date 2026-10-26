@@ -6,7 +6,7 @@ path="$(json_get "d['tool_input'].get('file_path','')")"
 [[ -z "$path" ]] && exit 0
 base="$(basename "$path")"
 case "$base" in
-  .env|.env.*) [[ "$base" == ".env.example" || "$base" == ".env.sample" ]] || decide deny "Writing to $base is blocked: secrets files are human-managed. Update .env.example instead." ;;
+  .env|.env.*) [[ "$base" == ".env.example" || "$base" == ".env.sample" || "$base" == ".env.template" ]] || decide deny "Writing to $base is blocked: secrets files are human-managed. Update .env.example instead." ;;
   CLAUDE.md)
     new="$(json_get "chr(10).join([d['tool_input'].get('content') or '', d['tool_input'].get('new_string') or ''] + [e.get('new_string','') for e in d['tool_input'].get('edits',[])])")"
     if [[ -n "$new" ]] && grep -vE '^[[:space:]]*$|^[[:space:]]*#|^[[:space:]]*@[^ ]+[[:space:]]*$|^[[:space:]]*<!--.*-->[[:space:]]*$' <<<"$new" | grep -q .; then
