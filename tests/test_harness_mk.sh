@@ -33,7 +33,7 @@ setup:
 
 t_unconfigured_fails_loud() {
   local d out rc=0; d="$(mk_dir 'include harness.mk')"
-  out="$(cd "$d" && make seed 2>&1)" || rc=$?
+  out="$(cd "$d" && HARNESS_ALLOW_SEED=1 make seed 2>&1)" || rc=$?
   [ "$rc" != 0 ] || _fail "seed should exit non-zero"
   assert_contains "$out" "seed: not configured" "message"
 }

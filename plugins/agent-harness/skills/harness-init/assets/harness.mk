@@ -119,7 +119,7 @@ ifneq ($(HARNESS_DEFINE_SEED),0)
 _HARNESS_TARGETS += seed
 _HELP_seed := Load local sample data (local targets only)
 seed: ## Load local sample data (local targets only)
-	@[ ! -f scripts/harness/local-guard.sh ] || bash scripts/harness/local-guard.sh
+	@if [ -f scripts/harness/local-guard.sh ]; then bash scripts/harness/local-guard.sh || exit 1; elif [ "$$HARNESS_ALLOW_SEED" = 1 ]; then echo "seed: local-guard.sh missing, proceeding (HARNESS_ALLOW_SEED=1)" >&2; else echo "seed: scripts/harness/local-guard.sh missing — refusing (install it, or HARNESS_ALLOW_SEED=1)" >&2; exit 1; fi
 	$(HARNESS_SEED)
 endif
 
@@ -128,7 +128,7 @@ ifneq ($(HARNESS_DEFINE_RESET),0)
 _HARNESS_TARGETS += reset
 _HELP_reset := Reset local state (local targets only)
 reset: ## Reset local state (local targets only)
-	@[ ! -f scripts/harness/local-guard.sh ] || bash scripts/harness/local-guard.sh
+	@if [ -f scripts/harness/local-guard.sh ]; then bash scripts/harness/local-guard.sh || exit 1; elif [ "$$HARNESS_ALLOW_SEED" = 1 ]; then echo "reset: local-guard.sh missing, proceeding (HARNESS_ALLOW_SEED=1)" >&2; else echo "reset: scripts/harness/local-guard.sh missing — refusing (install it, or HARNESS_ALLOW_SEED=1)" >&2; exit 1; fi
 	$(HARNESS_RESET)
 endif
 

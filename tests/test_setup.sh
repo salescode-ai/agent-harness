@@ -139,3 +139,13 @@ t_make_seed_guarded() {
   assert_exit 2 "reset refused" -- bash -c "cd '$d' && DATABASE_URL=postgres://u@prod.example.com/x make reset"
   assert_contains "$(cd "$d" && DATABASE_URL=postgres://u@localhost/x make -s seed)" seeded "local ok"
 }
+t_make_seed_refuses_without_guard() {
+  local d out; d="$(mktemp -d)"; cp "$S/../harness.mk" "$d/"
+  printf 'HARNESS_SEED = @echo seeded\nHARNESS_RESET = @echo wiped\ninclude harness.mk\n' > "$d/Makefile"
+  out="$(cd "$d" && make seed 2>&1)" && return 1
+  assert_contains "$out" "seed: scripts/harness/local-guard.sh missing — refusing" "seed msg"
+  assert_not_contains "$out" "seeded" "did not run"
+  out="$(cd "$d" && make reset 2>&1)" && return 1
+  assert_contains "$out" "reset: scripts/harness/local-guard.sh missing — refusing" "reset msg"
+  assert_contains "$(cd "$d" && HARNESS_ALLOW_SEED=1 make -s seed 2>&1)" seeded "override"
+}
