@@ -1,0 +1,28 @@
+{
+  "name": "<feature-or-team>-workspace",
+  "issueKey": "<JIRA-KEY or empty>",
+  "repos": [
+    {
+      "name": "backend-api",
+      "path": "backend-api",
+      "remote": "git@github.com:<org>/backend-api.git",
+      "base": "main",
+      "owns": "REST endpoints, business rules, database schema and migrations"
+    },
+    {
+      "name": "portal",
+      "path": "portal",
+      "remote": "git@github.com:<org>/portal.git",
+      "base": "main",
+      "owns": "Web portal UI"
+    },
+    {
+      "name": "app",
+      "path": "app",
+      "remote": "git@github.com:<org>/app.git",
+      "base": "main",
+      "owns": "Mobile app UI"
+    }
+  ],
+  "mergeOrder": ["backend-api", "portal", "app"]
+}

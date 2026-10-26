@@ -1,0 +1,20 @@
+# .github/workflows/harness.yml — the same gate agents run locally, enforced on every PR.
+name: harness
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * 1"   # weekly harness lint, catches drift on quiet repos
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      # Add the toolchain setup your Makefile needs here (setup-python, setup-node, ...)
+      - name: Harness lint
+        run: make harness-lint
+      - name: Verification gate
+        if: github.event_name != 'schedule'
+        run: make check

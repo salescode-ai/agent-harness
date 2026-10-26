@@ -1,0 +1,11 @@
+{
+  "extraKnownMarketplaces": {
+    "agent-harness": { "source": { "source": "github", "repo": "<your-org>/agent-harness" } }
+  },
+  "enabledPlugins": {
+    "agent-harness@agent-harness": true
+  },
+  "permissions": {
+    "deny": ["Read(./**/.env)", "Read(./**/.env.*)", "Read(./**/secrets/**)", "Read(./**/*.pem)", "Read(./**/*.key)"]
+  }
+}
