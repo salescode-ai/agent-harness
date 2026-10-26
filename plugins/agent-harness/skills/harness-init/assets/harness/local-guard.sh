@@ -49,7 +49,7 @@ envfile() { # KEY=VALUE lines from a dotenv file; tolerates "export", indentatio
   sed -nE 's/^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$/\2=\3/p' "$1"
 }
 ACTIVE="$( { printf '%s\n' "${SPRING_PROFILES_ACTIVE:-}"; for f in .env .env.local; do [ -f "$f" ] && envfile "$f"; done | sed -n 's/^SPRING_PROFILES_ACTIVE=//p'; } \
-  | tr -d "\"' " | tr ',' '\n' | grep -v '^$')"
+  | sed -E 's/[[:space:]]+#.*$//' | tr -d "\"' " | tr ',' '\n' | grep -v '^$')"  # drop inline "# comment" like pairs does
 local_profile() { # default, local, dev, test and active profile files (an inactive prod profile is not in use)
   [ -f "$1" ] || return 1
   case "${1##*/}" in application.*|application-local*|application-dev*|application-test*) return 0;; esac

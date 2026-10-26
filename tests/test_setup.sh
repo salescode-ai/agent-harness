@@ -255,5 +255,9 @@ t_local_guard_reads_active_profiles() {
   gr && _fail "active prod profile (.env list) allowed"
   rm "$d/.env"; printf 'export SPRING_PROFILES_ACTIVE=prod\n' > "$d/.env.local"
   gr && _fail "active prod profile (.env.local) allowed"
+  rm "$d/.env.local"; printf 'SPRING_PROFILES_ACTIVE=prod # main\n' > "$d/.env"
+  gr && _fail "active prod profile with an inline comment allowed"
+  printf "SPRING_PROFILES_ACTIVE='qa' # local\n" > "$d/.env"
+  gr || _fail "quoted profile with an inline comment refused"
   true
 }
