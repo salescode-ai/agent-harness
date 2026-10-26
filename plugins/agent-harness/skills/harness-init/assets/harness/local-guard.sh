@@ -1,31 +1,54 @@
 #!/usr/bin/env bash
 # local-guard.sh -- refuse seed/reset unless every DB-ish host is local. Run from the repo root.
-# Reads env, .env, .env.local. HARNESS_ALLOW_SEED=1 overrides with a warning.
+# Reads env, .env, .env.local and Spring src/main/resources/application*.properties|yml.
+# HARNESS_ALLOW_SEED=1 overrides with a warning.
 bad=""
 local_host() {
   case "$1" in
-    ''|localhost|::1|host.docker.internal|*.local|*.test|*.localhost|127.*) return 0;;
+    127.*) case "$1" in *[!0-9.]*) return 1;; esac; return 0;;  # 127.evil.com is not loopback
+    ''|localhost|::1|host.docker.internal|*.local|*.test|*.localhost) return 0;;
     *.*|*:*) return 1;;
   esac
   return 0  # bare single-label name = compose service
 }
-host_of() { # url or bare host -> host
-  local v="$1"; v="${v#*://}"; v="${v#*@}"; v="${v%%/*}"; v="${v%%\?*}"
-  case "$v" in \[*) v="${v#[}"; v="${v%%]*}";; *) v="${v%%:*}";; esac
-  printf %s "$v"
+hosts_of() { # url or bare host -> one host per line (multi-host URLs: h1:1,h2:2)
+  local v="$1" h; v="${v#*://}"; v="${v%%/*}"; v="${v%%\?*}"; v="${v##*@}"
+  printf '%s\n' "$v" | tr ',' '\n' | while IFS= read -r h; do
+    case "$h" in \[*) h="${h#[}"; h="${h%%]*}";; *) h="${h%%:*}";; esac
+    printf '%s\n' "$h"
+  done
 }
 check() { # name value; only DB-scheme URLs count for generic *_URL vars
-  local h
+  local h v="${2#jdbc:}"
   case "$1" in
     DATABASE_URL) ;;
-    *_URL) case "${2%%://*}" in postgres*|mysql*|mariadb*|mongodb*|redis*|rediss*|jdbc*|mssql*|sqlserver*|oracle*) ;; *) return;; esac;;
+    *_URL) case "${v%%://*}" in postgres*|mysql*|mariadb*|mongodb*|redis*|rediss*|mssql*|sqlserver*|oracle*) ;; *) return;; esac;;
   esac
-  h="$(host_of "${2#jdbc:}")"
-  local_host "$h" || bad="$bad $1=$h"
+  for h in $(hosts_of "$v"); do local_host "$h" || bad="$bad $1=$h"; done
 }
-pairs="$( { env; for f in .env .env.local; do [ -f "$f" ] && sed -n 's/^\(export \)\{0,1\}\([A-Za-z_][A-Za-z0-9_]*\)=\(.*\)/\2=\3/p' "$f"; done; } | sed "s/=[\"']/=/; s/[\"']\$//" )"
+envfile() { # KEY=VALUE lines from a dotenv file; tolerates "export", indentation and spaces around =
+  sed -nE 's/^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$/\2=\3/p' "$1"
+}
+spring() { # Spring datasource settings -> SPRING_DATASOURCE_URL / SPRING_DATASOURCE_HOST lines
+  local f
+  for f in src/main/resources/application*.properties */src/main/resources/application*.properties; do
+    [ -f "$f" ] || continue
+    sed -nE 's/^[[:space:]]*spring\.datasource\.([A-Za-z.-]*)url[[:space:]]*[=:][[:space:]]*(.*)$/SPRING_DATASOURCE_URL=\2/p
+s/^[[:space:]]*spring\.datasource\.([A-Za-z.-]*)host[[:space:]]*[=:][[:space:]]*(.*)$/SPRING_DATASOURCE_HOST=\2/p' "$f"
+  done
+  # shortcut: YAML is read line by line (any "url:" holding a DB/jdbc URL); upgrade if non-datasource DB URLs misfire
+  for f in src/main/resources/application*.yml src/main/resources/application*.yaml \
+           */src/main/resources/application*.yml */src/main/resources/application*.yaml; do
+    [ -f "$f" ] || continue
+    sed -nE 's/^[[:space:]]*(spring\.datasource\.)?url:[[:space:]]*(.*)$/SPRING_DATASOURCE_URL=\2/p' "$f"
+  done
+}
+pairs="$( { env; for f in .env .env.local; do [ -f "$f" ] && envfile "$f"; done; spring; } \
+  | sed -E "s/[[:space:]]+#.*$//; s/=[\"']/=/; s/[\"'][[:space:]]*\$//; s/\\$\\{[A-Za-z0-9_.]*:([^}]*)\\}/\\1/g" )"
 while IFS='=' read -r k v; do
-  case "$k" in DATABASE_URL|*_URL|DB_HOST|*_DB_HOST|PGHOST|MYSQL_HOST|MONGO_URL|REDIS_URL) [ -n "$v" ] && check "$k" "$v";; esac
+  case "$k" in
+    DATABASE_URL|*_URL|DB_HOST|*_DB_HOST|PGHOST|MYSQL_HOST|MONGO_URL|REDIS_URL|SPRING_DATASOURCE_HOST) [ -n "$v" ] && check "$k" "$v";;
+  esac
 done <<EOT
 $pairs
 EOT

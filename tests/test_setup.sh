@@ -159,6 +159,28 @@ t_local_guard() {
   assert_exit 1 ".env checked" -- bash -c "cd '$d' && bash '$g'"
   run HARNESS_ALLOW_SEED=1 | grep -q WARNING
 }
+t_local_guard_bypasses_closed() {
+  local d g; d="$(mktemp -d)"; g="$S/local-guard.sh"
+  gr() { ( cd "$d" && env -i PATH="$PATH" "$@" bash "$g" ) >/dev/null 2>&1; }
+  gr DB_HOST=127.evil.com && _fail "127.evil.com allowed"
+  gr DB_HOST=127.0.0.1 || _fail "127.0.0.1 refused"
+  gr DATABASE_URL=postgres://u@localhost:5432,db.prod.example.com:5432/x && _fail "second host unchecked"
+  gr MONGO_URL=mongodb://a:1,b:2/x || _fail "local multi-host refused"
+  printf 'DB_HOST = rds.amazonaws.com\n' > "$d/.env"
+  gr && _fail ".env spaces around = unchecked"
+  printf '  export DB_HOST="localhost"  # dev\n' > "$d/.env"
+  gr || _fail "local .env refused"
+  rm "$d/.env"; mkdir -p "$d/src/main/resources"
+  printf 'spring.datasource.url=jdbc:postgresql://db.prod.example.com:5432/x\n' > "$d/src/main/resources/application.properties"
+  gr && _fail "spring properties unchecked"
+  printf 'spring.datasource.url = jdbc:postgresql://${DB_HOST:localhost}:5432/x\n' > "$d/src/main/resources/application.properties"
+  gr || _fail "placeholder default localhost refused"
+  rm "$d/src/main/resources/application.properties"
+  printf 'spring:\n  datasource:\n    url: jdbc:mysql://prod.example.com/x\n' > "$d/src/main/resources/application-dev.yml"
+  gr && _fail "spring yml unchecked"
+  printf 'spring:\n  datasource:\n    url: jdbc:mysql://mysql:3306/x\napi:\n  url: https://api.example.com\n' > "$d/src/main/resources/application-dev.yml"
+  gr || _fail "local yml refused"
+}
 t_make_seed_guarded() {
   local d; d="$(mktemp -d)"; mkdir -p "$d/scripts/harness"; cp "$S/local-guard.sh" "$d/scripts/harness/"; cp "$S/../harness.mk" "$d/"
   printf 'HARNESS_SEED = @echo seeded\ninclude harness.mk\n' > "$d/Makefile"
