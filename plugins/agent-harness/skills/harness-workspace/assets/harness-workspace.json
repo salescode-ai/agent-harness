@@ -7,6 +7,7 @@
       "path": "backend-api",
       "remote": "git@github.com:<org>/backend-api.git",
       "base": "main",
+      "harness": "<present|partial|none>",
       "owns": "REST endpoints, business rules, database schema and migrations"
     },
     {
@@ -14,6 +15,7 @@
       "path": "portal",
       "remote": "git@github.com:<org>/portal.git",
       "base": "main",
+      "harness": "<present|partial|none>",
       "owns": "Web portal UI"
     },
     {
@@ -21,6 +23,7 @@
       "path": "app",
       "remote": "git@github.com:<org>/app.git",
       "base": "main",
+      "harness": "<present|partial|none>",
       "owns": "Mobile app UI"
     }
   ],

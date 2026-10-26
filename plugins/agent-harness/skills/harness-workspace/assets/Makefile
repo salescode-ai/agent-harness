@@ -1,6 +1,6 @@
 # Workspace Makefile — agents run these from the workspace root. Each target delegates to the member repos' own harness.
 .DEFAULT_GOAL := help
-.PHONY: help status changed check check-fast test branch bootstrap harness-lint
+.PHONY: help status changed check check-fast setup claude-md test branch bootstrap harness-lint
 
 help: ## List targets
 	@echo "Workspace: run these from here, or 'make -C <repo> <target>' inside one repo."
@@ -21,3 +21,7 @@ bootstrap: ## Clone any manifest repo that is missing
 	@bash ws.sh bootstrap
 harness-lint: ## Check the workspace map and that every repo has a harness
 	@bash ws.sh lint
+setup: ## Run each present repo's setup, in merge order
+	@bash ws.sh setup
+claude-md: ## Rewrite CLAUDE.md to import AGENTS.md, INVARIANTS.md and each present repo's INVARIANTS.md
+	@bash ws.sh claude-md

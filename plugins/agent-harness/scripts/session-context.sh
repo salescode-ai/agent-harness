@@ -19,8 +19,7 @@ if [[ -n "$ws" && -z "$(git -C "$HOOK_CWD" rev-parse --show-toplevel 2>/dev/null
     if [[ ! -d "$ws/$path/.git" && ! -f "$ws/$path/.git" ]]; then echo "[agent-harness]   $name: not checked out ($path)"; continue; fi
     br="$(git -C "$ws/$path" branch --show-current 2>/dev/null)"
     dirty="$(git -C "$ws/$path" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
-    h="harness"; [[ -f "$ws/$path/AGENTS.md" ]] || h="NO HARNESS"
-    echo "[agent-harness]   $name: ${br:-detached} · $dirty uncommitted · $h"
+    echo "[agent-harness]   $name: ${br:-detached} · $dirty uncommitted · harness $(member_state "$ws/$path")"
   done <<<"$(workspace_members "$ws")"
   print_plan "$ws" "" ""
   echo "[agent-harness] workspace gate: make check (runs each changed repo's own gate) · before claiming done: harness-verify"

@@ -1,0 +1,9 @@
+{
+  "name": "demo-workspace",
+  "repos": [
+    {"name": "api", "path": "api", "base": "main", "harness": "present", "owns": "REST API"},
+    {"name": "portal", "path": "portal", "base": "main", "harness": "partial", "owns": "Web UI"},
+    {"name": "app", "path": "app", "base": "main", "harness": "none", "owns": "Mobile app"}
+  ],
+  "mergeOrder": ["api", "portal", "app"]
+}

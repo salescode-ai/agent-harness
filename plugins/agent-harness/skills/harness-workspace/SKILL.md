@@ -13,12 +13,14 @@ contract-first rules, one gate that runs every changed repo's own gate, and cros
 ## Steps
 
 1. **Find the repos.** List immediate subfolders that are git repos (`git -C <dir> rev-parse --show-toplevel` equals the folder). For each: remote URL, default branch, whether it has `AGENTS.md` and a `make check` target. Read the first paragraph of each repo's `AGENTS.md` to learn what it owns.
-2. **Confirm with the developer** in one table: repo · path · owns (one line) · merge order. Ask what isn't clear from the repos — especially which repo owns the shared contract. Repos without a harness: offer to run `harness-init` in them first; the workspace gate fails for a changed repo with no `make check`.
+2. **Confirm with the developer** in one table: repo · path · owns (one line) · merge order. Ask what isn't clear from the repos — especially which repo owns the shared contract. Repos with a partial or no harness get a warning and their gate is skipped, never a failure; mention `harness-init` only as an offer, and never write inside a member repo unless the developer names it.
 3. **Write the workspace files** from `assets/` (show each, wait for yes):
    - `harness-workspace.json` — repos (name, path, remote, base, owns) and `mergeOrder`
    - `AGENTS.md` — the routing table, Verification, cross-repo rules, Work Artifacts, Authorization (fill from step 2)
-   - `CLAUDE.md` — `@AGENTS.md` only
-   - `Makefile` + `ws.sh` — `status`, `changed`, `check`, `check-fast`, `test R= T=`, `branch B= R=`, `bootstrap`, `harness-lint`
+   - `INVARIANTS.md` — cross-repo rules (contract first, merge order, no breaking change without a version)
+   - `CLAUDE.md` — `@AGENTS.md` and `@INVARIANTS.md`; `make claude-md` adds each present member's `@<repo>/INVARIANTS.md` (falls back to links over the token budget)
+   - `scripts/harness/cmd.sh` — copy of the plugin's `scripts/harness-cmd.sh`; `ws.sh` resolves each member's commands through it
+   - `Makefile` + `ws.sh` — `status`, `changed`, `check`, `check-fast`, `setup`, `claude-md`, `test R= T=`, `branch B= R=`, `bootstrap`, `harness-lint`
    - `plans/TEMPLATE.md`, `plans/active/`, `plans/done/`
    - `.claude/settings.json` from `assets/claude/settings.json` (enables the harness plugin when Claude Code starts here)
 4. **Validate.** `make harness-lint` and `make status`. Fix every FAIL.
