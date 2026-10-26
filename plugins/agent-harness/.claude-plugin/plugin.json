@@ -1,7 +1,7 @@
 {
   "name": "agent-harness",
   "description": "Builds and runs a repository harness for AI coding agents: AGENTS.md map, invariants, verification gate, independent reviewer agents, guard and stop-gate hooks, and harness gardening. Works with any skill pack; supports multi-repo workspaces.",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "author": {
     "name": "Salescode Platform Engineering"
   },
