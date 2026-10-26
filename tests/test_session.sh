@@ -24,8 +24,15 @@ t_session_init_in_progress() {
   assert_contains "$(_sess "$d")" "harness setup in progress — resume with /harness-init" "in progress"
   echo '{"layers_done":["guides","sensors","context","tools","observability"]}' > "$d/.harness/init-state.json"
   assert_not_contains "$(_sess "$d")" "setup in progress" "done"
+  echo '{"target":"Functional","layers_done":["guides","sensors"]}' > "$d/.harness/init-state.json"
+  assert_not_contains "$(_sess "$d")" "setup in progress" "Functional needs guides+sensors only"
+  echo '{"target":"Functional","layers_done":["guides"]}' > "$d/.harness/init-state.json"
+  assert_contains "$(_sess "$d")" "setup in progress" "Functional missing sensors"
+  echo '{"target":"Robust","layers_done":["guides","sensors"]}' > "$d/.harness/init-state.json"
+  assert_contains "$(_sess "$d")" "setup in progress" "Robust needs all five"
   echo '{oops' > "$d/.harness/init-state.json"
   assert_not_contains "$(_sess "$d")" "setup in progress" "bad json"
+  assert_eq "$(_sess "$d" | grep -c 'init-state.json is unreadable')" 1 "bad json warned once"
 }
 t_session_silent_outside_repo() {
   assert_eq "$(_sess "$(mktemp -d)")" "" "silent"

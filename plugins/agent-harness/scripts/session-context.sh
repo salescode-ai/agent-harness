@@ -44,8 +44,12 @@ except Exception: pass" 2>/dev/null)"
 fi
 if [[ -f "$root/.harness/init-state.json" ]] && command -v python3 >/dev/null; then
   python3 -c "import json,sys
-sys.exit(0 if len(json.load(open(sys.argv[1])).get('layers_done',[]))<5 else 1)" "$root/.harness/init-state.json" 2>/dev/null \
-    && echo "[agent-harness] harness setup in progress — resume with /harness-init"
+try: d=json.load(open(sys.argv[1])); assert isinstance(d,dict)
+except Exception: print('[agent-harness] .harness/init-state.json is unreadable — fix or delete it, then /harness-init'); sys.exit()
+# Functional (or Experimental) target only needs guides+sensors; Robust/Enterprise or no target: all five
+scope={'guides','sensors'} if d.get('target') in ('Experimental','Functional') else {'guides','sensors','context','tools','observability'}
+if not scope <= set(d.get('layers_done') or []): print('[agent-harness] harness setup in progress — resume with /harness-init')" \
+    "$root/.harness/init-state.json" 2>/dev/null
 fi
 echo "[agent-harness] resuming work? use the harness-session skill · before claiming done: harness-verify"
 exit 0
