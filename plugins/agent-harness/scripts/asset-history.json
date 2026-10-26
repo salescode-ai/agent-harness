@@ -41,7 +41,8 @@
   "e1b7c6b8fa7a0ed9a187726178294864566ff818abec3887b6decccc8bcca2e1": "2.0.4"
  },
  "skills/harness-init/assets/harness/plan-check.sh": {
-  "50a243b9b1bb714756d765e6f71fd914abae7c99fef728cda409447a8a7b49c0": "2.0.4"
+  "50a243b9b1bb714756d765e6f71fd914abae7c99fef728cda409447a8a7b49c0": "2.0.4",
+  "956f9dee0f7530ab155849cd2efb411cac045c0ce0fdb89b81d041da3036a993": "2.0.4"
  },
  "skills/harness-init/assets/harness/related-tests.sh": {
   "5fe1e4df715e3afde932a83a2671d11d6cda117949a69826b9327d6dc00f95a9": "2.0.4",
