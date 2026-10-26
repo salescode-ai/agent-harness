@@ -14,13 +14,15 @@ HARNESS_TEST_ALL  ?= @echo "test: not configured" && false
 HARNESS_TEST_ONE  ?= @echo "test T=: not configured" && false
 HARNESS_SMOKE     ?= @echo "smoke: no runnable surface"
 HARNESS_SETUP     ?= bash scripts/harness/setup.sh
-HARNESS_SEED      ?= @echo "seed: not configured" && false
-HARNESS_RESET     ?= @echo "reset: not configured" && false
-HARNESS_DEV       ?= @echo "dev: not configured" && false
+# seed, reset and dev exist only when set ABOVE the include: unconfigured, `make seed` says "No rule"
+# and `make setup` skips the step (a defined-but-failing default would break setup).
+HARNESS_SEED      ?=
+HARNESS_RESET     ?=
+HARNESS_DEV       ?=
 # Tests for changed files only (receives the file list). Leave empty to skip tests in check-fast.
 HARNESS_TEST_CHANGED ?=
-# Files changed vs the main branch (used by check-fast)
-HARNESS_BASE      ?= origin/main
+# Files changed vs the base branch (used by check-fast): origin/HEAD, else origin/main, else origin/master
+HARNESS_BASE      ?= $(or $(shell git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null),$(if $(shell git rev-parse -q --verify origin/main 2>/dev/null),origin/main,origin/master))
 CHANGED            = $(shell git diff --name-only --diff-filter=ACMR $(HARNESS_BASE)...HEAD 2>/dev/null; git diff --name-only --diff-filter=ACMR HEAD 2>/dev/null)
 
 # Changed files under a dir with given extensions, relative to that dir (for tools with legacy debt):
@@ -115,6 +117,7 @@ setup: ## One-time local setup
 endif
 
 ifneq ($(HARNESS_DEFINE_SEED),0)
+ifneq ($(strip $(HARNESS_SEED)),)
 .PHONY: seed
 _HARNESS_TARGETS += seed
 _HELP_seed := Load local sample data (local targets only)
@@ -122,8 +125,10 @@ seed: ## Load local sample data (local targets only)
 	@if [ -f scripts/harness/local-guard.sh ]; then bash scripts/harness/local-guard.sh || exit 1; elif [ "$$HARNESS_ALLOW_SEED" = 1 ]; then echo "seed: local-guard.sh missing, proceeding (HARNESS_ALLOW_SEED=1)" >&2; else echo "seed: scripts/harness/local-guard.sh missing — refusing (install it, or HARNESS_ALLOW_SEED=1)" >&2; exit 1; fi
 	$(HARNESS_SEED)
 endif
+endif
 
 ifneq ($(HARNESS_DEFINE_RESET),0)
+ifneq ($(strip $(HARNESS_RESET)),)
 .PHONY: reset
 _HARNESS_TARGETS += reset
 _HELP_reset := Reset local state (local targets only)
@@ -131,13 +136,16 @@ reset: ## Reset local state (local targets only)
 	@if [ -f scripts/harness/local-guard.sh ]; then bash scripts/harness/local-guard.sh || exit 1; elif [ "$$HARNESS_ALLOW_SEED" = 1 ]; then echo "reset: local-guard.sh missing, proceeding (HARNESS_ALLOW_SEED=1)" >&2; else echo "reset: scripts/harness/local-guard.sh missing — refusing (install it, or HARNESS_ALLOW_SEED=1)" >&2; exit 1; fi
 	$(HARNESS_RESET)
 endif
+endif
 
 ifneq ($(HARNESS_DEFINE_DEV),0)
+ifneq ($(strip $(HARNESS_DEV)),)
 .PHONY: dev
 _HARNESS_TARGETS += dev
 _HELP_dev := Start the dev server
 dev: ## Start the dev server
 	$(HARNESS_DEV)
+endif
 endif
 
 # Example wiring (Python):

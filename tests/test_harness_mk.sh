@@ -7,9 +7,16 @@ mk_dir() { # mk_dir <Makefile body>; echoes dir
 t_targets_listed() {
   local d out t; d="$(mk_dir 'include harness.mk')"
   out="$(cd "$d" && make help 2>&1)"
-  for t in help check check-fast lint typecheck test smoke setup seed reset dev harness-lint; do
+  for t in help check check-fast lint typecheck test smoke setup harness-lint; do
     assert_contains "$out" "  $t " "help lists $t"
   done
+  for t in seed reset dev; do assert_not_contains "$out" "  $t " "unconfigured $t hidden"; done
+  d="$(mk_dir 'HARNESS_SEED = @echo s
+HARNESS_RESET = @echo r
+HARNESS_DEV = @echo d
+include harness.mk')"
+  out="$(cd "$d" && make help 2>&1)"
+  for t in seed reset dev; do assert_contains "$out" "  $t " "configured $t listed"; done
 }
 
 t_header_line() {
@@ -35,7 +42,28 @@ t_unconfigured_fails_loud() {
   local d out rc=0; d="$(mk_dir 'include harness.mk')"
   out="$(cd "$d" && HARNESS_ALLOW_SEED=1 make seed 2>&1)" || rc=$?
   [ "$rc" != 0 ] || _fail "seed should exit non-zero"
-  assert_contains "$out" "seed: not configured" "message"
+  assert_contains "$out" "No rule to make target" "message"
+  # and the resolver cannot see it, so setup.sh skips the step
+  cp "$PLUGIN/scripts/harness-cmd.sh" "$d/cmd.sh"
+  assert_exit 3 "seed unresolvable" -- bash "$d/cmd.sh" "$d" seed
+}
+t_define_seed_0_wins_over_value() {
+  local d; d="$(mk_dir 'HARNESS_DEFINE_SEED=0
+HARNESS_SEED = @echo s
+include harness.mk')"
+  assert_not_contains "$(cd "$d" && make help 2>&1)" "  seed " "guard respected"
+}
+t_base_derived_from_origin_head() {
+  local d; d="$(mk_dir 'include harness.mk
+show-base:
+	@echo $(HARNESS_BASE)')"
+  ( cd "$d" && git init -q -b master && git config user.email t@e.com && git config user.name t && git add -A \
+    && git -c core.hooksPath=/dev/null commit -qm i && git update-ref refs/remotes/origin/master HEAD ) >/dev/null
+  assert_eq "$(cd "$d" && make -s show-base)" origin/master "no origin/main -> origin/master"
+  git -C "$d" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/master
+  git -C "$d" update-ref refs/remotes/origin/main HEAD
+  assert_eq "$(cd "$d" && make -s show-base)" origin/master "origin/HEAD wins"
+  assert_eq "$(cd "$d" && make -s show-base HARNESS_BASE=origin/dev)" origin/dev "override"
 }
 
 t_default_goal_help() {

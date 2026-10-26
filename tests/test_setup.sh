@@ -28,16 +28,25 @@ t_worktree_project_name() {
   assert_contains "$out" "worktree feat-x" "report"
 }
 t_ports_unique_and_free() {
-  local d a b; d="$(_su)"; printf 'API_PORT=3000\nDB_PORT=5432\nDB_NAME=shop\n' > "$d/.env.example"
+  local m d a b; m="$(_su)"; d="$(dirname "$m")/wt"
+  printf 'API_PORT=3000\nDB_PORT=5432\nDB_NAME=shop\n' > "$m/.env.example"
+  ( cd "$m" && git add -A && git -c core.hooksPath=/dev/null commit -qm e && git worktree add -q "$d" -b wt ) >/dev/null 2>&1
   _run "$d" >/dev/null
   a="$(sed -n 's/^API_PORT=//p' "$d/.env.local")"; b="$(sed -n 's/^DB_PORT=//p' "$d/.env.local")"
   [ -n "$a" ] && [ -n "$b" ] && [ "$a" != "$b" ]
-  assert_contains "$(cat "$d/.env.local")" "DB_NAME=shop_node_app" "db name"
+  [ "$a" != 3000 ] || _fail "worktree got a free port"
+  assert_contains "$(cat "$d/.env.local")" "DB_NAME=shop_node_app_wt" "db name"
   python3 -c "import socket,sys
 for p in sys.argv[1:]:
     s=socket.socket(); s.bind(('',int(p))); s.close()" "$a" "$b"
   _run "$d" >/dev/null   # stable on re-run
   assert_eq "$(sed -n 's/^API_PORT=//p' "$d/.env.local")" "$a" "port kept"
+}
+t_main_checkout_keeps_example_ports() {
+  local d; d="$(_su)"; printf 'API_PORT=3000\nDB_PORT=5432\n' > "$d/.env.example"
+  _run "$d" >/dev/null
+  assert_contains "$(cat "$d/.env.local")" "API_PORT=3000" "api"
+  assert_contains "$(cat "$d/.env.local")" "DB_PORT=5432" "db"
 }
 t_needs_you_listed() {
   local d out; d="$(_su)"; printf 'STRIPE_KEY=\nTOKEN=changeme\nFINE=1\n' > "$d/.env.example"
@@ -72,7 +81,7 @@ t_compose_default_uses_docker_shim() {
   local d bin; d="$(_su)"; bin="$(mktemp -d)"; cp "$FIXTURES/node-app/docker-compose.yml" "$d/"
   printf '#!/bin/sh\necho "$@" >> "%s/args"\n' "$bin" > "$bin/docker"; chmod +x "$bin/docker"
   ( cd "$d" && PATH="$bin:$PATH" make -s setup ) >/dev/null 2>&1
-  assert_contains "$(cat "$bin/args")" "compose -f docker-compose.yml -p node-app up -d" "args"
+  assert_contains "$(cat "$bin/args")" "compose -f docker-compose.yml --env-file .env --env-file .env.local -p node-app up -d" "args"
   printf 'HARNESS_SHARED_SERVICES=1\n' > "$d/.env.local"; rm "$bin/args"
   ( cd "$d" && PATH="$bin:$PATH" make -s setup ) >/dev/null 2>&1
   assert_not_contains "$(cat "$bin/args")" " -p " "shared: no project name"
@@ -89,6 +98,24 @@ t_proof_runs_in_fresh_clone() {
   assert_contains "$out" "setup-proof: OK" "ok"
   case "$(cat "$tmp/where")" in "$tmp"/*|"${tmp%/}"/*) ;; *) _fail "ran in $(cat "$tmp/where")";; esac
   [ ! -d "$(cat "$tmp/where")" ] || _fail "tmp not removed"
+}
+t_proof_resolves_setup() {
+  local d out; d="$(_su)"; mkdir "$d/.agents"
+  echo '{"commands":{"setup":"echo via-runner"}}' > "$d/.agents/harness.json"
+  ( cd "$d" && git add -A && git -c core.hooksPath=/dev/null commit -qm r ) >/dev/null
+  out="$(cd "$d" && bash scripts/harness/setup-proof.sh 2>&1)"
+  assert_contains "$out" "setup-proof: OK" "registered runner used"
+  printf 'other:\n\t@true\n' > "$d/Makefile"; rm -r "$d/.agents"
+  ( cd "$d" && git add -A && git -c core.hooksPath=/dev/null commit -qm r2 ) >/dev/null
+  out="$(cd "$d" && bash scripts/harness/setup-proof.sh 2>&1)" && return 1
+  assert_contains "$out" "setup not wired" "unwired"
+}
+t_real_harness_mk_setup_without_seed() {
+  local d out A="$PLUGIN/skills/harness-init/assets"; d="$(_su)"
+  cp "$A/harness.mk" "$d/"; printf 'include harness.mk\n' > "$d/Makefile"
+  cp "$A/harness/local-guard.sh" "$d/scripts/harness/"
+  out="$(_run "$d")" || _fail "setup failed: $out"
+  assert_contains "$out" "setup: OK" "ok"; assert_contains "$out" "seed skipped" "seed skipped"
 }
 t_proof_fail_names_step() {
   local d out; d="$(_su 'setup-migrate:

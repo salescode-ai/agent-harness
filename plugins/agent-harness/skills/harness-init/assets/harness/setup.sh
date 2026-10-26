@@ -82,7 +82,9 @@ print(*[x.getsockname()[1] for x in s])' "$n" 2>/dev/null)"
       [ -z "$free" ] && need "python3 missing: set $(printf '%s ' $pk)in .env.local yourself"
       set -- $free
       for k in $pk; do
-        p="$(ev .env.local "$k")"; [ -z "$p" ] && p="${1:-}"; shift 2>/dev/null
+        # main checkout keeps the example's ports; only linked worktrees (.git is a file) get free ones
+        p="$(ev .env.local "$k")"; [ -z "$p" ] && [ -z "$WT" ] && p="$(ev .env.example "$k")"
+        [ -z "$p" ] && p="${1:-}"; shift 2>/dev/null
         [ -n "$p" ] && { echo "$k=$p" >> "$new"; PORTS="$PORTS ${k%_PORT}=$p"; export "$k=$p"; }
       done
     fi
@@ -114,7 +116,9 @@ run_target deps setup-deps
 dc=""
 if [ -n "$COMPOSE" ]; then
   if has docker; then
-    dc="docker compose -f '$COMPOSE'"; [ "$SHARED" != 1 ] && dc="$dc -p '$PROJECT'"; dc="$dc up -d"
+    dc="docker compose -f '$COMPOSE'"
+    [ -f .env.local ] && { [ -f .env ] && dc="$dc --env-file .env"; dc="$dc --env-file .env.local"; }
+    [ "$SHARED" != 1 ] && dc="$dc -p '$PROJECT'"; dc="$dc up -d"
   else need "install Docker (https://docs.docker.com/get-docker/) to start $COMPOSE"; fi
 fi
 run_target services setup-services $dc
