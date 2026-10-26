@@ -113,3 +113,11 @@ t_member_base_derived() {
   assert_contains "$(ws changed)" "api" "ahead of origin/master"
   assert_contains "$(grep '^api ' <<<"$(ws status)")" " 1 " "ahead count"
 }
+t_member_command_exit_3_fails() {
+  WS_T="$(mk_ws)"
+  mkdir "$WS_T/api/.agents"; echo '{"commands":{"check":"sh -c \"exit 3\""}}' > "$WS_T/api/.agents/harness.json"
+  echo x > "$WS_T/api/new.txt"
+  local out rc=0; out="$(ws check)" || rc=$?
+  assert_eq "$rc" 1 "exit"
+  assert_contains "$out" "FAIL  api: check" "member exit 3 is a failure"
+}

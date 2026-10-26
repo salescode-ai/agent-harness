@@ -45,8 +45,10 @@ state() { # state <path>: present | partial | none (same definition as member_st
 }
 skip_warn() { echo "warn  $1: harness $2 — gate skipped (create it only if asked: harness-init in $WS/$3)"; }
 run_target() { # run_target <path> <target> [T]: run the resolved command inside the member; returns its status
-  local c; c="$(resolve "$WS/$1" "$2" "${3:-}")" || return 3
-  (cd "$WS/$1" && eval "$c")
+  local c rc=0; c="$(resolve "$WS/$1" "$2" "${3:-}")" || return 3
+  (cd "$WS/$1" && eval "$c") || rc=$?
+  (( rc == 3 )) && rc=1  # only the resolver's exit 3 means "not wired"; a command exiting 3 is a failure
+  return $rc
 }
 path_of() { members | awk -F'\t' -v n="$1" '$1==n {print $2}'; }
 
