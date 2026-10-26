@@ -18,7 +18,7 @@ contract-first rules, one gate that runs every changed repo's own gate, and cros
    - `harness-workspace.json` from `assets/harness-workspace.json`: repos (name, path, remote, base, `harness`, owns) and `mergeOrder`.
    - `AGENTS.md` from `assets/AGENTS.md`: routing table linking each member's `AGENTS.md`, Verification, cross-repo rules, Work Artifacts, Authorization.
    - `INVARIANTS.md` from `assets/INVARIANTS.md`: contract first, follow the merge order, no breaking API change without a version.
-   - `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" install .` → `scripts/harness/cmd.sh` and `ws.sh` (`ws.sh` resolves each member's commands through `cmd.sh`), hashes in `scripts/harness/assets.json`. On a re-run use `… assets.py refresh .`: stale unmodified copies are updated, locally modified ones only reported.
+   - `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" install .` → `scripts/harness/cmd.sh`, `scripts/harness/plan-check.sh` and `ws.sh` (`ws.sh` resolves each member's commands through `cmd.sh`), hashes in `scripts/harness/assets.json`. On a re-run (or after a plugin update) hand over to `/agent-harness:harness-upgrade`: it refreshes stale unmodified copies (modified ones are only reported), migrates workspace files and lists each member that is behind with its upgrade command.
    - `Makefile` from `assets/`, driving `ws.sh`: `status`, `changed`, `check`, `check-fast`, `setup`, `claude-md`, `test R= T=`, `branch B= R=`, `bootstrap`, `harness-lint`.
    - `CLAUDE.md`: run `make claude-md` (imports `@AGENTS.md`, `@INVARIANTS.md` and each present member's `@<repo>/INVARIANTS.md`; falls back to links with a warning over the token budget).
    - `plans/TEMPLATE.md`, `plans/active/`, `plans/done/` from `assets/plans/`.

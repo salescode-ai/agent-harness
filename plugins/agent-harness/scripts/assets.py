@@ -41,6 +41,7 @@ def assets(root):
     pairs = [("scripts/harness-cmd.sh", "scripts/harness/cmd.sh")]
     if root is None or os.path.isfile(os.path.join(root, "harness-workspace.json")):
         pairs.append(("skills/harness-workspace/assets/ws.sh", "ws.sh"))
+        pairs.append((A + "/harness/plan-check.sh", "scripts/harness/plan-check.sh"))
         if root is not None:
             return pairs
     pairs += [(A + "/lint.sh", "scripts/harness/lint.sh"), (A + "/harness.mk", "harness.mk")]
@@ -108,7 +109,7 @@ def main(argv):
         if st == "current":
             shas[dest] = want
         elif st == "stale":
-            print("stale     %s (plugin %s%s) — run /agent-harness:harness-init to refresh" % (dest, v, ", copy from " + was if was else ""))
+            print("stale     %s (plugin %s%s) — run /agent-harness:harness-upgrade to refresh" % (dest, v, ", copy from " + was if was else ""))
         elif st == "modified":
             print("modified  %s — modified locally, review diff: diff %s \"%s\"" % (dest, dest, os.path.join(PLUGIN, src)))
         elif st == "missing":

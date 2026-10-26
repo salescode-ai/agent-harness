@@ -20,9 +20,9 @@ Scan first, ask last. Apply what the code proves; ask only what code can't answe
 ## 0. Where, resume or upgrade
 
 - **Workspace member.** If `harness-workspace.json` is here and this folder is not a git repo: with a first argument naming a member (its `name` or `path` there, or a path to a repo), work **inside that member** — every path and command below is relative to it, and nothing outside it is touched. Without one, stop: list the members (name · path · harness state) and say "run `/agent-harness:harness-init <member>`" (one-shot: `/agent-harness:harness-init <member> one-shot`).
-- **Refresh plugin scripts first** on every re-run (resume, upgrade, or all layers done): `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" status .`. If any line says `stale`, run `… assets.py refresh .`: it updates unmodified plugin copies only and lists each under Applied automatically; `modified` copies are never overwritten (report them: "modified locally, review diff" with the printed command); repo-owned files are never touched. Only then say what is left.
+- **Existing harness → upgrade.** On every re-run where the harness exists (all in-scope layers done, or a v1 harness), hand over to **harness-upgrade**: follow `${CLAUDE_PLUGIN_ROOT}/skills/harness-upgrade/SKILL.md` (or tell the developer to run `/agent-harness:harness-upgrade`). It runs `assets.py" status .` and `assets.py refresh .` (unmodified plugin copies only; `modified` ones are reported as "modified locally, review diff" with the printed command), then the versioned migrations. Resuming an unfinished setup: run its steps 1–2 first, then continue below.
 - Read `.harness/init-state.json` if present: `{"layers_done":[…], "answers":{…}, "gate_wired":bool, "target":"Robust"}`. Layer keys: `guides`, `tools`, `sensors`, `context`, `observability`. Say "Resuming at <next layer>" and jump to step 4 for the first layer **in scope for `target`** (Functional: `guides`, `sensors`; Robust/Enterprise: all five) that is not in `layers_done`; never re-ask a recorded answer. If `.harness/scan.json` is missing, its `head` differs from `git rev-parse HEAD`, or any `commands[]` entry lacks `baseline`, redo step 1 (scan and baselines) first.
-- **v1 upgrade** (`AGENTS.md`/`INVARIANTS.md` exist, no state file): same flow, but the tree in step 3 lists only differences and questions already answered by existing files are skipped.
+- **v1 harness** (`AGENTS.md`/`INVARIANTS.md` exist, no state file) that harness-upgrade cannot bring up to date: same flow, but the tree in step 3 lists only differences and questions already answered by existing files are skipped.
 
 ## 1. Scan (no questions)
 
@@ -103,7 +103,10 @@ Applied automatically: <n> — <one line each>
 Assumed — change any time: <list>
 Still open: <TODOs with file:line> · <invariants "not yet enforced">
 Next: make setup (you run it: git config + services; hooks pending until then) · /harness-audit in a month · /harness-garden weekly
+Run /agent-harness:harness-improve to strengthen <top 3 gaps: blockers, then TODO-heavy files, then not-yet-enforced invariants>?
 ```
+
+Interactive session: end by asking whether to start harness-improve now (yes → follow `${CLAUDE_PLUGIN_ROOT}/skills/harness-improve/SKILL.md`).
 
 ## one-shot mode
 

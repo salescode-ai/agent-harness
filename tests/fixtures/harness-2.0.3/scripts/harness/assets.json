@@ -1,0 +1,8 @@
+{
+  "plugin": "2.0.3",
+  "sha256": {
+    "harness.mk": "a9a93f426a22876e1eaac15456cc1b20bc2a7c6cb269202c7fa1156e31b4e269",
+    "scripts/harness/cmd.sh": "8317666b56d8aa083bc783b0f39a774699b4193fffd3f23965643d0ea49dc347",
+    "scripts/harness/lint.sh": "e1aafa90b55ff11920e9985187fdda181d1dabc28a73ef133b211eed82b6aab5"
+  }
+}

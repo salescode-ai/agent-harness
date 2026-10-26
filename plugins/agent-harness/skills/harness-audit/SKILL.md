@@ -17,9 +17,9 @@ Argument: `quick` (default) or `full`.
 1. If `.harness/scan.json` is missing or its `head` differs from `git rev-parse HEAD`, run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/scan.py" .` (prints only; no `--write`, keep the output in the conversation).
 2. `quick`: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/level.py" . --json --run-checks --log` — one call measures and appends the log line, so the reported and the logged level are the same measurement. `full`: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/level.py" . --json --run-checks` now, and log in step 5 once the health score is known.
    Read: `level`, `target`, `layers.<key>.score` and `layers.<key>.missing` for `guides`, `tools`, `sensors`, `context`, `observability`, `next_level_blockers`, `tokens`.
-3. `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" status .` (read-only): report each `stale` or `modified` plugin script under **observability** (fix: `/agent-harness:harness-init` refreshes unmodified copies).
+3. `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" status .` (read-only): report each `stale` or `modified` plugin script under **observability** (fix: `/agent-harness:harness-upgrade` refreshes unmodified copies and runs the migrations).
 4. In a multi-repo workspace (a `harness-workspace.json` here), level.py also measures every member; report each member's level on one line.
-5. Plans: report under **context** each plan in `docs/plans/done/` (or with `Status: done`) that has no `## Verification` entry (harness-lint warns `is done but has no ## Verification entry`), and each active plan without a valid `Ticket:` (harness-lint fails).
+5. Plans: report under **context** each active plan without a valid `Ticket:` (harness-lint fails). Verification evidence is local (`.harness/evidence/`, never committed): for a plan with `Status: done` whose evidence file is missing here, say "evidence not available on this machine" (not a gap); when it exists, report `bash scripts/harness/plan-check.sh fresh <file>`'s line.
 
 ## 2. quick (always)
 
@@ -54,7 +54,10 @@ Level: Functional · target: Robust · blocked by: <next_level_blockers, joined>
 …
 Health: <n>/10 questions pass   (full: completeness <score>/100 · <band> · probe <summary> · setup-proof <line> · sensors <line> · vs last: <delta>)
 Next: hand the fixes to /harness-garden
+Run /agent-harness:harness-improve to strengthen <top 3 gaps: blockers to the target, then failing health questions>?
 ```
+
+In an interactive session, end by asking whether to start harness-improve now (it edits files, so it runs after this read-only report, never inside it).
 
 Never recommend work beyond the `target` level; say what the next level would need in one line instead.
 

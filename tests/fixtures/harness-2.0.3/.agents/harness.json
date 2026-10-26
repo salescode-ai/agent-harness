@@ -1,0 +1,7 @@
+{
+  "commands": {
+    "check": "just check",
+    "check-fast": "just check-fast",
+    "test": "just test {T}"
+  }
+}

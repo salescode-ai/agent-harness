@@ -26,7 +26,7 @@ t_assets_stale_refresh_skips_modified() {
   assert_contains "$out" "modified  scripts/harness/lint.sh — modified locally, review diff" "modified reported"
   assert_eq "$(python3 "$ASSETS" count "$d")" 2 "two stale"
   assert_contains "$(printf '{"cwd":"%s"}' "$d" | "$PLUGIN/scripts/session-context.sh")" \
-    "harness scripts are older than the plugin (2 files) — run /agent-harness:harness-init to refresh" "session line"
+    "harness scripts are older than the plugin (2 files) — run /agent-harness:harness-upgrade" "session line"
   out="$(python3 "$ASSETS" refresh "$d")"
   assert_contains "$out" "updated   harness.mk" "refreshed"
   cmp -s "$d/harness.mk" "$PLUGIN/skills/harness-init/assets/harness.mk" || _fail "harness.mk not refreshed"
