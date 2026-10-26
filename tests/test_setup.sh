@@ -79,7 +79,7 @@ t_env_local_preserves_unmanaged() {
 }
 t_compose_default_uses_docker_shim() {
   local d bin; d="$(_su)"; bin="$(mktemp -d)"; cp "$FIXTURES/node-app/docker-compose.yml" "$d/"
-  printf '#!/bin/sh\necho "$@" >> "%s/args"\n' "$bin" > "$bin/docker"; chmod +x "$bin/docker"
+  printf '#!/bin/sh\n[ "$2" = version ] && { echo v2.24.6; exit 0; }\necho "$@" >> "%s/args"\n' "$bin" > "$bin/docker"; chmod +x "$bin/docker"
   ( cd "$d" && PATH="$bin:$PATH" make -s setup ) >/dev/null 2>&1
   assert_contains "$(cat "$bin/args")" "compose -f docker-compose.yml --env-file .env --env-file .env.local -p node-app up -d" "args"
   printf 'HARNESS_SHARED_SERVICES=1\n' > "$d/.env.local"; rm "$bin/args"
@@ -222,4 +222,17 @@ t_local_guard_single_label_needs_compose_service() {
   gr SPRING_DATASOURCE_URL=jdbc:oracle:thin:@db:1521/X || _fail "oracle thin compose service refused"
   gr DB_HOST=oracle && _fail "nested key is not a service"
   gr SPRING_DATASOURCE_URL=jdbc:oracle:thin:@localhost:1521/X || _fail "localhost refused"
+}
+t_old_compose_gets_merged_env_file() {
+  local d bin; d="$(_su)"; bin="$(mktemp -d)"; cp "$FIXTURES/node-app/docker-compose.yml" "$d/"
+  printf '#!/bin/sh\n[ "$2" = version ] && { echo 2.12.2; exit 0; }\necho "$@" >> "%s/args"\nf=$(echo "$@" | sed -n "s/.*--env-file \\([^ ]*\\).*/\\1/p"); cat "$f" > "%s/merged"\n' "$bin" "$bin" > "$bin/docker"; chmod +x "$bin/docker"
+  ( cd "$d" && PATH="$bin:$PATH" make -s setup ) >/dev/null 2>&1
+  assert_eq "$(grep -o -- '--env-file' "$bin/args" | wc -l | tr -d ' ')" 1 "one env file"
+  assert_contains "$(cat "$bin/merged")" "COMPOSE_PROJECT_NAME=node-app" ".env.local merged"
+  assert_contains "$(cat "$bin/merged")" "$(head -1 "$d/.env")" ".env merged"
+}
+t_first_run_label() {
+  local d; d="$(_su)"; rm -f "$d/.env.example"
+  assert_contains "$(_run "$d")" "setup: OK  (first run" "first"
+  assert_contains "$(_run "$d")" "setup: OK  (re-run" "second"
 }

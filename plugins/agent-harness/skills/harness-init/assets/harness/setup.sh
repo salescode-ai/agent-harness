@@ -117,7 +117,14 @@ dc=""
 if [ -n "$COMPOSE" ]; then
   if has docker; then
     dc="docker compose -f '$COMPOSE'"
-    [ -f .env.local ] && { [ -f .env ] && dc="$dc --env-file .env"; dc="$dc --env-file .env.local"; }
+    if [ -f .env.local ] && [ -f .env ]; then
+      # two --env-file flags need Compose >= 2.17; otherwise (or unknown) pass one merged temp file (later wins)
+      cv="$(docker compose version --short 2>/dev/null | sed 's/^v//')"
+      cmaj="${cv%%.*}"; cmin="${cv#*.}"; cmin="${cmin%%.*}"
+      case "$cmaj$cmin" in *[!0-9]*|'') cmaj=0; cmin=0;; esac
+      if [ "$cmaj" -gt 2 ] || { [ "$cmaj" -eq 2 ] && [ "$cmin" -ge 17 ]; }; then dc="$dc --env-file .env --env-file .env.local"
+      else MERGED="$(mktemp)"; trap 'rm -f "$MERGED"' EXIT; cat .env .env.local > "$MERGED"; dc="$dc --env-file '$MERGED'"; fi
+    elif [ -f .env.local ]; then dc="$dc --env-file .env.local"; fi
     [ "$SHARED" != 1 ] && dc="$dc -p '$PROJECT'"; dc="$dc up -d"
   else need "install Docker (https://docs.docker.com/get-docker/) to start $COMPOSE"; fi
 fi
@@ -137,7 +144,8 @@ run_target smoke smoke
 
 # --- report
 ok=OK; [ -n "$FAILED" ] && ok=FAIL
-where="re-run"; [ -n "$FRESH" ] && where="fresh clone"
+where="re-run"; [ -f .harness/setup-ran ] || where="first run"; [ -n "$FRESH" ] && where="fresh clone"
+[ -z "$FAILED" ] && mkdir -p .harness 2>/dev/null && : > .harness/setup-ran 2>/dev/null
 [ -n "$WT" ] && where="$where · worktree $WT"
 [ -n "$PORTS" ] && where="$where · ports${PORTS}"
 echo "setup: $ok  ($where)"
