@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# setup.sh -- one-command dev setup (run from the repo root via `make setup`). Safe to re-run, never sudo,
+# never fetches secrets, never overwrites .env. Repo steps run only if they resolve; `setup` itself is never resolved (recursion).
+# Exit 1 only when a resolved step failed; "needs you" items alone exit 0.
+NEEDS=""; ST_deps="skipped"; ST_services="skipped"; ST_migrate="skipped"; ST_seed="skipped"; ST_smoke="skipped"; FAILED=""
+need() { NEEDS="${NEEDS:+$NEEDS, }$1"; }
+has() { command -v "$1" >/dev/null 2>&1; }
+major() { printf %s "$1" | sed 's/^v//; s/[^0-9].*//'; }
+slug() { printf %s "$1" | tr 'A-Z' 'a-z' | sed 's/[^a-z0-9]\{1,\}/-/g; s/^-//; s/-$//'; }
+
+# --- worktree identity: <main repo dir>-<this dir>; plain checkout -> just the dir name
+top="$(basename "$PWD")"
+common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+main="$top"; [ -n "$common" ] && main="$(basename "$(dirname "$common")")"
+WT=""; [ -f .git ] && WT="$(slug "$top")"
+PROJECT="$(slug "$main")"; [ "$top" != "$main" ] && PROJECT="$PROJECT-$(slug "$top")"
+
+# --- 1. prereqs: versions from .nvmrc/.tool-versions/.sdkmanrc/.python-version; compares majors only
+# shortcut: major-version compare, upgrade if teams pin minors
+check_tool() { # <label> <wanted> <have> <manager-cmd...>
+  local label="$1" want="$2" have="$3"; shift 3
+  [ -n "$(major "$want")" ] || return 0
+  [ "$(major "$want")" = "$(major "$have")" ] && return 0
+  [ -n "$*" ] && "$@" >/dev/null 2>&1
+  case "$(uname)" in Darwin) hint="brew install ${label}";; *) hint="your package manager: ${label}";; esac
+  need "$label $want (found ${have:-none}; activate it via your version manager or: $hint)"
+}
+have_node() { node -v 2>/dev/null; }
+have_py() { python3 -V 2>/dev/null | awk '{print $2}'; }
+have_java() { java -version 2>&1 | sed -n '1s/.*"\([0-9][0-9.]*\).*/\1/p'; }
+vm_run() { # <init-script> <cmd...>
+  [ -s "$1" ] || return 1; local i="$1"; shift; bash -c ". '$i'; $*"
+}
+mgr=""; has mise && mgr="mise install"; [ -z "$mgr" ] && has asdf && mgr="asdf install"
+[ -f .nvmrc ] && check_tool node "$(head -1 .nvmrc)" "$(have_node)" vm_run "${NVM_DIR:-$HOME/.nvm}/nvm.sh" "nvm install"
+[ -f .python-version ] && check_tool python "$(head -1 .python-version)" "$(have_py)" $(has pyenv && echo pyenv install -s)
+[ -f .sdkmanrc ] && check_tool java "$(sed -n 's/^java=//p' .sdkmanrc | head -1)" "$(have_java)" vm_run "$HOME/.sdkman/bin/sdkman-init.sh" "sdk env install"
+if [ -f .tool-versions ]; then
+  while read -r t v _; do
+    case "$t" in nodejs|node) check_tool node "$v" "$(have_node)" $mgr;; python) check_tool python "$v" "$(have_py)" $mgr;; java) check_tool java "${v#*-}" "$(have_java)" $mgr;; esac
+  done < .tool-versions
+fi
+
+# --- 2. registry sign-in hints (never stores credentials)
+for r in $(grep -hs 'registry *= *http' .npmrc | sed 's/.*= *//' | grep -v 'registry.npmjs.org'); do
+  has npm && ! npm whoami --registry "$r" >/dev/null 2>&1 && need "npm login --registry $r"
+done
+if [ -f settings.xml ] && [ ! -f "$HOME/.m2/settings.xml" ]; then need "maven credentials: copy settings.xml to ~/.m2 and add your server login"; fi
+COMPOSE=""; for f in docker-compose.yml docker-compose.yaml compose.yml compose.yaml compose.harness.yml; do [ -f "$f" ] && { COMPOSE="$f"; break; }; done
+if [ -n "$COMPOSE" ]; then
+  for h in $(sed -n 's/^ *image: *\([^/ ]*\.[^/ ]*\)\/.*/\1/p' "$COMPOSE" | sort -u); do
+    grep -qs "$h" "$HOME/.docker/config.json" || need "docker login $h"
+  done
+fi
+
+# --- 3. env: .env from example if missing; .env.local = worktree values (unmanaged lines kept)
+FRESH=""; PORTS=""
+ev() { sed -n "s/^\(export \)\{0,1\}$2=//p" "$1" 2>/dev/null | head -1 | sed "s/^[\"']//; s/[\"']\$//"; }
+if [ -f .env.example ]; then
+  [ -f .env ] || { cp .env.example .env; FRESH=1; }
+  keys="$(sed -n 's/^\(export \)\{0,1\}\([A-Za-z_][A-Za-z0-9_]*\)=.*/\2/p' .env.example)"
+  for k in $keys; do
+    case "$k" in DB_NAME|COMPOSE_PROJECT_NAME|*_PORT) continue;; esac
+    v="$(ev .env "$k")"; [ -z "$v" ] && ! grep -q "^\(export \)\{0,1\}$k=" .env 2>/dev/null && v="$(ev .env.example "$k")"
+    case "$v" in ''|changeme) need "$k";; esac
+  done
+fi
+SHARED="${HARNESS_SHARED_SERVICES:-$(ev .env.local HARNESS_SHARED_SERVICES)}"
+if [ -f .env.example ] || [ -n "$COMPOSE" ]; then
+  pk=""; [ -f .env.example ] && pk="$(printf '%s\n' $keys | grep '_PORT$')"
+  managed="COMPOSE_PROJECT_NAME DB_NAME $pk"
+  new="$(mktemp)"; : > "$new"
+  if [ "$SHARED" != 1 ]; then
+    echo "COMPOSE_PROJECT_NAME=$PROJECT" >> "$new"
+    n=0; for k in $pk; do n=$((n+1)); done
+    if [ "$n" -gt 0 ]; then
+      free="$(python3 -c '
+import socket,sys
+s=[socket.socket() for _ in range(int(sys.argv[1]))]
+for x in s: x.bind(("",0))
+print(*[x.getsockname()[1] for x in s])' "$n" 2>/dev/null)"
+      set -- $free
+      for k in $pk; do
+        p="$(ev .env.local "$k")"; [ -z "$p" ] && p="${1:-}"; shift 2>/dev/null
+        [ -n "$p" ] && { echo "$k=$p" >> "$new"; PORTS="$PORTS ${k%_PORT}=$p"; export "$k=$p"; }
+      done
+    fi
+    b="$(ev .env.example DB_NAME)"; [ -n "$b" ] && echo "DB_NAME=${b}_$(slug "$PROJECT" | tr - _)" >> "$new"
+  fi
+  if [ -f .env.local ]; then
+    while IFS= read -r l || [ -n "$l" ]; do
+      k="${l%%=*}"; k="${k#export }"; skip=""
+      for m in $managed; do [ "$k" = "$m" ] && skip=1; done
+      [ -z "$skip" ] && printf '%s\n' "$l" >> "$new"
+    done < .env.local
+  fi
+  mv "$new" .env.local
+  [ "$SHARED" != 1 ] && export COMPOSE_PROJECT_NAME="$PROJECT" && DBN="$(ev .env.local DB_NAME)" && [ -n "$DBN" ] && export DB_NAME="$DBN"
+  git check-ignore -q .env.local 2>/dev/null || need "add .env.local to .gitignore"
+fi
+
+# --- repo steps: only when the target resolves; a failing resolved step is required-failed
+run_target() { # <var-suffix> <target> [fallback-cmd...]
+  local v="$1" t="$2" cmd rc=0; shift 2
+  [ -n "$FAILED" ] && { eval "ST_$v=-"; return; }
+  cmd="$(bash scripts/harness/cmd.sh . "$t" 2>/dev/null)" || rc=$?
+  if [ "$rc" = 0 ] && [ -n "$cmd" ]; then :
+  elif [ $# -gt 0 ]; then cmd="$*"
+  else return 0; fi
+  if ( eval "$cmd" ); then eval "ST_$v='✓'"; else eval "ST_$v='✗'"; FAILED="$v"; fi
+}
+run_target deps setup-deps
+dc=""
+if [ -n "$COMPOSE" ]; then
+  if has docker; then
+    dc="docker compose -f '$COMPOSE'"; [ "$SHARED" != 1 ] && dc="$dc -p '$PROJECT'"; dc="$dc up -d"
+  else need "install Docker (https://docs.docker.com/get-docker/) to start $COMPOSE"; fi
+fi
+run_target services setup-services $dc
+run_target migrate setup-migrate
+run_target seed seed
+
+# --- githooks
+if [ -d .husky ]; then
+  if [ -d node_modules ]; then npx --no-install husky >/dev/null 2>&1 || need "run npx husky"; else need "run your package install, then npx husky"; fi
+elif [ -f lefthook.yml ] || [ -f lefthook.yaml ]; then has lefthook && lefthook install >/dev/null 2>&1 || need "install lefthook, then lefthook install"
+elif [ -f .pre-commit-config.yaml ]; then has pre-commit && pre-commit install >/dev/null 2>&1 || need "install pre-commit, then pre-commit install"
+elif [ -d .githooks ]; then git config core.hooksPath .githooks
+fi
+
+run_target smoke smoke
+
+# --- report
+ok=OK; [ -n "$FAILED" ] && ok=FAIL
+where="re-run"; [ -n "$FRESH" ] && where="fresh clone"
+[ -n "$WT" ] && where="$where · worktree $WT"
+[ -n "$PORTS" ] && where="$where · ports${PORTS}"
+echo "setup: $ok  ($where)"
+echo "steps: deps $ST_deps · services $ST_services"
+echo "data: migrate $ST_migrate · seed $ST_seed · smoke $ST_smoke"
+echo "needs you: ${NEEDS:-none}"
+[ -z "$FAILED" ]
