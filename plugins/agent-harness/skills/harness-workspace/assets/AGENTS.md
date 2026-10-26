@@ -41,6 +41,10 @@ Before editing files in a repo, read that repo's `AGENTS.md` and `INVARIANTS.md`
 
 Same rules as each repo's `AGENTS.md` → Agent skills: this file and repo `INVARIANTS.md`/`AGENTS.md` outrank any skill; artifacts go where Work Artifacts says; proof comes from the make targets; `harness-verify` runs last; nothing is written into `CLAUDE.md`.
 
+## Creating a repo's harness
+
+A request such as "create harness for <repo>" is answered with the exact command for the developer to run here: `/agent-harness:harness-init <repo>` (no interview: `/agent-harness:harness-init <repo> one-shot`). It works inside that repo only; never set up a repo's harness from the workspace by hand.
+
 ## Agent Authorization
 
 - **May, without asking:** edit code and tests on feature branches in the repos the task names; run make targets; commit locally in each repo.

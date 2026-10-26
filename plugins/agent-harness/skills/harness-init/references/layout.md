@@ -16,6 +16,7 @@ repo/
 ├── .claude/settings.json  [tools]    agent-harness plugin + permission rules (team-shared)
 ├── .agents/skills/        [guides]   repo-specific skills only; .claude/skills/<name> are symlinks to these
 ├── scripts/harness/       [tools]    cmd.sh (command resolver), lint.sh, setup.sh, setup-proof.sh, local-guard.sh
+│   ├── assets.json        [tools]    sha256 of each plugin-owned copy (scripts, .githooks/, harness.mk): lets upgrades refresh unmodified copies
 │   └── sensors/           [sensors]  registry.json, project sensors, fixtures/ (planted violations), sensor-proof.sh runs them
 ├── .githooks/             [sensors]  pre-commit → check-fast, pre-push → check (or the repo's hook manager)
 ├── docs/

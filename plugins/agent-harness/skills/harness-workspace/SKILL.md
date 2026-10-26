@@ -1,6 +1,6 @@
 ---
 name: harness-workspace
-description: Set up or refresh a multi-repo workspace — a plain (non-git) folder holding checkouts of several harnessed repos (e.g. backend API, portal UI, mobile app). Writes the workspace map, ownership routing, cross-repo rules, a manifest and make targets that run each changed repo's own gate. Use when one feature spans several repos.
+description: Set up or refresh a multi-repo workspace — a plain (non-git) folder holding checkouts of several harnessed repos (e.g. backend API, portal UI, mobile app). Writes the workspace map, ownership routing, cross-repo rules, a manifest and make targets that run each changed repo's own gate. Use when one feature spans several repos, or to refresh the workspace scripts after a plugin upgrade.
 disable-model-invocation: true
 ---
 
@@ -18,8 +18,8 @@ contract-first rules, one gate that runs every changed repo's own gate, and cros
    - `harness-workspace.json` from `assets/harness-workspace.json`: repos (name, path, remote, base, `harness`, owns) and `mergeOrder`.
    - `AGENTS.md` from `assets/AGENTS.md`: routing table linking each member's `AGENTS.md`, Verification, cross-repo rules, Work Artifacts, Authorization.
    - `INVARIANTS.md` from `assets/INVARIANTS.md`: contract first, follow the merge order, no breaking API change without a version.
-   - `scripts/harness/cmd.sh` ← `${CLAUDE_PLUGIN_ROOT}/scripts/harness-cmd.sh`; `ws.sh` resolves each member's commands through it.
-   - `Makefile` + `ws.sh` from `assets/`: `status`, `changed`, `check`, `check-fast`, `setup`, `claude-md`, `test R= T=`, `branch B= R=`, `bootstrap`, `harness-lint`.
+   - `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" install .` → `scripts/harness/cmd.sh` and `ws.sh` (`ws.sh` resolves each member's commands through `cmd.sh`), hashes in `scripts/harness/assets.json`. On a re-run use `… assets.py refresh .`: stale unmodified copies are updated, locally modified ones only reported.
+   - `Makefile` from `assets/`, driving `ws.sh`: `status`, `changed`, `check`, `check-fast`, `setup`, `claude-md`, `test R= T=`, `branch B= R=`, `bootstrap`, `harness-lint`.
    - `CLAUDE.md`: run `make claude-md` (imports `@AGENTS.md`, `@INVARIANTS.md` and each present member's `@<repo>/INVARIANTS.md`; falls back to links with a warning over the token budget).
    - `plans/TEMPLATE.md`, `plans/active/`, `plans/done/` from `assets/plans/`.
    - `.claude/settings.json` from `assets/claude/settings.json`. Claude Code may refuse this write; then show the content for the developer to add.
@@ -28,7 +28,7 @@ contract-first rules, one gate that runs every changed repo's own gate, and cros
 6. **Validate.** `make harness-lint` and `make status`. Fix every FAIL in workspace files; member gaps stay warnings.
 7. **Tell the developer** how to start work: open the agent in the workspace folder, `make setup` (each present member's setup, in merge order), `make branch B=<name> R="<repos>"`, and a cross-repo plan in `plans/active/` when a feature touches more than one repo.
 
-**Never write inside a member repo** unless the developer names it ("create harness for portal"). Then run `harness-init` inside that repo, with its own interview.
+**Never write inside a member repo.** When the developer asks for a member's harness ("create harness for portal"), you cannot start `harness-init` yourself: answer with the exact command to run from this workspace folder, `/agent-harness:harness-init <member>` (no interview: `/agent-harness:harness-init <member> one-shot`). It works inside that member only.
 
 ## How it works at run time
 

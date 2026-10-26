@@ -51,7 +51,7 @@ t_scripts_referenced_exist() {
 import os, re, sys
 plugin, files = sys.argv[1], sys.argv[2:]
 tok = re.compile(r"(?<![\w./$-])(\$\{CLAUDE_PLUGIN_ROOT\}/[^\s\x60\x22\x27)]+|(?:scripts|assets|references|agents|skills|\.githooks)/[^\s\x60\x22\x27)]*)")
-mapping = [("scripts/harness/cmd.sh", "scripts/harness-cmd.sh"), ("scripts/harness/lint.sh", "skills/harness-init/assets/lint.sh")]
+mapping = [("scripts/harness/cmd.sh", "scripts/harness-cmd.sh"), ("scripts/harness/assets.json", "scripts/assets.py"), ("scripts/harness/lint.sh", "skills/harness-init/assets/lint.sh")]
 bad = []
 for f in files:
     skill = os.path.dirname(f) if f.endswith("SKILL.md") else os.path.dirname(os.path.dirname(f))
@@ -114,4 +114,14 @@ t_resolver_falls_back_to_plugin_copy() {
     if grep -qF 'bash scripts/harness/cmd.sh' "$PLUGIN/$f"; then _fail "$f: hard-wired repo resolver"; fi
   done
   grep -qF 'level.py" . --json --run-checks' "$PLUGIN/agents/harness-auditor.md" || _fail "auditor: --run-checks"
+}
+t_init_member_argument_and_refresh() {
+  local i="$PLUGIN/skills/harness-init/SKILL.md" w="$PLUGIN/skills/harness-workspace/SKILL.md" t="$PLUGIN/skills/harness-workspace/assets/AGENTS.md" m
+  for m in 'with a first argument naming a member' 'work **inside that member**' 'Without one, stop: list the members' \
+           '/agent-harness:harness-init <member>' 'assets.py" status .' 'assets.py refresh .' 'modified locally, review diff'; do
+    grep -qF -- "$m" "$i" || _fail "init SKILL.md missing '$m'"
+  done
+  grep -qF '/agent-harness:harness-init <member>` (no interview: `/agent-harness:harness-init <member> one-shot`)' "$w" || _fail "workspace skill: opt-in command"
+  grep -qF '/agent-harness:harness-init <repo>` (no interview: `/agent-harness:harness-init <repo> one-shot`)' "$t" || _fail "workspace AGENTS.md: opt-in command"
+  grep -qF 'assets.py" status .' "$PLUGIN/skills/harness-audit/SKILL.md" || _fail "audit: stale assets"
 }

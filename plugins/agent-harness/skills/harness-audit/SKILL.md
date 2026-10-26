@@ -17,7 +17,8 @@ Argument: `quick` (default) or `full`.
 1. If `.harness/scan.json` is missing or its `head` differs from `git rev-parse HEAD`, run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/scan.py" .` (prints only; no `--write`, keep the output in the conversation).
 2. `quick`: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/level.py" . --json --run-checks --log` — one call measures and appends the log line, so the reported and the logged level are the same measurement. `full`: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/level.py" . --json --run-checks` now, and log in step 5 once the health score is known.
    Read: `level`, `target`, `layers.<key>.score` and `layers.<key>.missing` for `guides`, `tools`, `sensors`, `context`, `observability`, `next_level_blockers`, `tokens`.
-3. In a multi-repo workspace (a `harness-workspace.json` here), level.py also measures every member; report each member's level on one line.
+3. `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" status .` (read-only): report each `stale` or `modified` plugin script under **observability** (fix: `/agent-harness:harness-init` refreshes unmodified copies).
+4. In a multi-repo workspace (a `harness-workspace.json` here), level.py also measures every member; report each member's level on one line.
 
 ## 2. quick (always)
 
