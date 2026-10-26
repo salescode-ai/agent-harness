@@ -121,3 +121,12 @@ t_member_command_exit_3_fails() {
   assert_eq "$rc" 1 "exit"
   assert_contains "$out" "FAIL  api: check" "member exit 3 is a failure"
 }
+t_check_output_summarises_failures() {
+  WS_T="$(mk_ws)"
+  mkdir "$WS_T/api/.agents"; echo '{"commands":{"check":"sh fail.sh"}}' > "$WS_T/api/.agents/harness.json"
+  _stack_script "$WS_T/api"
+  local out; out="$(ws check)" || true
+  assert_contains "$out" "expected:<1> but was:<2>" "assertion kept"
+  assert_contains "$out" "BUILD FAILED in 3s" "tail kept"
+  assert_not_contains "$out" "Frame30.call" "middle frames dropped"
+}

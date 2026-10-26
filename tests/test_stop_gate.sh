@@ -116,3 +116,13 @@ t_master_default_repo_gates_committed_work() {
   _run_gate "$d"
   assert_eq "$RC" 2 "origin/master fallback"
 }
+t_block_report_summarises_failures() {
+  local d; d="$(_gate_repo 'sh fail.sh')"; _stack_script "$d"
+  _run_gate "$d"
+  assert_eq "$RC" 2 "blocks"
+  assert_contains "$ERR" "Tests run: 5, Failures: 1" "failure count kept"
+  assert_contains "$ERR" "expected:<1> but was:<2>" "assertion kept"
+  assert_contains "$ERR" "BUILD FAILED in 3s" "tail kept"
+  assert_not_contains "$ERR" "Frame30.call" "middle frames dropped"
+  [ "$(wc -l <<<"$ERR")" -le 45 ] || _fail "report capped (~40 lines)"
+}

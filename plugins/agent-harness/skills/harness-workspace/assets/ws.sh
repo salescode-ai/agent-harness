@@ -50,6 +50,10 @@ run_target() { # run_target <path> <target> [T]: run the resolved command inside
   (( rc == 3 )) && rc=1  # only the resolver's exit 3 means "not wired"; a command exiting 3 is a failure
   return $rc
 }
+fail_summary() { # failure-marker lines (up to 20), then the last 10 lines; without markers the last 30
+  local m; m="$(grep -E 'FAIL|ERROR|Error:|expected|AssertionError|Tests run:.*Failures|✗|error TS|SyntaxError' <<<"$1" | head -20)"
+  if [[ -n "$m" ]]; then printf '%s\n...\n' "$m"; tail -10 <<<"$1"; else tail -30 <<<"$1"; fi
+}
 path_of() { members | awk -F'\t' -v n="$1" '$1==n {print $2}'; }
 
 cmd="${1:-status}"; shift || true
@@ -80,7 +84,7 @@ case "$cmd" in
       out="$(run_target "$path" "$cmd" 2>&1)"; rc=$?
       (( rc == 0 )) && { echo "ok    $name: $cmd"; continue; }
       (( rc == 3 )) && { echo "warn  $name: no '$cmd' command — skipped"; continue; }
-      fail=1; echo "FAIL  $name: $cmd"; tail -30 <<<"$out" | sed 's/^/      /'
+      fail=1; echo "FAIL  $name: $cmd"; fail_summary "$out" | sed 's/^/      /'
     done <<<"$(members)"
     (( ran == 0 )) && echo "$cmd: no repo has changes"
     exit $fail ;;
@@ -94,7 +98,7 @@ case "$cmd" in
       out="$(run_target "$path" setup 2>&1)"; rc=$?
       if (( rc == 0 )); then echo "ok    $n: setup"
       elif (( rc == 3 )); then echo "warn  $n: no 'setup' command — skipped"
-      else fail=1; echo "FAIL  $n: setup"; tail -30 <<<"$out" | sed 's/^/      /'; fi
+      else fail=1; echo "FAIL  $n: setup"; fail_summary "$out" | sed 's/^/      /'; fi
     done
     exit $fail ;;
   claude-md)

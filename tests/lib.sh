@@ -49,3 +49,10 @@ mk_template_repo() {
   ( cd "$d" && git init -q -b main ) >/dev/null
   echo "$d"
 }
+
+_stack_script() { # writes fail.sh: a JUnit-style failure buried above 60 stack frames
+  printf '%s\n' 'echo "Running FooTest"' 'echo "Tests run: 5, Failures: 1, Errors: 0"' \
+    'echo "FooTest.adds FAILED: expected:<1> but was:<2>"' \
+    'i=0; while [ $i -lt 60 ]; do echo "	at org.example.Frame$i.call(Frame.java:$i)"; i=$((i+1)); done' \
+    'echo "BUILD FAILED in 3s"; exit 1' > "$1/fail.sh"
+}

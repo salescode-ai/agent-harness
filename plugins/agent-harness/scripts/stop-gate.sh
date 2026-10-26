@@ -14,6 +14,10 @@ changed_since() { # changed_since <dir> <base>: uncommitted source changes or co
   git -C "$1" rev-parse --verify -q "$2" >/dev/null && ahead="$(git -C "$1" rev-list --count "$2"..HEAD 2>/dev/null || echo 0)"
   [[ "$ahead" != "0" ]]
 }
+fail_summary() { # failure-marker lines (up to 20), then the last 10 lines; without markers the last 30
+  local m; m="$(grep -E 'FAIL|ERROR|Error:|expected|AssertionError|Tests run:.*Failures|✗|error TS|SyntaxError' <<<"$1" | head -20)"
+  if [[ -n "$m" ]]; then printf '%s\n...\n' "$m"; tail -10 <<<"$1"; else tail -30 <<<"$1"; fi
+}
 gate_repo() { # gate_repo <repo dir> <base> <label>
   local dir="$1" base="$2" label="$3" cmd fp out rc
   [[ -f "$dir/AGENTS.md" ]] || return 0
@@ -26,7 +30,7 @@ gate_repo() { # gate_repo <repo dir> <base> <label>
   out="$(cd "$dir" && eval "$cmd" 2>&1)"; rc=$?
   if (( rc == 0 )); then echo "$fp" > "$key"; echo "$fp pass $(date +%Y-%m-%d)" > "$STATE/last-check$LC_SUFFIX"; return 0; fi
   FAILED=1
-  REPORT+="---- $label: check-fast failed (last 30 lines)"$'\n'"$(tail -30 <<<"$out")"$'\n'
+  REPORT+="---- $label: check-fast failed (failure lines, then the last lines)"$'\n'"$(fail_summary "$out")"$'\n'
 }
 
 ws="$(workspace_root)"
