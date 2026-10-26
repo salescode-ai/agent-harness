@@ -19,6 +19,7 @@ Argument: `quick` (default) or `full`.
    Read: `level`, `target`, `layers.<key>.score` and `layers.<key>.missing` for `guides`, `tools`, `sensors`, `context`, `observability`, `next_level_blockers`, `tokens`.
 3. `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/assets.py" status .` (read-only): report each `stale` or `modified` plugin script under **observability** (fix: `/agent-harness:harness-init` refreshes unmodified copies).
 4. In a multi-repo workspace (a `harness-workspace.json` here), level.py also measures every member; report each member's level on one line.
+5. Plans: report under **context** each plan in `docs/plans/done/` (or with `Status: done`) that has no `## Verification` entry (harness-lint warns `is done but has no ## Verification entry`), and each active plan without a valid `Ticket:` (harness-lint fails).
 
 ## 2. quick (always)
 

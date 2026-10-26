@@ -148,6 +148,12 @@ case "$cmd" in
       st="$(state "$path")"; [[ "$st" == present ]] || skip_warn "$name" "$st" "$path"
     done <<<"$(members)"
     for o in $(merge_order); do members | cut -f1 | grep -qx "$o" || { echo "FAIL  mergeOrder names unknown repo $o"; fail=1; }; done
+    for f in "$WS"/plans/active/*.md; do  # cross-repo plans carry a ticket (same forms as a repo's harness-lint)
+      [[ -f "$f" ]] || continue
+      v="$(grep -m1 -E '(^|[^A-Za-z])Ticket\**:' "$f" | sed -E 's/.*Ticket\**:\**[[:space:]]*//; s/[[:space:]]+·.*$//; s/[[:space:]]+$//')"
+      [[ "$v" =~ ^[A-Z][A-Z0-9]+-[0-9]+$ || "$v" =~ ^#[0-9]+$ || "$v" == .scratch/* || "$v" =~ ^none\ \(.+\)$ ]] \
+        || { echo "FAIL  plans/active/$(basename "$f") has no valid ticket ('${v}') — set 'Ticket: <KEY-123 (manifest issueKey) | #123 | none (<reason>)>'"; fail=1; }
+    done
     (( fail )) || echo "workspace-lint: OK"
     exit $fail ;;
   *) echo "usage: ws.sh <status|state <name>|changed|check|check-fast|setup|claude-md|test <repo> [T]|branch <name> <repo...>|bootstrap|lint>" >&2; exit 2 ;;

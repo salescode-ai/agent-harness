@@ -112,3 +112,28 @@ t_check_fast_untested_source_warns() {
   d="$(_tp 'HARNESS_TEST_CHANGED = ./mvnw test $(TEST_FILES)')"; out="$(_run "$d")"
   assert_contains "$out" "does not use related-tests.sh" "custom wiring flagged once"
 }
+_plan() { # _plan <repo> <dir> <name> <ticket line> [extra]: a plan file from the template header
+  mkdir -p "$1/docs/plans/$2"; printf '# Plan: x\n\n**Status**: active · **Owner**: me\n%s\n\n## Steps\n- [ ] 1. a\n%b' "$4" "${5:-}" > "$1/docs/plans/$2/$3"
+}
+t_plan_ticket_required() {
+  local d out t; d="$(_lr)"
+  for t in '**Ticket**: ABC-12' '**Ticket**: #42' 'Ticket: .scratch/feat/issues/01-a.md' '**Ticket**: none (spike, no tracker)'; do
+    _plan "$d" active p.md "$t"; out="$(_run "$d")" || _fail "accepted form refused: $t"
+  done
+  for t in '**Ticket**: <KEY-123 | #123 | none (<reason>)>' '**Ticket**: none' '**Ticket**: TODO' '**Owner**: me' '**Ticket**: soon'; do
+    _plan "$d" active p.md "$t"; out="$(_run "$d")" && _fail "placeholder accepted: $t"
+    assert_contains "$out" "docs/plans/active/p.md" "names the plan"
+  done
+  mkdir -p "$d/docs/agents"; echo 'Work is tracked in Jira project `SHOP` at x.' > "$d/docs/agents/issue-tracker.md"
+  _plan "$d" active p.md '**Ticket**: ABC-12'; out="$(_run "$d")" || _fail "other key must only warn"
+  assert_contains "$out" "warn  docs/plans/active/p.md Ticket ABC-12 is not in Jira project SHOP" "key preference"
+}
+t_done_plan_needs_verification() {
+  local d out; d="$(_lr)"
+  _plan "$d" done old.md '**Ticket**: #1'
+  out="$(_run "$d")"; assert_contains "$out" "docs/plans/done/old.md is done but has no ## Verification entry" "done folder"
+  _plan "$d" done old.md '**Ticket**: #1' '\n## Verification\n### 2026-10-27 · abc1234 · PASS\nGate: make check → ok (12 tests)\n'
+  out="$(_run "$d")"; assert_not_contains "$out" "old.md is done" "entry present"
+  _plan "$d" active cur.md '**Ticket**: #2'; sed -i.bak 's/Status\*\*: active/Status**: done/' "$d/docs/plans/active/cur.md"; rm "$d/docs/plans/active/cur.md.bak"
+  assert_contains "$(_run "$d")" "docs/plans/active/cur.md is done but has no ## Verification entry" "Status: done"
+}

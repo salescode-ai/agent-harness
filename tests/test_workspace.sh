@@ -130,3 +130,11 @@ t_check_output_summarises_failures() {
   assert_contains "$out" "BUILD FAILED in 3s" "tail kept"
   assert_not_contains "$out" "Frame30.call" "middle frames dropped"
 }
+t_workspace_plan_ticket() {
+  WS_T="$(mk_ws)"; mkdir -p "$WS_T/plans/active"
+  cp "$PLUGIN/skills/harness-workspace/assets/plans/TEMPLATE.md" "$WS_T/plans/active/2026-10-27-x.md"
+  out="$(ws lint)" && _fail "template placeholder ticket accepted"
+  assert_contains "$out" "plans/active/2026-10-27-x.md has no valid ticket" "named"
+  sed -i.bak 's/^\*\*Ticket\*\*: .*/**Ticket**: SHOP-7/' "$WS_T/plans/active/2026-10-27-x.md"; rm "$WS_T/plans/active/"*.bak
+  assert_contains "$(ws lint)" "workspace-lint: OK" "key accepted"
+}
