@@ -7,6 +7,7 @@
 # A changed test file runs itself. A changed source file selects tests by name (Foo → FooTest/FooTests/FooIT/TestFoo,
 # foo.py → test_foo.py/foo_test.py) and by reference (test files that mention it). Jest/Vitest use their own
 # related-test lookup; Go tests each changed package. Nothing related: one line, exit 0.
+# RELATED_TESTS_DRY=1 runs nothing and prints "none: <file>" per changed source no test selects (harness-lint).
 dir=.
 if [ "${1:-}" = "-C" ]; then dir="${2:?-C needs a dir}"; shift 2; fi
 stack="${1:?usage: related-tests.sh [-C dir] <stack> \"<test command>\" <files...>}"; cmd="${2:-}"
@@ -34,6 +35,7 @@ run() { # run <args...>: the runner with the selection appended, each argument s
   eval "$cmd$q"
 }
 
+[ -n "${RELATED_TESTS_DRY:-}" ] && case "$stack" in jest|vitest|go) exit 0;; esac  # native lookup: can't tell
 if [ "$stack" = jest ]; then cmd="${cmd:-npx jest --ci}"; set --; while IFS= read -r f; do [ -n "$f" ] && set -- "$@" "$f"; done <<<"$files"
   run --findRelatedTests --passWithNoTests "$@"; exit; fi
 if [ "$stack" = vitest ]; then cmd="${cmd:-npx vitest}"; set --; while IFS= read -r f; do [ -n "$f" ] && set -- "$@" "$f"; done <<<"$files"
@@ -45,27 +47,48 @@ if [ "$stack" = go ]; then
   run "$@"; exit; fi
 
 tests="$(git ls-files --cached --others --exclude-standard 2>/dev/null | grep -E "$is_test" | grep -E "\.($ext)$")"
-sel=""
+# One grep pass over the test files for every stem/package name (was one grep per source x test: minutes on big repos).
+words=""
+while IFS= read -r f; do
+  [ -n "$f" ] || continue; printf '%s\n' "$f" | grep -qE "$is_test" && continue
+  b="$(basename "$f")"; s="${b%.*}"; [ "$s" = __init__ ] && s="$(basename "$(dirname "$f")")"
+  words="$words$s"$'\n'
+  [ "$stack" = pytest ] && { p="${f#src/}"; p="${p%%/*}"; words="$words${p%.py}"$'\n'; }
+done <<<"$files"
+hits=""  # "<test file>:<word>" for each word a test file mentions
+if [ -n "$tests" ] && [ -n "$words" ]; then
+  wf="$(mktemp)"; grep -v '^$' <<<"$words" | sort -u > "$wf"
+  hits="$(tr '\n' '\0' <<<"$tests" | xargs -0 grep -HowF -f "$wf" -- 2>/dev/null | sort -u)"
+  rm -f "$wf"
+fi
+mentions() { [ -n "$hits" ] && awk -v w="$1" '{n=length($0)-length(w)} n>1 && substr($0,n)==":" w {print substr($0,1,n-1)}' <<<"$hits"; }
+sel=""; none=""
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   if printf '%s\n' "$f" | grep -qE "$is_test"; then sel="$sel$f"$'\n'; continue; fi
   b="$(basename "$f")"; s="${b%.*}"
   [ "$s" = __init__ ] && s="$(basename "$(dirname "$f")")"  # a package: tests that mention the package
-  [ -n "$tests" ] || continue
-  case "$stack" in
-    maven|gradle) pat="(^|/)($s|${s}Test|${s}Tests|${s}IT|Test${s})\.($ext)$" ;;
-    pytest)       pat="(^|/)(test_${s}|${s}_test)\.py$" ;;
-    *)            pat="(^|/)${s}\.(test|spec)\.[cm]?[jt]sx?$" ;;
-  esac
-  sel="$sel$(grep -E "$pat" <<<"$tests")"$'\n'
-  sel="$sel$(while IFS= read -r t; do [ -n "$t" ] && grep -qw -- "$s" "$t" 2>/dev/null && echo "$t"; done <<<"$tests")"$'\n'
-  if [ "$stack" = pytest ]; then  # else the package's tests: those that mention its top-level package
-    p="${f#src/}"; p="${p%%/*}"; p="${p%.py}"
-    [ -n "$(grep -E "$pat" <<<"$tests")" ] || [ "$p" = "$s" ] || \
-      sel="$sel$(while IFS= read -r t; do [ -n "$t" ] && grep -qw -- "$p" "$t" 2>/dev/null && echo "$t"; done <<<"$tests")"$'\n'
+  got=""
+  if [ -n "$tests" ]; then
+    case "$stack" in
+      maven|gradle) pat="(^|/)($s|${s}Test|${s}Tests|${s}IT|Test${s})\.($ext)$" ;;
+      pytest)       pat="(^|/)(test_${s}|${s}_test)\.py$" ;;
+      *)            pat="(^|/)${s}\.(test|spec)\.[cm]?[jt]sx?$" ;;
+    esac
+    named="$(grep -E "$pat" <<<"$tests")"
+    got="$named"$'\n'"$(mentions "$s")"
+    if [ "$stack" = pytest ]; then  # else the package's tests: those that mention its top-level package
+      p="${f#src/}"; p="${p%%/*}"; p="${p%.py}"
+      [ -n "$named" ] || [ "$p" = "$s" ] || got="$got"$'\n'"$(mentions "$p")"
+    fi
   fi
+  [ -n "$(grep -v '^$' <<<"$got" | grep -vE '(^|/)conftest\.py$')" ] || none="$none$f"$'\n'
+  sel="$sel$got"$'\n'
 done <<<"$files"
 sel="$(grep -v '^$' <<<"$sel" | grep -vE '(^|/)conftest\.py$' | sort -u)"
+if [ -n "${RELATED_TESTS_DRY:-}" ]; then  # harness-lint: name the changed sources no test covers; run nothing
+  grep -v '^$' <<<"$none" | sed 's/^/none: /'; exit 0
+fi
 if [ -z "$sel" ]; then echo "tests: no tests related to the changed $stack files"; exit 0; fi
 
 set --; while IFS= read -r t; do set -- "$@" "$t"; done <<<"$sel"

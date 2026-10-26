@@ -63,3 +63,22 @@ t_check_fast_full_suite_when_fast() {
   printf 'HARNESS_TEST_CHANGED = @echo CHANGED\n' | cat - "$d/Makefile.bak" > "$d/Makefile"
   assert_exit 0 "explicit HARNESS_TEST_CHANGED wins" -- make -s -C "$d" check-fast
 }
+t_many_changed_sources_one_grep_pass() {
+  local d i out s e; d="$(mktemp -d)"
+  ( cd "$d"; git init -q -b main; mkdir -p src/main/java/a src/test/java/a
+    i=0; while [ $i -lt 400 ]; do printf 'class T%s { Cls%s x; }\n' $i $((i % 200)) > src/test/java/a/T$i.java; i=$((i+1)); done
+    i=0; while [ $i -lt 200 ]; do : > src/main/java/a/Cls$i.java; i=$((i+1)); done ) >/dev/null
+  s=$(date +%s)
+  out="$(cd "$d" && bash "$RT" maven "printf %s\\\\n" src/main/java/a/Cls*.java 2>/dev/null)"
+  e=$(( $(date +%s) - s ))
+  [ "$e" -lt 30 ] || _fail "200 changed sources x 400 tests took ${e}s (want < 30)"
+  assert_contains "$out" "T0,T1,T10," "every referencing test selected"
+  assert_contains "$out" "T399" "last test selected"
+}
+t_dry_run_names_untested_sources() {
+  local d out; d="$(_rt_repo src/main/java/a/Foo.java src/main/java/a/Bar.java src/test/java/a/FooTest.java)"
+  out="$(cd "$d" && RELATED_TESTS_DRY=1 bash "$RT" maven "false" src/main/java/a/Foo.java src/main/java/a/Bar.java)"
+  assert_eq "$out" "none: src/main/java/a/Bar.java" "only the untested source, nothing run"
+  out="$(cd "$d" && RELATED_TESTS_DRY=1 bash "$RT" jest "false" src/main/java/a/Foo.java)"
+  assert_eq "$out" "tests: no changed jest files" "other stack untouched"
+}
