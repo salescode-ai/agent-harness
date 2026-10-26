@@ -43,7 +43,9 @@ def unenforced(ln):
 
 def machine_enforced(ln):
     v = ln.split("Enforced by:", 1)[1].strip().lower()
-    return not unenforced(ln) and not re.match(r"(human|verifier|reviewer|manual)", v)
+    if re.search(r"review|judge|manual|agent|human|\bnone\b|tbd|todo|not yet enforced|<", v):
+        return False
+    return bool(re.search(r"\bmake\b|\bsensors?\b|\bhooks?\b|\bguards?\b|\bci\b|workflow|pipeline|\bjob\b|\blint|\btests?\b|/|\.(sh|py|ya?ml|json)\b", v))
 
 
 def lint(repo):
@@ -77,12 +79,13 @@ def members(repo, run_checks, seen):
     """({name: level}, [notes]) or None when the manifest is unreadable."""
     try:
         reps = json.loads(read(repo / "harness-workspace.json"))["repos"]
-        assert isinstance(reps, list)
-    except (ValueError, KeyError, AssertionError, TypeError):
+    except (ValueError, KeyError, TypeError):
+        return None
+    if not isinstance(reps, list):
         return None
     res, notes = {}, []
     for m in reps:
-        if not isinstance(m, dict) or not m.get("name") or not m.get("path"):
+        if not isinstance(m, dict) or not all(isinstance(m.get(k), str) and m[k] for k in ("name", "path")):
             notes.append(f"workspace entry missing name/path: {m!r}")
             continue
         lab = re.sub(r"[^A-Za-z0-9_-]", "_", str(m["name"]))

@@ -96,3 +96,22 @@ t_workspace_member_last_check() {
   echo "x pass 2026-01-01" > "$ws/.harness/last-check-a_b"
   assert_not_contains "$(_lv "$ws" --json | _field "d['layers']['observability']['missing']")" "below Functional" "member Functional"
 }
+t_enforced_allowlist() {
+  local d v; d="$(_lvrepo)"; _pass "$d"
+  mkdir -p "$d/.github/workflows"; echo 'run: make check' > "$d/.github/workflows/ci.yml"
+  for v in 'code review' 'LLM judge' 'TBD' 'none' 'AI agent review'; do
+    printf '# i\n\n## Testing\n\n- a — Severity: Critical — Enforced by: %s\n' "$v" > "$d/INVARIANTS.md"
+    assert_eq "$(_lv "$d" --json | _field "d['level']")" Experimental "'$v' must not count"
+  done
+  for v in 'make check' 'sensor no-prod-data' 'CI job harness' 'scripts/harness/sensors/x.sh'; do
+    printf '# i\n\n## Testing\n\n- a — Severity: Critical — Enforced by: %s\n' "$v" > "$d/INVARIANTS.md"
+    assert_eq "$(_lv "$d" --json | _field "d['level']")" Functional "'$v' must count"
+  done
+}
+t_workspace_wrong_types() {
+  local ws f; ws="$(mktemp -d)"
+  for f in '{"repos":[{"name":"a","path":5}]}' '{"repos":[{"name":["x"],"path":"."}]}' '{"repos":"x"}'; do
+    echo "$f" > "$ws/harness-workspace.json"
+    case "$(_lv "$ws" --json | _field "d['layers']['observability']['missing']")" in *"missing name/path"*|*unreadable*) ;; *) _fail "$f";; esac
+  done
+}
