@@ -44,3 +44,13 @@ t_install_local_end_to_end() {
   local out; out="$(python3 "$PLUGIN/scripts/level.py" "$d" --json)"
   assert_not_contains "$out" '"level": "none"' "level measured"
 }
+t_py_parses_old_pythons() {
+  local f
+  for f in $(find "$PLUGIN" -name '*.py'); do
+    python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read(), feature_version=(3,8))' "$f"
+    # newer parsers accept py3.12-only syntax even with feature_version; check with the system 3.9 too
+    if [ -x /usr/bin/python3 ]; then
+      /usr/bin/python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read())' "$f" || _fail "py parse $f"
+    fi
+  done
+}

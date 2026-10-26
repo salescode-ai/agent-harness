@@ -82,3 +82,10 @@ t_engines_node() {
   o="$(python3 "$SCAN" "$d")"
   assert_eq "$(_j "$o" "[(v['version'],v['source']) for v in d['versions']]")" "[('>=18', 'package.json:3')]" "engines"
 }
+t_lefthook_variants() {
+  local d o v
+  for v in lefthook.yaml .lefthook.yml; do
+    d="$(mktemp -d)"; : > "$d/$v"; o="$(python3 "$SCAN" "$d")"
+    assert_eq "$(_j "$o" "d['hook_manager']")" lefthook "$v"
+  done
+}

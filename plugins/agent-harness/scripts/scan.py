@@ -61,7 +61,8 @@ def node_cmds(root, mod, out):
     for name, role in roles.items():
         if name in scripts:
             cmd = run.replace(" run", "") + " test" if name == "test" and run == "npm run" else f"{run} {name}"
-            out.append({"module": mod, "role": role, "cmd": cmd, "source": f"{base}:{find(lines, '\"' + re.escape(name) + '\"', sec)}"})
+            line = find(lines, '"' + re.escape(name) + '"', sec)  # built outside the f-string: py<3.12
+            out.append({"module": mod, "role": role, "cmd": cmd, "source": f"{base}:{line}"})
 
 
 def module_cmds(root, mod, manifest, out):
@@ -148,7 +149,8 @@ def scan(root):
     r["seeds"] = sorted({os.path.dirname(f) or "." for f in files if re.match(r"seeds?[._-].*\.(sql|js|ts|py)$|seeds?\.(sql|js|ts|py)$", base(f))}
                         | {d for d in dirs if base(d) in ("seed", "seeds")})
     hm = "none"
-    for d, name in ((".husky", "husky"), ("lefthook.yml", "lefthook"), (".pre-commit-config.yaml", "pre-commit")):
+    for d, name in ((".husky", "husky"), ("lefthook.yml", "lefthook"), ("lefthook.yaml", "lefthook"),
+                    (".lefthook.yml", "lefthook"), (".lefthook.yaml", "lefthook"), (".pre-commit-config.yaml", "pre-commit")):
         if (root / d).exists(): hm = name; break
     r["hook_manager"] = hm
     ci = [f for f in files if re.match(r"\.github/workflows/[^/]+\.ya?ml$", f)]
