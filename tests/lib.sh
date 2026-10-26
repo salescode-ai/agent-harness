@@ -43,7 +43,7 @@ mk_template_repo() {
   d="$(mktemp -d)"
   ( cd "$A" && tar cf - AGENTS.md INVARIANTS.md CLAUDE.md GLOSSARY.md docs harness.mk ) | ( cd "$d" && tar xf - )
   mkdir -p "$d/scripts/harness" "$d/scripts"
-  cp "$A/lint.sh" "$d/scripts/harness/lint.sh"
+  cp "$A/lint.sh" "$d/scripts/harness/lint.sh"; cp "$A/harness/plan-check.sh" "$d/scripts/harness/plan-check.sh"
   cat "$A/gitignore.append" > "$d/.gitignore"
   printf 'include harness.mk\n' > "$d/Makefile"
   ( cd "$d" && git init -q -b main ) >/dev/null

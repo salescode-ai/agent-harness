@@ -2,6 +2,7 @@
 
 **Status**: draft | active | blocked | done · **Branch**: <KEY-123-slug, same name in every repo below>
 **Ticket**: <KEY-123 (harness-workspace.json issueKey) | #123 | none (<reason>)>
+**Evidence**: local `.harness/evidence/<this file name>`, one block per repo (never committed; shared via each PR description and the tracker comment)
 
 ## Goal
 <one sentence: what is true for the user when this ships>
@@ -22,8 +23,3 @@
 ## Progress log
 <!-- Append one line per session: date · repo · what changed · next. Never rewrite history. -->
 - <YYYY-MM-DD> · <repo> · <done> · next: <step>
-
-## Verification
-<!-- harness-verify appends one evidence block per run, one per repo; append only. Status: done needs PASS blocks newer than the last code change.
-### <YYYY-MM-DD> · <repo> · <short commit | uncommitted> · <PASS | FAIL | NEEDS-HUMAN>
-Gate: <command> → <result> (<n> tests) · Criteria <k>/<n>: <criterion → test/command>, … · Reviewers: <verdicts> · Open: <items> -->

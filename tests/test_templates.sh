@@ -45,11 +45,13 @@ t_no_old_skills_heading() {
     ! grep -q 'Skills and plugins' "$f" || _fail "$f has old heading"
   done
 }
-t_plan_and_adr_templates_carry_ticket_and_verification() {
+t_plan_and_adr_templates_carry_ticket_and_local_evidence() {
   local W="$PLUGIN/skills/harness-workspace/assets/plans/TEMPLATE.md"
   grep -q '^\*\*Ticket\*\*: <KEY-123' "$A/docs/plans/TEMPLATE.md" || _fail "plan Ticket line"
   grep -q '^\*\*Ticket\*\*: <KEY-123 (harness-workspace.json issueKey)' "$W" || _fail "workspace Ticket line"
-  grep -q '^## Verification' "$A/docs/plans/TEMPLATE.md" && grep -q '^## Verification' "$W" || _fail "Verification section"
+  grep -q '^## Verification' "$A/docs/plans/TEMPLATE.md" "$W" && _fail "evidence is local, not a plan section"
+  grep -qF '**Evidence**: local `.harness/evidence/<this file name>`' "$A/docs/plans/TEMPLATE.md" && grep -qF '**Evidence**: local `.harness/evidence/<this file name>`' "$W" || _fail "Evidence line"
+  grep -qx '.harness/' "$PLUGIN/skills/harness-init/assets/gitignore.append" || _fail ".harness/ gitignored"
   grep -q '\*\*Ticket\*\*: <KEY-123' "$A/docs/adr/TEMPLATE.md" || _fail "ADR Ticket"
   grep -q '| ADR | Decision | Status | Date | Ticket |' "$A/docs/DECISIONS.md" || _fail "DECISIONS Ticket column"
 }

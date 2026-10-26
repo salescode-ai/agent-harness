@@ -18,9 +18,8 @@ Before editing files in a repo, read that repo's `AGENTS.md` and `INVARIANTS.md`
 
 ## Verification
 
-- Done means `make check` passes here: it runs `make check` inside every repo that changed, with that repo's own gate. Then run the **harness-verify** skill (workspace mode).
-- While iterating: `make test R=<repo> T=<path>`, or `make -C <repo> check-fast`. Run make targets, not raw tool commands.
-- Overview at any time: `make status` (branch, uncommitted files, commits ahead, harness present per repo).
+- Done = `make check` passes here (each changed repo's own gate; **harness-verify** in workspace mode before claiming done). Fast loop: `make check-fast`, `make test R=<repo> T=<path>`. All commands: `make help`.
+- Run these targets, not raw tool commands.
 
 ## Cross-repo rules
 

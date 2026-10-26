@@ -2,7 +2,7 @@ LINT="$PLUGIN/skills/harness-init/assets/lint.sh"
 # _lr: fresh minimal repo with lint.sh installed; echoes path
 _lr() {
   local d; d="$(mktemp -d)"; mkdir -p "$d/scripts/harness"
-  cp "$LINT" "$d/scripts/harness/lint.sh"
+  cp "$LINT" "$d/scripts/harness/lint.sh"; cp "$PLUGIN/skills/harness-init/assets/harness/plan-check.sh" "$d/scripts/harness/"
   printf '# Repo\n\nRun `make check`.\n' > "$d/AGENTS.md"
   printf '# Invariants\n\n## Security\n\n- No secrets in git — Severity: Critical — Enforced by: gitleaks\n' > "$d/INVARIANTS.md"
   printf 'check:\n\t@true\n' > "$d/Makefile"
@@ -128,12 +128,31 @@ t_plan_ticket_required() {
   _plan "$d" active p.md '**Ticket**: ABC-12'; out="$(_run "$d")" || _fail "other key must only warn"
   assert_contains "$out" "warn  docs/plans/active/p.md Ticket ABC-12 is not in Jira project SHOP" "key preference"
 }
-t_done_plan_needs_verification() {
-  local d out; d="$(_lr)"
-  _plan "$d" done old.md '**Ticket**: #1'
-  out="$(_run "$d")"; assert_contains "$out" "docs/plans/done/old.md is done but has no ## Verification entry" "done folder"
-  _plan "$d" done old.md '**Ticket**: #1' '\n## Verification\n### 2026-10-27 · abc1234 · PASS\nGate: make check → ok (12 tests)\n'
-  out="$(_run "$d")"; assert_not_contains "$out" "old.md is done" "entry present"
-  _plan "$d" active cur.md '**Ticket**: #2'; sed -i.bak 's/Status\*\*: active/Status**: done/' "$d/docs/plans/active/cur.md"; rm "$d/docs/plans/active/cur.md.bak"
-  assert_contains "$(_run "$d")" "docs/plans/active/cur.md is done but has no ## Verification entry" "Status: done"
+t_plan_ticket_link_and_list_forms() {
+  local d out t; d="$(_lr)"
+  for t in '**Ticket**: [SHOP-12](https://x.atlassian.net/browse/SHOP-12)' '**Ticket**: https://github.com/o/r/issues/12' \
+           '**Ticket**: SHOP-12, SHOP-13' '**Ticket**: SHOP-12 (pay)' '**Ticket**: https://gitlab.com/o/r/-/merge_requests/3'; do
+    _plan "$d" active p.md "$t"; out="$(_run "$d")" || _fail "valid form refused: $t ($out)"
+  done
+  _plan "$d" active p.md '**Ticket**: none (<reason>)'; out="$(_run "$d")" && _fail "placeholder reason accepted"
+  _plan "$d" done old.md '**Ticket**: #1'; _plan "$d" active p.md '**Ticket**: #2'
+  out="$(_run "$d")"; assert_not_contains "$out" "Verification" "lint does not look for local evidence"
+}
+t_plan_check_fresh_evidence() {
+  local d pc="$PLUGIN/skills/harness-init/assets/harness/plan-check.sh" e c out
+  d="$(mk_repo node-app)"; e="$d/.harness/evidence/p.md"; mkdir -p "$d/.harness/evidence"
+  fr() { ( cd "$d" && bash "$pc" fresh .harness/evidence/p.md ); }
+  out="$(fr)" && _fail "missing evidence is fresh"; assert_contains "$out" "no verification evidence on this machine" "missing"
+  c="$(git -C "$d" rev-parse --short HEAD)"
+  printf '### 2026-10-27 · %s · PASS\nGate: ok\n### 2026-10-28 · %s · FAIL\n' "$c" "$c" > "$e"
+  out="$(fr)" && _fail "latest FAIL counted"; assert_contains "$out" "latest entry is not PASS" "latest must be PASS"
+  printf '### 2026-10-27 · uncommitted · PASS\n' > "$e"; fr >/dev/null && _fail "uncommitted entry fresh"
+  printf '### 2026-10-27 · %s · PASS\n' "$c" > "$e"; fr >/dev/null || _fail "same-day PASS at HEAD refused"
+  mkdir -p "$d/docs/plans/active"; echo '# p' > "$d/docs/plans/active/p.md"
+  ( cd "$d" && git add -A && git -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -qm plan )
+  fr >/dev/null || _fail "a plan-only commit makes the evidence stale"
+  echo 'x' >> "$d/package.json"; out="$(fr)" && _fail "uncommitted code counted as verified"
+  assert_contains "$out" "uncommitted code changes" "dirty tree"
+  ( cd "$d" && git -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -qam code )
+  out="$(fr)" && _fail "new code commit counted as verified"; assert_contains "$out" "code changed since the PASS entry" "new commit"
 }

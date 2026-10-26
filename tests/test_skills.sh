@@ -153,11 +153,12 @@ t_tracker_comment_carries_verification_evidence() {
     grep -qF 'the harness-verify evidence block (Verified · Gate with test count' "$PLUGIN/skills/harness-init/assets/docs/agents/issue-tracker-$t.md" || _fail "issue-tracker-$t"
   done
 }
-t_verify_appends_evidence_to_plan() {
+t_verify_writes_local_evidence() {
   local s="$PLUGIN/skills/harness-session/SKILL.md" v="$PLUGIN/skills/harness-verify/SKILL.md"
-  grep -qF "**appends** this block to the active plan's \`## Verification\` section" "$v" || _fail "append rule"
+  grep -qF '**appends** this block to the local evidence file `.harness/evidence/<active plan file name>`' "$v" || _fail "append rule"
+  grep -qF 'evidence is **never committed**' "$v" || _fail "never committed"
   grep -qF 'never invent a plan' "$v" || _fail "no invented plan"
   grep -qF 'one block per repo' "$v" || _fail "workspace per repo"
-  grep -qF '**Never set Status: done or move the plan to `docs/plans/done/` without a PASS entry' "$s" || _fail "done needs PASS entry"
+  grep -qF '**Never set Status: done or move the plan to `docs/plans/done/` until `bash scripts/harness/plan-check.sh fresh .harness/evidence/<plan file name>` exits 0**' "$s" || _fail "done needs fresh PASS"
   grep -qF 'branch `<KEY>-<n>-<slug>` and the plan `docs/plans/active/YYYY-MM-DD-<KEY>-<n>-<slug>.md`' "$s" || _fail "ticket-keyed naming"
 }

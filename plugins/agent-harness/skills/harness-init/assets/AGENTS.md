@@ -31,7 +31,7 @@ Developers choose their own skill packs and plugins. Whatever is installed works
 
 ## Work Artifacts
 
-- Specs/designs: `docs/specs/YYYY-MM-DD-<topic>.md` · Plans: `docs/plans/active/YYYY-MM-DD-<KEY>-<n>-<slug>.md` with a `Ticket:` line, branch `<KEY>-<n>-<slug>` (move to `docs/plans/done/` after a PASS `## Verification` entry)
+- Specs/designs: `docs/specs/YYYY-MM-DD-<topic>.md` · Plans: `docs/plans/active/YYYY-MM-DD-<KEY>-<n>-<slug>.md` with a `Ticket:` line, branch `<KEY>-<n>-<slug>` (move to `docs/plans/done/` after a fresh PASS in the local `.harness/evidence/<plan file name>`)
 - Decisions: `docs/adr/NNNN-<slug>.md`, indexed in [docs/DECISIONS.md](docs/DECISIONS.md) · Vocabulary: `GLOSSARY.md`
 - Worktrees: `.worktrees/` · Session scratch: `.harness/` (both gitignored)
 - Pack working notes: .harness/notes/

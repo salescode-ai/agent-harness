@@ -2,6 +2,7 @@
 
 **Status**: draft | active | blocked | done · **Owner**: <person> · **Spec**: <link>
 **Ticket**: <KEY-123 | #123 | .scratch/<feature>/issues/NN-<slug>.md | none (<reason>)>
+**Evidence**: local `.harness/evidence/<this file name>` (never committed; shared via the PR description and the tracker comment)
 
 ## Goal
 <one sentence: what is true when this is done>
@@ -20,8 +21,3 @@
 
 ## Decisions made during the work
 <!-- Anything surprising → promote to docs/adr/ when the plan closes. -->
-
-## Verification
-<!-- harness-verify appends one evidence block per run; append only. Status: done needs a PASS block newer than the last code change.
-### <YYYY-MM-DD> · <short commit | uncommitted> · <PASS | FAIL | NEEDS-HUMAN>
-Gate: <command> → <result> (<n> tests) · Criteria <k>/<n>: <criterion → test/command>, … · Reviewers: <verdicts> · Open: <items> -->

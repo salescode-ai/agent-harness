@@ -10,13 +10,14 @@ print_plan() { # print_plan <root> <branch> <label>
   echo "[agent-harness] ${3}active plan: $plan"
   [[ -n "$next" ]] && echo "[agent-harness] ${3}next unchecked: $next"
   [[ -n "$last" ]] && echo "[agent-harness] ${3}last progress: ${last#- }"
-  ver="$(awk '/^## /{on=($0 ~ /^## Verification/)} on && /^### [0-9]{4}-[0-9]{2}-[0-9]{2}/{v=$0} END{print v}' "$1/$plan")"
-  echo "[agent-harness] ${3}last verification: ${ver:+${ver#\#\#\# }}${ver:-none yet (harness-verify appends it)}"
+  ev=".harness/evidence/${plan##*/}"  # local, never committed
+  ver="$(grep -E '^### [0-9]{4}-[0-9]{2}-[0-9]{2}' "$1/$ev" 2>/dev/null | tail -1)"
+  echo "[agent-harness] ${3}last verification: ${ver:+${ver#\#\#\# } — $ev}${ver:-none on this machine (harness-verify writes $ev)}"
 }
 stale_assets() { # stale_assets <root>: one line when plugin-owned harness scripts there are older than the plugin
   [[ -f "$1/scripts/harness/cmd.sh" ]] && command -v python3 >/dev/null || return 0
   local n; n="$(python3 "$(dirname "$0")/assets.py" count "$1" 2>/dev/null)"
-  [[ "$n" =~ ^[0-9]+$ ]] && (( n > 0 )) && echo "[agent-harness] harness scripts are older than the plugin ($n files) — run /agent-harness:harness-init to refresh"
+  [[ "$n" =~ ^[0-9]+$ ]] && (( n > 0 )) && echo "[agent-harness] harness scripts are older than the plugin ($n files) — run /agent-harness:harness-upgrade"
   return 0
 }
 ws="$(workspace_root)"

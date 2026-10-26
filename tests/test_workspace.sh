@@ -3,7 +3,7 @@ mk_ws() { # echoes workspace path: api (harnessed), portal (AGENTS.md only), app
   local ws; ws="$(mktemp -d)"
   cp "$FIXTURES/workspace/harness-workspace.json" "$ws/"
   cp "$PLUGIN/skills/harness-workspace/assets/ws.sh" "$ws/"
-  mkdir -p "$ws/scripts/harness"; cp "$PLUGIN/scripts/harness-cmd.sh" "$ws/scripts/harness/cmd.sh"
+  mkdir -p "$ws/scripts/harness"; cp "$PLUGIN/scripts/harness-cmd.sh" "$ws/scripts/harness/cmd.sh"; cp "$PLUGIN/skills/harness-init/assets/harness/plan-check.sh" "$ws/scripts/harness/"
   printf '# ws\n- api\n- portal\n- app\n' > "$ws/AGENTS.md"; echo "# inv" > "$ws/INVARIANTS.md"
   local r
   for r in api portal app; do
@@ -134,7 +134,9 @@ t_workspace_plan_ticket() {
   WS_T="$(mk_ws)"; mkdir -p "$WS_T/plans/active"
   cp "$PLUGIN/skills/harness-workspace/assets/plans/TEMPLATE.md" "$WS_T/plans/active/2026-10-27-x.md"
   out="$(ws lint)" && _fail "template placeholder ticket accepted"
-  assert_contains "$out" "plans/active/2026-10-27-x.md has no valid ticket" "named"
+  assert_contains "$out" "plans/active/2026-10-27-x.md has no ticket" "named"
+  sed -i.bak 's/^\*\*Ticket\*\*: .*/**Ticket**: none (<reason>)/' "$WS_T/plans/active/2026-10-27-x.md"; rm "$WS_T/plans/active/"*.bak
+  ws lint >/dev/null && _fail "literal none (<reason>) accepted"
   sed -i.bak 's/^\*\*Ticket\*\*: .*/**Ticket**: SHOP-7/' "$WS_T/plans/active/2026-10-27-x.md"; rm "$WS_T/plans/active/"*.bak
   assert_contains "$(ws lint)" "workspace-lint: OK" "key accepted"
 }

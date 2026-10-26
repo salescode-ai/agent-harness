@@ -165,27 +165,15 @@ $(sed 's/^/        /' <<<"$out")"
   fi
 fi
 
-# 14. Plans carry a ticket; finished plans carry verification evidence
-ticket_of() { # the "Ticket:" value of a plan (up to " · " or end of line), or nothing
-  grep -m1 -E '(^|[^A-Za-z])Ticket\**:' "$1" | sed -E 's/.*Ticket\**:\**[[:space:]]*//; s/[[:space:]]+·.*$//; s/[[:space:]]+$//'
-}
-jira_key=$(grep -oE 'Jira project `[A-Z][A-Z0-9]+`' docs/agents/issue-tracker.md 2>/dev/null | head -1 | tr -d '`' | awk '{print $3}')
+# 14. Plans carry a ticket (one reading, shared with ws.sh: scripts/harness/plan-check.sh). Verification evidence is
+#     local (.harness/evidence/, never committed), so lint does not look for it.
+pc=scripts/harness/plan-check.sh
 for f in docs/plans/active/*.md; do
   [[ -f "$f" && "$(basename "$f")" != TEMPLATE.md ]] || continue
-  v=$(ticket_of "$f")
-  if [[ -z "$v" || "$v" == *"<"* || "$v" =~ ^(TODO|tbd|TBD|\[verify\]|none|none\ *\(\ *\))$ ]]; then
-    fail "$f has no ticket — set 'Ticket: <KEY-123 | #123 | .scratch/... | none (<reason>)>' under the title"
-  elif [[ "$v" =~ ^[A-Z][A-Z0-9]+-[0-9]+$ ]]; then
-    [[ -n "$jira_key" && "${v%-*}" != "$jira_key" ]] && warn "$f Ticket $v is not in Jira project $jira_key (docs/agents/issue-tracker.md)"
-  elif ! [[ "$v" =~ ^#[0-9]+$ || "$v" == .scratch/* || "$v" =~ ^none\ \(.+\)$ ]]; then
-    fail "$f Ticket '$v' is not a Jira key (ABC-123), #123, a .scratch/ path or 'none (<reason>)'"
-  fi
-done
-for f in docs/plans/done/*.md docs/plans/active/*.md; do
-  [[ -f "$f" && "$(basename "$f")" != TEMPLATE.md ]] || continue
-  [[ "$f" == docs/plans/done/* ]] || grep -qE 'Status\**:\**[[:space:]]*done([[:space:]]|$)' "$f" || continue
-  awk '/^## /{on=($0 ~ /^## Verification/)} on && /^### [0-9]{4}-[0-9]{2}-[0-9]{2}/{found=1} END{exit !found}' "$f" \
-    || warn "$f is done but has no ## Verification entry — run harness-verify (it appends the evidence block)"
+  [[ -f "$pc" ]] || { warn "scripts/harness/plan-check.sh missing — plan tickets not checked; run /agent-harness:harness-upgrade"; break; }
+  msg="$(bash "$pc" ticket "$f" 2>&1)"; rc=$?
+  (( rc == 1 )) && fail "$msg"
+  (( rc == 2 )) && warn "$msg"
 done
 
 # 13. check-fast tests the changed source files (make runner with harness.mk only; runs no tests)
