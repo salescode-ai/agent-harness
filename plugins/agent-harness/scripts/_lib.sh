@@ -37,11 +37,17 @@ plan_dirs() { # plan folders named in <root>/AGENTS.md (Work Artifacts), else do
   [[ -z "$dirs" ]] && dirs="docs/plans/active"
   echo "$dirs"
 }
-active_plan() { # active_plan <root> <branch>: plan matching the branch, else newest (≤14 days) with unchecked items
-  local root="$1" branch="$2" slug cands f
+active_plan() { # active_plan <root> <branch>: plan for the branch's ticket key (KEY-12-slug), else its slug, else newest (≤14 days) with unchecked items
+  local root="$1" branch="$2" slug key cands f
   slug="${branch##*/}"; case "$slug" in main|master|develop|"") slug="" ;; esac
+  key="$(grep -oE '^[A-Za-z][A-Za-z0-9]+-[0-9]+' <<<"$slug")"
   cands="$(cd "$root" && for d in $(plan_dirs "$root"); do ls -t "$d"/*.md 2>/dev/null; done | grep -v '/TEMPLATE\.md$')"
   [[ -z "$cands" ]] && return
+  if [[ -n "$key" ]]; then  # file name, then the plan's Ticket: line
+    f="$(grep -iE -- "(^|[^A-Za-z0-9])$key([^0-9]|$)" <<<"$cands" | head -1)"
+    [[ -z "$f" ]] && f="$(while IFS= read -r c; do grep -qiE -- "Ticket[*]*:[*]*[[:space:]]*$key([^0-9]|$)" "$root/$c" 2>/dev/null && { echo "$c"; break; }; done <<<"$cands")"
+    [[ -n "$f" ]] && { echo "$f"; return; }
+  fi
   if [[ -n "$slug" ]]; then f="$(grep -i -- "$slug" <<<"$cands" | head -1)"; [[ -n "$f" ]] && { echo "$f"; return; }; fi
   while IFS= read -r f; do
     [[ -n "$(cd "$root" && find "$f" -mtime -14 2>/dev/null)" ]] || continue

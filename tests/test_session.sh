@@ -48,3 +48,16 @@ t_session_gate_not_wired() {
   echo '{"layers_done":["guides"],"gate_wired":false}' > "$d/.harness/init-state.json"
   assert_not_contains "$(_sess "$d")" "gate not wired" "init still in progress: only the in-progress line"
 }
+t_session_plan_by_ticket_key_and_verification() {
+  local d out; d="$(_sess_repo)"; mkdir -p "$d/docs/plans/active"
+  printf '# Plan: a\n**Ticket**: SHOP-7\n## Steps\n- [ ] 1. other\n' > "$d/docs/plans/active/2026-10-27-checkout.md"
+  printf '# Plan: b\n**Ticket**: SHOP-12\n## Steps\n- [ ] 1. pay\n\n## Verification\n### 2026-10-26 · abc1234 · FAIL\n### 2026-10-27 · def5678 · PASS\nGate: ok\n' > "$d/docs/plans/active/2026-10-27-SHOP-12-pay.md"
+  git -C "$d" checkout -q -b feature/SHOP-12-pay-button
+  out="$(_sess "$d")"
+  assert_contains "$out" "active plan: docs/plans/active/2026-10-27-SHOP-12-pay.md" "key in file name wins over slug"
+  assert_contains "$out" "last verification: 2026-10-27 · def5678 · PASS" "latest entry"
+  git -C "$d" checkout -q -b shop-7-x
+  out="$(_sess "$d")"
+  assert_contains "$out" "active plan: docs/plans/active/2026-10-27-checkout.md" "key from the Ticket: line, any case"
+  assert_contains "$out" "last verification: none yet" "no entry"
+}

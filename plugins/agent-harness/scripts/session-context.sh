@@ -2,7 +2,7 @@
 # SessionStart: short orientation (stdout becomes session context). Silent outside harnessed repos/workspaces.
 source "$(dirname "$0")/_lib.sh"
 print_plan() { # print_plan <root> <branch> <label>
-  local plan next last
+  local plan next last ver
   plan="$(active_plan "$1" "$2")"; [[ -z "$plan" ]] && return
   next="$(awk '/^## Steps/{f=1;next} /^## /{f=0} f && /- \[ \]/{sub(/^[[:space:]]*- \[ \][[:space:]]*/,""); print; exit}' "$1/$plan")"
   [[ -z "$next" ]] && next="$(grep -m1 -E '^[[:space:]]*- \[ \]' "$1/$plan" | sed -E 's/^[[:space:]]*- \[ \][[:space:]]*//')"
@@ -10,6 +10,8 @@ print_plan() { # print_plan <root> <branch> <label>
   echo "[agent-harness] ${3}active plan: $plan"
   [[ -n "$next" ]] && echo "[agent-harness] ${3}next unchecked: $next"
   [[ -n "$last" ]] && echo "[agent-harness] ${3}last progress: ${last#- }"
+  ver="$(awk '/^## /{on=($0 ~ /^## Verification/)} on && /^### [0-9]{4}-[0-9]{2}-[0-9]{2}/{v=$0} END{print v}' "$1/$plan")"
+  echo "[agent-harness] ${3}last verification: ${ver:+${ver#\#\#\# }}${ver:-none yet (harness-verify appends it)}"
 }
 stale_assets() { # stale_assets <root>: one line when plugin-owned harness scripts there are older than the plugin
   [[ -f "$1/scripts/harness/cmd.sh" ]] && command -v python3 >/dev/null || return 0
