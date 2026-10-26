@@ -95,3 +95,11 @@ include harness.mk')"
   [ "$rc" != 0 ] || _fail "check-fast must fail on a new untracked failing test"
   assert_contains "$out" "FAILED NewTest.java" "untracked file passed to HARNESS_TEST_CHANGED"
 }
+t_skipped_tools_wired_let_check_pass() {
+  local d; d="$(mk_dir 'HARNESS_LINT = @echo "lint: skipped (no JDK 11, 2026-10-26)"
+HARNESS_TEST_ALL = @echo "test: skipped (no JDK 11, 2026-10-26)"
+include harness.mk')"
+  ( cd "$d" && git init -q -b main ) >/dev/null
+  assert_contains "$(make -s -C "$d" check-fast 2>&1)" "check-fast: OK" "skipped tools do not keep the gate red"
+  assert_contains "$(make -s -C "$d" lint 2>&1)" "lint: skipped (no JDK 11" "skip stays visible"
+}

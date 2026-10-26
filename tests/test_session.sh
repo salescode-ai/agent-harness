@@ -37,3 +37,14 @@ t_session_init_in_progress() {
 t_session_silent_outside_repo() {
   assert_eq "$(_sess "$(mktemp -d)")" "" "silent"
 }
+t_session_gate_not_wired() {
+  local d all='"layers_done":["guides","sensors","context","tools","observability"]'; d="$(_sess_repo)"; mkdir "$d/.harness"
+  echo "{$all,\"gate_wired\":false,\"gate_reason\":\"lint: no JDK 11\"}" > "$d/.harness/init-state.json"
+  assert_contains "$(_sess "$d")" "[agent-harness] gate not wired — lint: no JDK 11; run /agent-harness:harness-init to finish wiring" "reason shown"
+  echo "{$all}" > "$d/.harness/init-state.json"
+  assert_contains "$(_sess "$d")" "gate not wired — make check-fast has not passed" "default reason"
+  echo "{$all,\"gate_wired\":true}" > "$d/.harness/init-state.json"
+  assert_not_contains "$(_sess "$d")" "gate not wired" "wired"
+  echo '{"layers_done":["guides"],"gate_wired":false}' > "$d/.harness/init-state.json"
+  assert_not_contains "$(_sess "$d")" "gate not wired" "init still in progress: only the in-progress line"
+}
