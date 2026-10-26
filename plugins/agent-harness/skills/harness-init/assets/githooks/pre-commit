@@ -4,6 +4,25 @@
 if [ -f .harness/init-state.json ] && ! grep -qE '"gate_wired"[[:space:]]*:[[:space:]]*true' .harness/init-state.json; then
   echo "harness: setup in progress, skipping"; exit 0
 fi
+# a plan closed as done (added under plans/done/, or a staged "Status: done") needs a fresh harness-verify PASS
+closed="$( { git diff --cached --name-only --diff-filter=AR -- 'docs/plans/done/*.md' 'plans/done/*.md'
+  git diff --cached --name-only --diff-filter=M -- 'docs/plans/*.md' 'plans/*.md' | while IFS= read -r f; do
+    git diff --cached -U0 -- "$f" | grep -E '^\+.*Status\**:\**[[:space:]]*done' >/dev/null && echo "$f"; done; } \
+  | grep -v '/TEMPLATE\.md$' | sort -u)"
+if [ -n "$closed" ]; then
+  if [ ! -d .harness/evidence ] && [ "${HARNESS_ALLOW_UNVERIFIED_DONE:-}" = 1 ]; then
+    echo "harness: no .harness/evidence on this machine; closing plan(s) unverified (HARNESS_ALLOW_UNVERIFIED_DONE=1)"
+  elif [ ! -f scripts/harness/plan-check.sh ]; then
+    echo "harness: scripts/harness/plan-check.sh missing, plan freshness not checked; run /agent-harness:harness-upgrade"
+  else
+    while IFS= read -r f; do
+      msg="$(bash scripts/harness/plan-check.sh fresh ".harness/evidence/$(basename "$f")" 2>&1)" && continue
+      echo "harness: $f is closed as done without a fresh PASS: $msg" >&2
+      echo "  Run harness-verify, commit the code, then close the plan in its own commit (plan-only commits stay fresh)." >&2
+      exit 1
+    done <<<"$closed"
+  fi
+fi
 [ -f scripts/harness/cmd.sh ] || { echo "harness: scripts/harness/cmd.sh missing, skipping"; exit 0; }
 cmd="$(bash scripts/harness/cmd.sh . check-fast)"; rc=$?
 case $rc in 0) ;; 3|4) echo "harness: check-fast not wired, skipping"; exit 0;; *) exit 0;; esac

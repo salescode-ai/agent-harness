@@ -20,6 +20,7 @@ Before editing files in a repo, read that repo's `AGENTS.md` and `INVARIANTS.md`
 
 - Done = `make check` passes here (each changed repo's own gate; **harness-verify** in workspace mode before claiming done). Fast loop: `make check-fast`, `make test R=<repo> T=<path>`. All commands: `make help`.
 - Run these targets, not raw tool commands.
+- A plan is done only after harness-verify recorded a fresh PASS (`scripts/harness/plan-check.sh fresh`).
 
 ## Cross-repo rules
 

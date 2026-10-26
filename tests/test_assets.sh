@@ -65,3 +65,12 @@ miss = [s for s, _ in assets.assets(None) if assets.sha(sys.argv[1] + "/" + s) n
 assert not miss, "asset-history.json lacks the current copy of %s: add its sha256 for this release" % miss
 PY
 }
+t_assets_released_precommit_refreshed() {
+  # a 2.0.4 repo's unmodified pre-commit (no plan-close check) is refreshed automatically
+  local d; d="$(mktemp -d)"; ( cd "$d" && git init -q -b main && printf '# a\n' > AGENTS.md ); python3 "$ASSETS" install "$d" >/dev/null
+  git -C "$ROOT" show f7d2c32:plugins/agent-harness/skills/harness-init/assets/githooks/pre-commit > "$d/.githooks/pre-commit" 2>/dev/null \
+    || skip assets_precommit "no git history"
+  assert_contains "$(python3 "$ASSETS" status "$d")" "stale     .githooks/pre-commit" "released copy is stale"
+  python3 "$ASSETS" refresh "$d" >/dev/null
+  grep -q 'plan-check.sh fresh' "$d/.githooks/pre-commit" || _fail "pre-commit not refreshed"
+}

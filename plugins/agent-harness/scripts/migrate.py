@@ -258,6 +258,24 @@ def m_agents_verification(root, ws):
     return [act("propose", "AGENTS.md", "\n".join(lines), "short Verification section")]
 
 
+DONE_FRESH = "- A plan is done only after harness-verify recorded a fresh PASS (`scripts/harness/plan-check.sh fresh`)."
+
+
+def m_agents_done_fresh(root, ws):
+    """AGENTS.md Verification says a plan is done only after a fresh harness-verify PASS (the pre-commit hook enforces it)."""
+    text = read(root, "AGENTS.md")
+    if text is None or "plan-check.sh fresh" in text or not re.search(r"^## Verification[ \t]*$", text, re.M):
+        return []
+    lines = text.split("\n")
+    at = lines.index(next(l for l in lines if re.match(r"^## Verification[ \t]*$", l))) + 1
+    while at < len(lines) and not lines[at].startswith("## "):
+        at += 1
+    while lines[at - 1].strip() == "":
+        at -= 1
+    lines.insert(at, DONE_FRESH)
+    return [act("propose", "AGENTS.md", "\n".join(lines), "Verification: a plan is done only after a fresh PASS")]
+
+
 def m_harness_json_help(root, ws):
     """.agents/harness.json records the runner's help/list command as "help"."""
     text = read(root, ".agents/harness.json")
@@ -387,6 +405,7 @@ MIGRATIONS = [  # id, since, layer, function
     ("plan-verification-empty", "2.0.4", "context", m_plan_verification),
     ("decisions-ticket", "2.0.4", "context", m_decisions_ticket),
     ("agents-verification", "2.0.4", "guides", m_agents_verification),
+    ("agents-done-fresh", "2.0.5", "guides", m_agents_done_fresh),
     ("harness-json-help", "2.0.4", "tools", m_harness_json_help),
     ("env-deny", "2.0.1", "tools", m_env_deny),
     ("harness-base", "2.0.1", "tools", m_harness_base),

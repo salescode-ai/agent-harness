@@ -20,7 +20,7 @@ t_upgrade_2_0_0_repo() {
   out="$(python3 "$MIG" status "$d")"
   assert_contains "$out" "plugin: recorded unknown (before 2.0.2)" "version line"
   for m in "auto     templates" "propose  plan-ticket" "propose  decisions-ticket" "propose  agents-verification" \
-           "propose  env-deny" "propose  harness-base" "auto     init-state-target" "manual   check-fast-tests" \
+           "propose  agents-done-fresh" "propose  env-deny" "propose  harness-base" "auto     init-state-target" "manual   check-fast-tests" \
            "manual   tool-wiring" "manual   gate-wired"; do assert_contains "$out" "$m" "2.0.0 needs $m"; done
   python3 "$ASSETS_PY" install "$d" >/dev/null
   assert_not_contains "$(python3 "$MIG" status "$d")" "harness-mk-test-plan" "refreshed harness.mk has the target"
@@ -38,6 +38,8 @@ t_upgrade_2_0_0_repo() {
   python3 "$MIG" accept "$d" >/dev/null
   (cd "$d" && bash scripts/harness/plan-check.sh ticket docs/plans/active/2026-01-05-login.md) || _fail "accepted ticket passes"
   grep -qF -- '- Done = `make check` passes' "$d/AGENTS.md" || _fail "short Verification"
+  awk '/^## Verification/{f=1;next} /^## /{f=0} f' "$d/AGENTS.md" | grep -qF 'done only after harness-verify recorded a fresh PASS (`scripts/harness/plan-check.sh fresh`)' \
+    || _fail "Verification gains the fresh-PASS line"
   # idempotent: nothing left but the manual items
   assert_contains "$(python3 "$MIG" apply "$d")" "migrations: 0 file(s) applied" "second apply"
   assert_eq "$(python3 "$MIG" diff "$d")" "" "second diff empty"
