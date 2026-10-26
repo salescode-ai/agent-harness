@@ -50,10 +50,44 @@ t_no_make_silent() {
   _run_gate "$d"
   assert_eq "$RC" 0 "exit"; assert_eq "$ERR" "" "silent"
 }
-t_loop_guard() {
+_run_active() { # _run_active <cwd>: a Stop after a block; sets RC, ERR, OUT
+  local f; f="$(mktemp)"; RC=0
+  OUT="$(printf '{"cwd":"%s","stop_hook_active":true}' "$1" | "$GATE" 2>"$f")" || RC=$?
+  ERR="$(cat "$f")"
+}
+t_recheck_after_block_is_bounded() {
   local d; d="$(_gate_repo false)"
-  _run_gate "$d" ',"stop_hook_active":true'
-  assert_eq "$RC" 0 "exit"
+  _run_gate "$d"; assert_eq "$RC" 2 "first stop blocks"
+  _run_active "$d"; assert_eq "$RC" 0 "unchanged since the block: allow"
+  assert_contains "$OUT" '"systemMessage":"agent-harness: stop gate gave up (no code change since the last block)' "visible give-up"
+  assert_contains "$OUT" "still failing in: repo" "names what fails"
+  _run_gate "$d"; assert_eq "$RC" 2 "new chain blocks again"
+  echo 'x=2' > "$d/src.py"; _run_active "$d"; assert_eq "$RC" 2 "changed and still failing: block 2"
+  assert_contains "$ERR" "check-fast failed" "report"
+  echo 'x=3' > "$d/src.py"; _run_active "$d"; assert_eq "$RC" 2 "block 3"
+  echo 'x=4' > "$d/src.py"; _run_active "$d"; assert_eq "$RC" 0 "gives up after 3 blocks"
+  assert_contains "$OUT" "gave up (3 blocks in a row)" "count named"
+  python3 -c 'import json,sys; json.loads(sys.argv[1])' "$OUT" || _fail "systemMessage is valid JSON"
+}
+t_recheck_passes_once_fixed() {
+  local d; d="$(_gate_repo 'test ! -f broken')"; touch "$d/broken"
+  _run_gate "$d"; assert_eq "$RC" 2 "blocks"
+  rm "$d/broken"; echo 'x=2' > "$d/src.py"
+  _run_active "$d"; assert_eq "$RC" 0 "fixed"; assert_eq "$OUT" "" "silent"; assert_eq "$ERR" "" "quiet"
+  [ ! -e "$d/.harness/stop-blocks" ] || _fail "counter cleared"
+}
+t_recheck_without_state_cannot_loop() {
+  local d; d="$(_gate_repo false)"
+  _run_gate "$d"; assert_eq "$RC" 2 "blocks"
+  rm -f "$d/.harness/stop-blocks"; mkdir "$d/.harness/stop-blocks"  # counter can't be read or written
+  echo 'x=2' > "$d/src.py"; _run_active "$d"
+  assert_eq "$RC" 0 "no writable counter: allow instead of looping"
+}
+t_no_state_dir_without_harness() {
+  local d; d="$(_gate_repo false)"; rm "$d/AGENTS.md"
+  _run_gate "$d"; assert_eq "$RC" 0 "unharnessed: allow"
+  [ ! -e "$d/.harness" ] || _fail "no .harness/ created in an unharnessed repo"
+  d="$(_gate_repo true)"; _run_gate "$d"; [ -d "$d/.harness" ] || _fail "harnessed repo keeps its state"
 }
 t_workspace_skips_non_present_members() {
   local ws; ws="$(mktemp -d)"
@@ -84,6 +118,10 @@ t_workspace_last_check_per_member() {
   [ ! -e "$ws/.harness/last-check-a" ] || _fail "a has no last-check"
   [ ! -e "$ws/.harness/last-check" ] || _fail "no shared last-check"
   [ ! -e "$ws/a/.harness" ] && [ ! -e "$ws/b/.harness" ] || _fail "member dirs written"
+  rm -rf "$ws/.harness"; ( cd "$ws/b" && git checkout -q -- . && git clean -qfd ) >/dev/null
+  echo '{"repos":[{"name":"b"}]}' > "$ws/harness-workspace.json"; rm "$ws/b/AGENTS.md"
+  _run_gate "$ws"; assert_eq "$RC" 0 "nothing gated"
+  [ ! -e "$ws/b/.harness" ] || _fail "unharnessed member written"
 }
 t_path_with_space() {
   local d s; d="$(_gate_repo false)"; s="$(mktemp -d)/sp ace"; mkdir "$s"; cp -R "$d/." "$s/"
