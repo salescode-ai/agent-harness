@@ -53,3 +53,15 @@ t_plan_and_adr_templates_carry_ticket_and_verification() {
   grep -q '\*\*Ticket\*\*: <KEY-123' "$A/docs/adr/TEMPLATE.md" || _fail "ADR Ticket"
   grep -q '| ADR | Decision | Status | Date | Ticket |' "$A/docs/DECISIONS.md" || _fail "DECISIONS Ticket column"
 }
+t_agents_md_short_verification() {
+  local v; v="$(awk '/^## Verification/{f=1;next} /^## /{f=0} f' "$A/AGENTS.md")"
+  assert_contains "$v" 'Done = `make check` passes (**harness-verify** before claiming done). Fast loop: `make check-fast`, `make test T=<path>`. All commands: `make help`.' "short form"
+  assert_not_contains "$v" "make smoke" "no target enumeration"
+  [ "$(grep -c . <<<"$v")" -le 3 ] || _fail "Verification is more than 3 lines"
+}
+t_short_verification_lints_with_runner() {
+  local d out; d="$(mk_template_repo)"; mkdir -p "$d/.agents"
+  echo '{"runner":"just","commands":{"check":"just check","check-fast":"just quick","test":"just test {T}"},"help":"just --list"}' > "$d/.agents/harness.json"
+  sed -i.bak 's/Done = `make check` passes.*/Done = `just check` passes. Fast loop: `just quick`, `just test <path>`. All commands: `just --list`./' "$d/AGENTS.md"; rm "$d/AGENTS.md.bak"
+  out="$(cd "$d" && bash scripts/harness/lint.sh 2>&1)" || { echo "$out" >&2; _fail "runner short form fails lint"; }
+}

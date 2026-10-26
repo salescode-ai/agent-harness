@@ -11,7 +11,7 @@ Scope by target level: `Functional` → Guides and Sensors; `Robust` → all fiv
 **scan.json keys.** `harness_files`, `pasted_guidance`, `pack_folders`, `modules`, `risk_paths`, `stacks`.
 
 **Applied automatically.**
-- `AGENTS.md` skeleton with Verification filled from commands whose baseline is `pass`, Module map from `modules`, Working Principles from the template.
+- `AGENTS.md` skeleton with Verification in the template's short form (done = `check`; fast loop `check-fast`, `test T=<path>`; all commands: the help command). **Never enumerate every target in `AGENTS.md`**; with a registered runner use its equivalents and its help/list command (`just --list`, `npm run`, `task --list`), Module map from `modules`, Working Principles from the template.
 - `CLAUDE.md` becomes the shim (`@AGENTS.md`, `@INVARIANTS.md`). Lines listed in `pasted_guidance` **move** into `AGENTS.md → Working Principles`; a line that repeats an existing principle is dropped, not duplicated. Move by script, then check every original line exists somewhere. An `@import` in the old file moves to the module shim of the folder it governs.
 - `INVARIANTS.md` with the Harness Integrity block verbatim, and `Harness target: <level>`.
 - Module `AGENTS.md` (+ a `CLAUDE.md` containing `@AGENTS.md`) only for `risk_paths` modules or a module with its own toolchain.
@@ -42,7 +42,7 @@ Scope by target level: `Functional` → Guides and Sensors; `Robust` → all fiv
 **Dispatch `setup-smith`** (`agent-harness:setup-smith`) with `scan.json` and this section's answers. It wires `setup-deps`, `setup-services`, `setup-migrate`, `seed`, `smoke`, proposes `compose.harness.yml` or a synthetic seed only after a yes, and runs `bash scripts/harness/setup-proof.sh`.
 
 **Questions (defaults).**
-1. Runner? a) `make` ➡️ b) register another (`.agents/harness.json` with `runner` and `commands`; `harness-lint` then checks `AGENTS.md` agrees).
+1. Runner? a) `make` ➡️ b) register another (`.agents/harness.json` with `runner`, `commands` and optional `"help"`, the runner's list command such as `"just --list"`; `harness-lint` then checks `AGENTS.md` agrees).
 2. Local services across worktrees: a) isolated per worktree (own compose project, free ports, own DB) ➡️ b) shared.
 3. Only when services are needed and there is no compose file — generate a local-only `compose.harness.yml` (versions from config)? a) show it first, decide then ➡️ b) no, I run them myself. Never written without an explicit yes; "defaults" and one-shot do not count as one.
 4. Each external service that can't run locally: a) stub from OpenAPI or recorded responses ➡️ when a contract exists b) shared dev environment URL c) not needed (noted unavailable).

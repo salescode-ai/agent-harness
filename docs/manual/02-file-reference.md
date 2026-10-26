@@ -35,7 +35,7 @@ Sections in the template:
 | Section | Holds | Notes |
 |---|---|---|
 | Header | "Read INVARIANTS.md first", one-line purpose, link to `docs/ARCHITECTURE.md` | |
-| `## Verification` | `make check` = done; `make test T=<path>`, `make check-fast`, `make smoke`, `make help` | `lint.sh` fails if a `make <x>` named here has no target, or if the runner is not make and it names `make` |
+| `## Verification` | Short form: done = `make check` (harness-verify first); fast loop `make check-fast`, `make test T=<path>`; all commands: `make help`. Never a list of every target. Another runner: its equivalents and its help command (`just --list`, `npm run`, `task --list`) | `lint.sh` fails if a `make <x>` named here has no target, or if the runner is not make and it names `make` |
 | `## Working Principles` | Think before coding · Simplicity first · Surgical changes · Goal-driven · Speak the domain | Pack guidance pasted into `CLAUDE.md` is moved here (duplicates dropped) |
 | `## Agent skills` | Precedence (`INVARIANTS.md` > `AGENTS.md` > `.agents/skills/` > plugin skills > tool defaults), artifacts, proof, one process per phase, no writes to `CLAUDE.md`, pointers to `docs/agents/*`, team settings | The block skill packs must obey; `guard-files.sh` sends `CLAUDE.md` writers here |
 | `## Work Artifacts` | Paths for specs, plans, ADRs, worktrees (`.worktrees/`), scratch (`.harness/`), pack working notes | `session-context.sh` reads plan folders from backticked `…plans/…` paths here |
@@ -185,8 +185,11 @@ Repo-specific setup steps live in your `Makefile` (or `.agents/harness.json`) as
 { "runner": "just",
   "commands": { "check": "just check", "check-fast": "just quick", "test": "just test {T}",
                 "setup": "just bootstrap", "seed": "just seed", "reset": "just reset",
-                "smoke": "just smoke", "dev": "just dev" } }
+                "smoke": "just smoke", "dev": "just dev" },
+  "help": "just --list" }
 ```
+
+`help` is optional: the runner's list command, named in `AGENTS.md` Verification ("All commands: `just --list`") and returned by `cmd.sh <dir> help` when `commands.help` is absent.
 
 ### `.claude/settings.json`
 

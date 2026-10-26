@@ -47,3 +47,10 @@ t_registered_no_T_keeps_spacing() {
   echo '{"commands":{"test":"echo \"a  b\" {T}"}}' > "$d/.agents/harness.json"
   assert_eq "$("$CMD" "$d" test)" 'echo "a  b"' "spacing"
 }
+t_registered_help_command() {
+  local d; d="$(_mk repo)"; mkdir "$d/.agents"
+  echo '{"runner":"just","commands":{"check":"just check"},"help":"just --list"}' > "$d/.agents/harness.json"
+  assert_eq "$("$CMD" "$d" help)" "just --list" "top-level help"
+  echo '{"runner":"just","commands":{"help":"just -l"},"help":"just --list"}' > "$d/.agents/harness.json"
+  assert_eq "$("$CMD" "$d" help)" "just -l" "commands.help wins"
+}

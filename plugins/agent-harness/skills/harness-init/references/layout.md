@@ -12,7 +12,7 @@ repo/
 ├── GLOSSARY.md            [guides]   domain vocabulary (multi-context: GLOSSARY-MAP.md → per-module GLOSSARY.md)
 ├── Makefile               [tools]    the repo's own targets + `include harness.mk`
 ├── harness.mk             [tools]    check, check-fast, test T=, smoke, setup, seed, reset, dev, harness-lint, help
-├── .agents/harness.json   [tools]    only when the runner is not make: {"runner", "commands"}
+├── .agents/harness.json   [tools]    only when the runner is not make: {"runner", "commands", "help"?}
 ├── .claude/settings.json  [tools]    agent-harness plugin + permission rules (team-shared)
 ├── .agents/skills/        [guides]   repo-specific skills only; .claude/skills/<name> are symlinks to these
 ├── scripts/harness/       [tools]    cmd.sh (command resolver), lint.sh, related-tests.sh, setup.sh, setup-proof.sh, local-guard.sh

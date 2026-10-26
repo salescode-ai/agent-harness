@@ -4,6 +4,7 @@
 # Standalone: also installed in repos as scripts/harness/cmd.sh.
 #   .agents/harness.json commands[target] -> printed verbatim, {T} replaced by shell-quoted T (or removed).
 #     {T} must appear bare (unquoted) in registered commands, e.g. "just test {T}", never "{T}" or '{T}'.
+#     target "help" without commands.help -> the optional top-level "help" (e.g. "just --list")
 #   otherwise -> make -s -C <dir> <target> [T=<T>], only if `make -n <target>` succeeds
 # Exit: 3 unresolvable (prints nothing); 4 make not installed.
 dir="${1:-}"; target="${2:-}"; t="${3:-}"
@@ -17,7 +18,8 @@ if [ -f "$f" ]; then
   out="$(python3 - "$f" "$target" "$t" 2>/dev/null <<'PY'
 import json,shlex,sys
 try:
-    c=json.load(open(sys.argv[1]))["commands"].get(sys.argv[2])
+    d=json.load(open(sys.argv[1])); c=d["commands"].get(sys.argv[2])
+    if c is None and sys.argv[2]=="help": c=d.get("help")
 except Exception: sys.exit(2)
 if not isinstance(c,str) or not c.strip(): sys.exit(1)
 print(c.replace("{T}",shlex.quote(sys.argv[3]) if sys.argv[3] else "").rstrip())

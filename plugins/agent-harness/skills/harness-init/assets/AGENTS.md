@@ -6,10 +6,8 @@
 
 ## Verification
 
-- Done means `make check` passes. Before claiming done, committing or opening a PR, run the **harness-verify** skill.
-- While iterating: `make test T=<path>` (one file or test), `make check-fast` (changed files).
-- Runnable surface: `make smoke`. Everything else: `make help`. Run these targets, not raw tool commands.
-- If this repo uses another runner, it is registered in `.agents/harness.json`; replace `make` above with that runner.
+- Done = `make check` passes (**harness-verify** before claiming done). Fast loop: `make check-fast`, `make test T=<path>`. All commands: `make help`.
+- Run these targets, not raw tool commands.
 
 ## Working Principles
 
