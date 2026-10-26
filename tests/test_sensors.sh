@@ -73,3 +73,26 @@ t_missing_python_exits_2() {
   ( cd "$d" && PATH=/nonexistent /bin/bash scripts/harness/sensor-proof.sh --recheck ) >/dev/null 2>&1 || rc=$?
   assert_eq "$rc" 2 "exit code"
 }
+t_empty_registry_recheck_ok() { local d; d="$(_sr)"; assert_exit 0 "empty" -- bash -c "cd '$d' && bash scripts/harness/sensor-proof.sh --recheck"; }
+t_corrupt_registry_fails() {
+  local d out rc=0; d="$(_sr)"; echo '{nope' > "$d/scripts/harness/sensors/registry.json"
+  out="$(cd "$d" && bash scripts/harness/sensor-proof.sh --recheck 2>&1)" || rc=$?
+  assert_eq "$rc" 2 "exit"; assert_contains "$out" "cannot parse" "msg"
+}
+t_copy_nested_missing_dest_cleaned() {
+  local d; d="$(_sr)"; mkdir -p "$d/scripts/harness/sensors/fixtures/n/a/b"
+  echo v > "$d/scripts/harness/sensors/fixtures/n/a/b/f.txt"
+  _add "$d" '{"name":"nn","severity":"Important","invariant":"X","run":"test ! -e out/x/a/b/f.txt || { echo found; exit 1; }","mode":"copy","clean":"","fixture":"scripts/harness/sensors/fixtures/n/","dest":"out/x"}'
+  _proof "$d" nn | grep -q 'proof nn: OK'
+  [ ! -e "$d/out" ]
+}
+t_rejects_unsafe_paths() {
+  local d out; d="$(_sr)"
+  _add "$d" '{"name":"bad","severity":"Important","invariant":"X","run":"true","mode":"copy","clean":"","fixture":"scripts/harness/sensors/fixtures/n/","dest":"../escape"}'
+  out="$(cd "$d" && bash scripts/harness/sensor-proof.sh --recheck 2>&1)" && return 1
+  assert_contains "$out" "must be relative" "msg"
+}
+t_no_prod_data_allows_org_net_case() {
+  local d; d="$(mktemp -d)"; printf "a@Example.COM\nb@example.org\nc@example.net\n" > "$d/o.txt"
+  assert_exit 0 "allowed" -- bash "$H/sensors/no-prod-data.sh" "$d"
+}

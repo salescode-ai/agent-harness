@@ -21,6 +21,12 @@ OUT=""
 exec_sensor() {
   local name="$1" which="$2" run mode target cmd rc=0  # dest/f/d/list/made stay global: the EXIT trap needs them
   run="$(get "$name" run)"; mode="$(get "$name" mode)"; target="$(get "$name" "$which")"
+  if [ "$which" = fixture ]; then
+    for p in "$target" "$(get "$name" dest)"; do
+      [ -z "$p" ] && continue
+      case "/$p/" in /\/*|*/../*) OUT="registry path '$p' must be relative with no '..'"; return 99;; esac
+    done
+  fi
   if [ "$mode" = copy ]; then
     if [ "$which" = clean ]; then OUT="$(bash -c "$run" 2>&1)" || rc=$?; return $rc; fi
     dest="$(get "$name" dest)"; dest="${dest:-.}"; target="${target%/}"
@@ -32,8 +38,11 @@ exec_sensor() {
     # always remove exactly what we copied (files, then dirs we created); runs in the step subshell
     trap 'while IFS= read -r f; do [ -n "$f" ] && rm -f "$dest/$f"; done < "$list"; sort -r "$made" | while IFS= read -r d; do rmdir "$d" 2>/dev/null; done; rm -f "$list" "$made"' EXIT
     while IFS= read -r f; do
-      d="$dest/$(dirname "$f")"
-      [ "$d" = "$dest/." ] || [ -d "$d" ] || { mkdir -p "$d"; echo "$d" >> "$made"; }
+      d=""
+      for seg in $(echo "$dest/$(dirname "$f")" | tr '/' ' '); do  # record every missing ancestor (shortcut: segments with spaces unsupported)
+        [ "$seg" = . ] && continue
+        d="${d:+$d/}$seg"; [ -d "$d" ] || { mkdir "$d"; echo "$d" >> "$made"; }
+      done
       cp "$target/$f" "$dest/$f"
     done < "$list"
     OUT="$(bash -c "$run" 2>&1)" || rc=$?
@@ -51,7 +60,7 @@ step() { # step <name> <which>; result goes to $TMPRC / $TMPOUT
 
 prove() { # prove <name> <with-step1>
   local name="$1" s1="$2" rc
-  get "$name" run >/dev/null 2>&1 || { echo "proof $name: FAIL - not in $REG" >&2; return 2; }
+  get "$name" run >/dev/null 2>&1 || { echo "proof $name: FAIL - not in $REG" >&2; return 2; }  # registry parsed OK at startup
   if [ "$s1" = 1 ]; then
     step "$name" clean; rc="$(cat "$TMPRC")"
     [ "$rc" = 0 ] || { echo "proof $name: FAIL step 1 (clean code must pass, got exit $rc)"; cat "$TMPOUT"; return 1; }
@@ -65,12 +74,13 @@ prove() { # prove <name> <with-step1>
   echo "proof $name: OK"
 }
 
+NAMES="$(names)" || { echo "sensor-proof: cannot parse $REG" >&2; exit 2; }
 TMPRC="$(mktemp)"; TMPOUT="$(mktemp)"; trap 'rm -f "$TMPRC" "$TMPOUT"' EXIT
 case "${1:-}" in
   "") echo "usage: sensor-proof.sh <name> | --recheck" >&2; exit 2;;
   --recheck)
     fail=0
-    for n in $(names); do prove "$n" 0 || fail=1; done
+    for n in $NAMES; do prove "$n" 0 || fail=1; done
     exit $fail;;
   *) prove "$1" 1;;
 esac

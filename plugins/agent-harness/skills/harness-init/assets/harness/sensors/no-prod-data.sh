@@ -12,7 +12,7 @@ scan_file() {
     [ "$size" -gt 1048576 ] && flag "$f" 1 "${size}-byte dump looks like a production export";;
   esac
   grep -Iq . "$f" 2>/dev/null || return 0   # skip binary/empty
-  grep -onE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' "$f" | grep -vE '(@example\.com|\.(test|invalid|local))$' |
+  grep -onE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' "$f" | grep -viE '(@example\.(com|org|net)|\.(test|invalid|local))$' |
     while IFS=: read -r ln _; do echo "$ln"; done | while read -r ln; do flag "$f" "$ln" "real-looking email address"; done
   grep -nEi '(^|[^a-z0-9])(prod|production)([^a-z0-9]|$)|rds\.amazonaws\.com' "$f" |
     while IFS=: read -r ln _; do echo "$ln"; done | while read -r ln; do flag "$f" "$ln" "production hostname"; done
