@@ -3,7 +3,7 @@
 # Reads env, .env, .env.local and Spring src/main/resources/application.properties|yml plus the
 # local/dev/test profiles (application-local*, -dev*, -test*); prod/other profiles are never read.
 # HARNESS_ALLOW_SEED=1 overrides with a warning.
-bad=""
+bad=""; why=""
 local_host() {
   case "$1" in
     127.*) case "$1" in *[!0-9.]*) return 1;; esac; return 0;;  # 127.evil.com is not loopback
@@ -37,7 +37,12 @@ check() { # name value; only DB-scheme URLs count for generic *_URL vars
     DATABASE_URL) ;;
     *_URL) case "${v%%://*}" in postgres*|mysql*|mariadb*|mongodb*|redis*|rediss*|mssql*|sqlserver*|oracle*) ;; *) return;; esac;;
   esac
-  for h in $(hosts_of "$v"); do local_host "$h" || bad="$bad $1=$h"; done
+  for h in $(hosts_of "$v"); do
+    local_host "$h" && continue
+    bad="$bad $1=$h"
+    case "$h" in *.*|*:*) ;; *) why="$why
+local-guard: $h is not a localhost name or a service in this repo's compose files";; esac
+  done
 }
 envfile() { # KEY=VALUE lines from a dotenv file; tolerates "export", indentation and spaces around =
   sed -nE 's/^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$/\2=\3/p' "$1"
@@ -70,5 +75,5 @@ $pairs
 EOT
 [ -z "$bad" ] && exit 0
 if [ "${HARNESS_ALLOW_SEED:-}" = 1 ]; then echo "local-guard: WARNING non-local target allowed by HARNESS_ALLOW_SEED=1:$bad" >&2; exit 0; fi
-echo "local-guard: refusing, non-local target:$bad -- point these at a local service, or set HARNESS_ALLOW_SEED=1 if you are sure" >&2
+echo "local-guard: refusing, non-local target:$bad -- point these at a local service, or set HARNESS_ALLOW_SEED=1 if you are sure$why" >&2
 exit 1

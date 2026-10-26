@@ -160,6 +160,13 @@ t_local_guard() {
   assert_exit 1 ".env checked" -- bash -c "cd '$d' && bash '$g'"
   run HARNESS_ALLOW_SEED=1 | grep -q WARNING
 }
+t_local_guard_explains_bare_host() {
+  local d out; d="$(mktemp -d)"
+  out="$( ( cd "$d" && env -i PATH="$PATH" DB_HOST=dbserver bash "$S/local-guard.sh" ) 2>&1 || true)"
+  assert_contains "$out" "dbserver is not a localhost name or a service in this repo's compose files" "why"
+  out="$( ( cd "$d" && env -i PATH="$PATH" DB_HOST=db.prod.example.com bash "$S/local-guard.sh" ) 2>&1 || true)"
+  assert_not_contains "$out" "is not a localhost name" "dotted host needs no hint"
+}
 t_local_guard_bypasses_closed() {
   local d g; d="$(mktemp -d)"; g="$S/local-guard.sh"
   printf 'services:\n  a:\n    image: x\n  b:\n    image: x\n  mysql:\n    image: mysql\n' > "$d/compose.yml"
