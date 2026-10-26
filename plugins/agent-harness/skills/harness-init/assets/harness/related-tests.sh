@@ -87,7 +87,8 @@ while IFS= read -r f; do
 done <<<"$files"
 sel="$(grep -v '^$' <<<"$sel" | grep -vE '(^|/)conftest\.py$' | sort -u)"
 if [ -n "${RELATED_TESTS_DRY:-}" ]; then  # harness-lint: name the changed sources no test covers; run nothing
-  grep -v '^$' <<<"$none" | sed 's/^/none: /'; exit 0
+  pre=""; [ "$dir" != . ] && pre="${dir%/}/"  # repo-relative, like the file= lines lint compares them with
+  grep -v '^$' <<<"$none" | sed "s#^#none: $pre#"; exit 0
 fi
 if [ -z "$sel" ]; then echo "tests: no tests related to the changed $stack files"; exit 0; fi
 

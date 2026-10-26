@@ -81,4 +81,7 @@ t_dry_run_names_untested_sources() {
   assert_eq "$out" "none: src/main/java/a/Bar.java" "only the untested source, nothing run"
   out="$(cd "$d" && RELATED_TESTS_DRY=1 bash "$RT" jest "false" src/main/java/a/Foo.java)"
   assert_eq "$out" "tests: no changed jest files" "other stack untouched"
+  d="$(_rt_repo api/src/main/java/a/Foo.java api/src/main/java/a/Bar.java api/src/test/java/a/FooTest.java)"
+  out="$(cd "$d" && RELATED_TESTS_DRY=1 bash "$RT" -C api maven "false" api/src/main/java/a/Foo.java api/src/main/java/a/Bar.java)"
+  assert_eq "$out" "none: api/src/main/java/a/Bar.java" "-C module: path stays repo-relative"
 }
