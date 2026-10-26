@@ -266,7 +266,7 @@ Scope: pin only `agent-harness` in project settings; keep other packs in user sc
 
 ## 3.12 Troubleshooting and FAQ
 
-**"Stop blocked by agent-harness: a repo's check-fast failed on your changes."** The agent changed code and `check-fast` failed. Fix the failures shown. Don't disable checks. If you must stop anyway, set `HARNESS_STOP_GATE=0` for that session. In a workspace, the block also lists `Not gated (no complete harness), changed anyway:` members.
+**"Stop blocked by agent-harness: a repo's check-fast failed on your changes."** The agent changed code and `check-fast` failed. Fix the failures shown. Don't disable checks. If you must stop anyway, set `HARNESS_STOP_GATE=0` for that session. In a workspace, the block also lists `Not gated (no complete harness or gate not wired), changed anyway:` members.
 
 **The stop gate or a git hook says nothing during setup.** That's intended. While `.harness/init-state.json` exists without `"gate_wired": true`, the stop gate is silent and git hooks print `harness: setup in progress, skipping`. Finish or resume `/agent-harness:harness-init`.
 

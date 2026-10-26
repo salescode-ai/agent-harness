@@ -33,7 +33,7 @@ contract-first rules, one gate that runs every changed repo's own gate, and cros
 ## How it works at run time
 
 - The session hook shows each repo's branch, uncommitted count and harness status.
-- The stop gate runs `check-fast` (resolved through `scripts/harness/cmd.sh`) in **each changed repo** with that repo's own wiring, and blocks with the repo name on failure. Repos without a harness are skipped, visibly.
+- The stop gate runs `check-fast` (resolved through `scripts/harness/cmd.sh`) in **each changed repo** with that repo's own wiring, and blocks with the repo name on failure. Repos without a harness, or whose gate is not wired, are skipped visibly (session view: `gate not wired`).
 - `harness-verify` (workspace mode) gates per repo and adds the `cross-repo-reviewer` agent for contract consistency.
 - Guards apply everywhere: force-push, hook bypass and pushes to a repo's main branch are caught even via `cd <repo> && git …` or `git -C <repo> …`.
 

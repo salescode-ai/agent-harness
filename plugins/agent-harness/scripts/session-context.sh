@@ -25,7 +25,9 @@ if [[ -n "$ws" && -z "$(git -C "$HOOK_CWD" rev-parse --show-toplevel 2>/dev/null
     if [[ ! -d "$ws/$path/.git" && ! -f "$ws/$path/.git" ]]; then echo "[agent-harness]   $name: not checked out ($path)"; continue; fi
     br="$(git -C "$ws/$path" branch --show-current 2>/dev/null)"
     dirty="$(git -C "$ws/$path" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
-    echo "[agent-harness]   $name: ${br:-detached} · $dirty uncommitted · harness $(member_state "$ws/$path")"
+    st="$(member_state "$ws/$path")"
+    [[ "$st" == present ]] && { init_pending "$ws/$path" || ! harness_cmd "$ws/$path" check-fast >/dev/null 2>&1; } && st="present (gate not wired)"
+    echo "[agent-harness]   $name: ${br:-detached} · $dirty uncommitted · harness $st"
   done <<<"$(workspace_members "$ws")"
   print_plan "$ws" "" ""
   stale_assets "$ws"

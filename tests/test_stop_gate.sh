@@ -164,3 +164,16 @@ t_block_report_summarises_failures() {
   assert_not_contains "$ERR" "Frame30.call" "middle frames dropped"
   [ "$(wc -l <<<"$ERR")" -le 45 ] || _fail "report capped (~40 lines)"
 }
+t_workspace_names_unwired_member() {
+  local ws; ws="$(mktemp -d)"; mkdir "$ws/good" "$ws/half"
+  cp -R "$(_gate_repo false)/." "$ws/good/"; cp -R "$(_gate_repo true)/." "$ws/half/"
+  mkdir -p "$ws/half/.harness"; echo '{"gate_wired": false}' > "$ws/half/.harness/init-state.json"
+  echo '{"repos":[{"name":"good"},{"name":"half"}]}' > "$ws/harness-workspace.json"
+  _run_gate "$ws"
+  assert_eq "$RC" 2 "good blocks"; assert_contains "$ERR" "half (gate not wired)" "unwired member listed as not gated"
+  assert_not_contains "$ERR" "---- half" "unwired member not run"
+  out="$(printf '{"cwd":"%s"}' "$ws" | "$PLUGIN/scripts/session-context.sh" 2>&1)"
+  assert_contains "$out" "half: main · 1 uncommitted · harness present (gate not wired)" "session view"
+  assert_contains "$out" "good: main · 1 uncommitted · harness present
+" "wired member plain"
+}

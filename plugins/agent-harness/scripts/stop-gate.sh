@@ -23,8 +23,9 @@ fail_summary() { # failure-marker lines (up to 20), then the last 10 lines; with
 gate_repo() { # gate_repo <repo dir> <base> <label>
   local dir="$1" base="$2" label="$3" cmd fp out rc
   [[ -f "$dir/AGENTS.md" ]] || return 0
-  init_pending "$dir" && return 0  # half-built harness: harness-init has not wired the gate yet
-  cmd="$(harness_cmd "$dir" check-fast 2>/dev/null)" || return 0
+  # half-built harness (harness-init has not wired the gate) or no check-fast: not gated, named if another repo blocks
+  init_pending "$dir" && { changed_since "$dir" "$base" && SKIPPED+=" $label (gate not wired)"; return 0; }
+  cmd="$(harness_cmd "$dir" check-fast 2>/dev/null)" || { changed_since "$dir" "$base" && SKIPPED+=" $label (check-fast not resolvable)"; return 0; }
   changed_since "$dir" "$base" || return 0
   fp="$( { git -C "$dir" rev-parse HEAD; git -C "$dir" diff HEAD; (cd "$dir" && git ls-files -z --others --exclude-standard | xargs -0 cksum 2>/dev/null); } 2>/dev/null | cksum | cut -d' ' -f1)"
   local key="$STATE/last-green-${label//[^A-Za-z0-9_-]/_}"
@@ -76,6 +77,6 @@ fi
   echo "Stop blocked by agent-harness: a repo's check-fast failed on your changes."
   echo "Fix the failures below in the repo named (do not disable or skip checks), then finish."
   echo "$REPORT"
-  [[ -n "$SKIPPED" ]] && echo "Not gated (no complete harness), changed anyway:$SKIPPED"
+  [[ -n "$SKIPPED" ]] && echo "Not gated (no complete harness or gate not wired), changed anyway:$SKIPPED"
 } >&2
 exit 2
