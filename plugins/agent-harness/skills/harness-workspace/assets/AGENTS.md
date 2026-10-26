@@ -37,9 +37,9 @@ Before editing files in a repo, read that repo's `AGENTS.md` and `INVARIANTS.md`
 - Decisions: an ADR in the repo that owns the decision (for a contract, the provider repo), linked from the other repos' PRs.
 - Repo-only work (specs, plans, ADRs inside one repo): follow that repo's own Work Artifacts.
 
-## Skills and plugins
+## Agent skills
 
-Same rules as each repo's `AGENTS.md` → Skills and plugins: this file and repo `INVARIANTS.md`/`AGENTS.md` outrank any skill; artifacts go where Work Artifacts says; proof comes from the make targets; `harness-verify` runs last; nothing is written into `CLAUDE.md`.
+Same rules as each repo's `AGENTS.md` → Agent skills: this file and repo `INVARIANTS.md`/`AGENTS.md` outrank any skill; artifacts go where Work Artifacts says; proof comes from the make targets; `harness-verify` runs last; nothing is written into `CLAUDE.md`.
 
 ## Agent Authorization
 

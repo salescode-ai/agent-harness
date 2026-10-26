@@ -16,6 +16,7 @@ Scope by target level: `Functional` → Guides and Sensors; `Robust` → all fiv
 - `INVARIANTS.md` with the Harness Integrity block verbatim, and `Harness target: <level>`.
 - Module `AGENTS.md` (+ a `CLAUDE.md` containing `@AGENTS.md`) only for `risk_paths` modules or a module with its own toolchain.
 - `## Agent skills` block and Work Artifacts in `AGENTS.md` (rules: `references/plugins.md`).
+- `docs/agents/`: detect the tracker from `git remote` (github.com → github, gitlab → gitlab); otherwise ask (jira, local). Copy `assets/docs/agents/issue-tracker-<tracker>.md` → `docs/agents/issue-tracker.md` (ship only that variant), plus `triage-labels.md` and `domain.md`. Fill the tracker key or labels from the answer; never leave the AGENTS.md pointers dangling.
 
 **Questions (defaults).**
 1. Target level? a) Functional b) Robust ➡️ c) Enterprise. Recommend from the scan: no tests or a failing baseline → Functional; CI plus CODEOWNERS already present → Enterprise; else Robust.

@@ -30,3 +30,15 @@ t_templates_level_experimental() {
   local d; d="$(mk_template_repo)"
   assert_eq "$(python3 "$PLUGIN/scripts/level.py" "$d" --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["level"])')" "Experimental" "level"
 }
+t_init_materialises_issue_tracker() {
+  local R="$PLUGIN/skills/harness-init"
+  grep -q 'issue-tracker-<tracker>.md` → `docs/agents/issue-tracker.md' "$R/references/layers.md" || _fail "layers rule"
+  grep -q 'issue-tracker-<' "$R/SKILL.md" || _fail "SKILL pointer"
+  [ "$(wc -l < "$R/SKILL.md")" -le 120 ] || _fail "SKILL.md > 120"
+}
+t_no_old_skills_heading() {
+  local f
+  for f in $(find "$PLUGIN/skills" -path '*assets*' -name AGENTS.md); do
+    ! grep -q 'Skills and plugins' "$f" || _fail "$f has old heading"
+  done
+}
