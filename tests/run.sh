@@ -3,12 +3,12 @@
 HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/lib.sh"
 pass=0; failed=0; skipped=0
-for f in "$HERE"/test_*"${1:-}"*.sh; do
+for f in "${TESTS_DIR:-$HERE}"/test_*"${1:-}"*.sh; do
   [ -f "$f" ] || continue
   . "$f"
   for fn in $(compgen -A function | grep '^t_'); do
-    rc=0
-    ( set -e; "$fn" ) || rc=$?
+
+    ( set -e; "$fn" ); rc=$?  # not on the left of ||, which would disable set -e
     name="$(basename "$f" .sh)::${fn#t_}"
     case $rc in
       0) echo "ok   $name"; pass=$((pass+1));;

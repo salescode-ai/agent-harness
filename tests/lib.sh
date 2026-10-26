@@ -31,7 +31,7 @@ mk_repo() {
     git config user.email t@example.com
     git config user.name test
     git add -A
-    git commit -q -m init
+    git -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q -m init
     git update-ref refs/remotes/origin/main HEAD
   ) >/dev/null
   echo "$d"
