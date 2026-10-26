@@ -30,13 +30,41 @@ t_invariant_missing_severity_fails() {
   out="$(_run "$d")" && return 1
   assert_contains "$out" "Always lint" "names bullet"
 }
+_reg() { mkdir -p "$1/.agents"; echo "{\"runner\":\"$2\",\"commands\":{$3}}" > "$1/.agents/harness.json"; }
 t_registry_mismatch_fails() {
-  local d out; d="$(_lr)"; mkdir "$d/.agents"
-  echo '{"runner":"just","commands":{"test":"just test"}}' > "$d/.agents/harness.json"
-  out="$(_run "$d")" && return 1
-  assert_contains "$out" "no commands.check" "mismatch"
-  echo '{"runner":"just","commands":{"check":"just check"}}' > "$d/.agents/harness.json"
+  local d out; d="$(_lr)"
+  printf '# Repo\n\nRun `just check`.\n' > "$d/AGENTS.md"; _reg "$d" just '"check":"just check"'
   _run "$d" | grep -q 'harness-lint: OK'
+  printf '# Repo\n\nRun `just deploy`.\n' > "$d/AGENTS.md"
+  out="$(_run "$d")" && return 1
+  assert_contains "$out" "no commands.deploy" "unregistered runner cmd"
+  _reg "$d" just '"check":"just check","ship":"just deploy"'
+  _run "$d" | grep -q 'harness-lint: OK'
+}
+t_make_named_with_other_runner_fails() {
+  local d out; d="$(_lr)"; _reg "$d" just '"check":"just check"'
+  out="$(_run "$d")" && return 1
+  assert_contains "$out" "runner is just" "msg"
+}
+t_make_runner_checks_makefile() {
+  local d out; d="$(_lr)"; _reg "$d" make '"check":"make check"'
+  _run "$d" | grep -q 'harness-lint: OK'
+  : > "$d/Makefile"
+  out="$(_run "$d")" && return 1
+  assert_contains "$out" "Makefile has no 'check' target" "msg"
+}
+t_registry_without_python_warns() {
+  local d out; d="$(_lr)"; _reg "$d" just '"check":"just check"'
+  out="$(cd "$d" && PATH="/nonexistent" /bin/bash scripts/harness/lint.sh 2>&1)" || true
+  assert_contains "$out" "python3 not found" "warn"
+}
+t_severity_tier_anchored_and_crlf_header() {
+  local d out; d="$(_lr)"
+  printf '\n## Context Budget \r\n\n- auto-loaded tokens: warn 9000, fail 9500\n' >> "$d/INVARIANTS.md"
+  _run "$d" | grep -q 'harness-lint: OK'
+  printf '\n## Other\n\n' >> "$d/INVARIANTS.md"
+  echo '- x — Severity: Criticalish — Enforced by: ci' >> "$d/INVARIANTS.md"
+  _run "$d" >/dev/null && return 1 || true
 }
 t_agent_skills_in_claude_fails() {
   local d out; d="$(_lr)"; printf '@AGENTS.md\n\n## Agent skills\n' > "$d/CLAUDE.md"

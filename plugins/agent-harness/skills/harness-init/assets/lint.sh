@@ -27,7 +27,7 @@ fi
 # bud <section> <key> <default-warn> <default-fail> -> "warn fail"
 bud() {
   local v=""
-  [[ -f INVARIANTS.md ]] && v=$(awk -v s="## $1" -v k="- $2:" '$0==s{on=1;next} /^## /{on=0} on && index($0,k)==1{print;exit}' INVARIANTS.md | sed -nE 's/.*warn ([0-9]+), fail ([0-9]+).*/\1 \2/p')
+  [[ -f INVARIANTS.md ]] && v=$(awk -v s="## $1" -v k="- $2:" '{sub(/[ \t\r]+$/,"")} $0==s{on=1;next} /^## /{on=0} on && index($0,k)==1{print;exit}' INVARIANTS.md | sed -nE 's/.*warn ([0-9]+), fail ([0-9]+).*/\1 \2/p')
   echo "${v:-$3 $4}"
 }
 read -r a_warn a_fail <<<"$(bud 'File Size Budget' 'AGENTS.md' 100 120)"
@@ -95,22 +95,41 @@ for f in "${harness_docs[@]}"; do
   done < <(grep -oE '\]\([^)[:space:]]+\)' "$f" | sed -E 's/^\]\((.*)\)$/\1/')
 done
 
-# 7. Make targets named in AGENTS.md exist (or are registered in .agents/harness.json)
-if [[ -f AGENTS.md ]] && [[ -f .agents/harness.json ]]; then
+# 7. Commands named in AGENTS.md exist: in .agents/harness.json (runner + commands) and/or the Makefile
+runner=make; reg_ok=1
+if [[ -f AGENTS.md && -f .agents/harness.json ]]; then
   if command -v python3 >/dev/null; then
-    reg=$(python3 -c 'import json,sys; print("\n".join(json.load(open(".agents/harness.json")).get("commands",{})))' 2>/dev/null) \
-      || fail ".agents/harness.json is not valid JSON — fix it (expected {\"runner\": ..., \"commands\": {...}})"
-    while IFS= read -r t; do
-      grep -qx "$t" <<<"$reg" || fail "AGENTS.md names 'make $t' but .agents/harness.json has no commands.$t — register it or fix AGENTS.md"
-    done < <(grep -oE '`make [a-z][a-z0-9_-]*' AGENTS.md | awk '{print $2}' | sort -u)
+    reg=$(python3 -c 'import json; c=json.load(open(".agents/harness.json")); print("R"+str(c.get("runner") or "make"))
+for k,v in c.get("commands",{}).items(): print("K"+k); print("V"+str(v))' 2>/dev/null) \
+      || { fail ".agents/harness.json is not valid JSON — fix it (expected {\"runner\": ..., \"commands\": {...}})"; reg_ok=0; reg=; }
+    runner=$(sed -n 's/^R//p' <<<"$reg")
+    [[ -z "$runner" ]] && runner=make
+    if (( reg_ok )); then
+      if [[ "$runner" != make ]]; then
+        while IFS= read -r t; do
+          fail "AGENTS.md names 'make $t' but this repo's runner is $runner — name '$runner $t' (or register it)"
+        done < <(grep -oE '`make [a-z][a-z0-9_-]*' AGENTS.md | awk '{print $2}' | sort -u)
+        while IFS= read -r t; do
+          grep -qx "K$t" <<<"$reg" && continue
+          ok=
+          while IFS= read -r v; do [[ "$v" == "$runner $t" || "$v" == "$runner $t "* ]] && ok=1; done < <(sed -n 's/^V//p' <<<"$reg")
+          [[ -n "$ok" ]] || fail "AGENTS.md names '$runner $t' but .agents/harness.json has no commands.$t — register it or fix AGENTS.md"
+        done < <(grep -oE "\`$runner [a-z][a-z0-9_-]*" AGENTS.md | awk '{print $NF}' | sort -u)
+      fi
+    fi
+  else
+    warn ".agents/harness.json check skipped: python3 not found"; reg_ok=0
   fi
-elif [[ -f AGENTS.md ]] && command -v make >/dev/null && { [[ -f Makefile ]] || [[ -f makefile ]] || [[ -f GNUmakefile ]]; }; then
-  targets=$(make -pRrq : 2>/dev/null | awk -F: '/^[a-zA-Z0-9][^$#\/\t=]*:([^=]|$)/ {print $1}' | sort -u)
-  while IFS= read -r t; do
-    grep -qx "$t" <<<"$targets" || fail "AGENTS.md names 'make $t' but the Makefile has no '$t' target"
-  done < <(grep -oE '`make [a-z][a-z0-9_-]*' AGENTS.md | awk '{print $2}' | sort -u)
-elif [[ -f AGENTS.md ]] && grep -q '`make ' AGENTS.md; then
-  fail "AGENTS.md names make targets but there is no Makefile"
+fi
+if (( reg_ok )) && [[ "$runner" == make ]]; then
+  if [[ -f AGENTS.md ]] && command -v make >/dev/null && { [[ -f Makefile ]] || [[ -f makefile ]] || [[ -f GNUmakefile ]]; }; then
+    targets=$(make -pRrq : 2>/dev/null | awk -F: '/^[a-zA-Z0-9][^$#\/\t=]*:([^=]|$)/ {print $1}' | sort -u)
+    while IFS= read -r t; do
+      grep -qx "$t" <<<"$targets" || fail "AGENTS.md names 'make $t' but the Makefile has no '$t' target"
+    done < <(grep -oE '`make [a-z][a-z0-9_-]*' AGENTS.md | awk '{print $2}' | sort -u)
+  elif [[ -f AGENTS.md ]] && grep -q '`make ' AGENTS.md; then
+    fail "AGENTS.md names make targets but there is no Makefile"
+  fi
 fi
 
 # 9. CLAUDE.md must not carry an Agent skills block
@@ -119,9 +138,9 @@ fi
 # 10. INVARIANTS.md bullets carry Severity and Enforced by (Budget sections exempt)
 if [[ -f INVARIANTS.md ]]; then
   while IFS= read -r b; do fail "INVARIANTS.md bullet lacks '— Severity: <Critical|Important|Nice-to-have> — Enforced by: <…>': $b"
-  done < <(awk '/^## /{ex=($0=="## Context Budget"||$0=="## File Size Budget"); cat=1; next}
+  done < <(awk '{sub(/[ \t\r]+$/,"")} /^## /{ex=($0=="## Context Budget"||$0=="## File Size Budget"); cat=1; next}
     cat && !ex && /^[-*][[:space:]]/ && !/^[-*][[:space:]]+Harness target:/ &&
-    !(/Severity: (Critical|Important|Nice-to-have)/ && /Enforced by:/) {print}' INVARIANTS.md)
+    !(/Severity: (Critical|Important|Nice-to-have)([^A-Za-z-]|$)/ && /Enforced by:/) {print}' INVARIANTS.md)
 fi
 
 # 11. TODO / [verify] markers in harness files are warnings
