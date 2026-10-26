@@ -68,7 +68,7 @@ Scope by target level: `Functional` → Guides and Sensors; `Robust` → all fiv
 - `check` = lint + typecheck + tests + harness-lint; `check-fast` = changed files, under 60 s.
 - Critical invariant, always: `- No real customer or production data in seeds or fixtures — Severity: Critical — Enforced by: scripts/harness/sensors/no-prod-data.sh`, kept only if its proof passes, else `not yet enforced`.
 - Git hooks: pre-commit runs `check-fast`, pre-push runs `check`.
-  - `hook_manager: none` → `.githooks/` from `assets/githooks/`. Only after question 4 is answered "on": `make setup` sets `core.hooksPath .githooks` (ask the developer to run it, or `git config core.hooksPath .githooks`, so this checkout is covered; the agent's guard blocks that command). Never at install time.
+  - `hook_manager: none` → `.githooks/` from `assets/githooks/`. Only after question 4 is answered "on": `make setup` sets `core.hooksPath .githooks` (run it, or `git config core.hooksPath .githooks`, so this checkout is covered; the guard allows only that exact value). Never at install time.
   - With a hook manager, still copy `assets/githooks/*` to `.githooks/` (do **not** set `core.hooksPath`) and have the manager call them; they resolve the target and skip quietly when it is not wired:
   - `husky` → append `bash .githooks/pre-commit  # harness check-fast` to `.husky/pre-commit` and `bash .githooks/pre-push  # harness check` to `.husky/pre-push`.
   - `lefthook` → in `lefthook.yml`: `pre-commit: commands: harness-check-fast: run: bash .githooks/pre-commit`, and `pre-push: commands: harness-check: run: bash .githooks/pre-push`.

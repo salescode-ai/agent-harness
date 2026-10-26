@@ -18,3 +18,16 @@ t_claude_md_reads_allowed() {
     assert_eq "$(guard "$c")" "" "allow: $c"
   done
 }
+
+t_hookspath_githooks_allowed_only() {
+  local c
+  for c in 'git config core.hooksPath .githooks' 'git config --local core.hooksPath ./.githooks/' \
+           'git config set core.hooksPath .githooks'; do
+    assert_eq "$(guard "$c")" "" "allow: $c"
+  done
+  for c in 'git config core.hooksPath /dev/null' 'git config --unset core.hooksPath' 'git config unset core.hooksPath' \
+           'git config --global core.hooksPath .githooks' 'git config core.hooksPath ../.githooks' \
+           'git -c core.hooksPath=.githooks commit -m x' 'git -c core.hooksPath=/dev/null commit -m x'; do
+    assert_contains "$(guard "$c")" '"deny"' "deny: $c"
+  done
+}

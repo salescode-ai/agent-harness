@@ -105,7 +105,11 @@ def check_git(argv, env, cwd):
     if "--no-verify" in longs or (sub == "commit" and "n" in flags):
         decide("deny", "Bypassing git hooks (--no-verify / -n) is blocked by INVARIANTS.md. Fix the failing check instead.")
     if sub == "config" and any(a.lower() == "core.hookspath" for a in args):
-        decide("deny", "Changing core.hooksPath bypasses git hooks. Ask a human if hooks need to change.")
+        # the one allowed write: point this checkout at the repo's own .githooks (what make setup does)
+        rest = args[[a.lower() for a in args].index("core.hookspath") + 1:]
+        opts = {a for a in args if a.startswith("-")}
+        if not (len(rest) == 1 and rest[0].rstrip("/") in (".githooks", "./.githooks") and opts <= {"--local"}):
+            decide("deny", "Changing core.hooksPath bypasses git hooks. Only `git config core.hooksPath .githooks` is allowed; ask a human otherwise.")
     if sub == "push":
         refspecs = [a for a in args if not a.startswith("-")]
         force = "--force" in longs or "f" in flags or any(r.startswith("+") for r in refspecs)
