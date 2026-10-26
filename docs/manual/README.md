@@ -1,4 +1,4 @@
-# agent-harness 2.0.0 — Manual
+# agent-harness — Manual
 
 agent-harness is a Claude Code plugin that sets up, checks and maintains a **repository harness** for AI coding agents. The harness is the set of files, commands and hooks in your repo that tell an agent what the rules are, how to prove its work, and what it may not touch.
 
