@@ -1,0 +1,58 @@
+LINT="$PLUGIN/skills/harness-init/assets/lint.sh"
+# _lr: fresh minimal repo with lint.sh installed; echoes path
+_lr() {
+  local d; d="$(mktemp -d)"; mkdir -p "$d/scripts/harness"
+  cp "$LINT" "$d/scripts/harness/lint.sh"
+  printf '# Repo\n\nRun `make check`.\n' > "$d/AGENTS.md"
+  printf '# Invariants\n\n## Security\n\n- No secrets in git — Severity: Critical — Enforced by: gitleaks\n' > "$d/INVARIANTS.md"
+  printf 'check:\n\t@true\n' > "$d/Makefile"
+  ( cd "$d" && git init -q -b main ) >/dev/null
+  echo "$d"
+}
+_run() { ( cd "$1" && bash scripts/harness/lint.sh 2>&1 ); }
+
+t_clean_passes() { local d; d="$(_lr)"; _run "$d" | grep -q 'harness-lint: OK'; }
+t_todo_is_warning() {
+  local d out; d="$(_lr)"; echo 'TODO fill me [verify]' >> "$d/AGENTS.md"
+  out="$(_run "$d")"
+  assert_contains "$out" "warn  AGENTS.md has 1 TODO" "warn"
+  assert_contains "$out" "harness-lint: OK" "exit 0 path"
+}
+t_budget_override() {
+  local d i; d="$(_lr)"
+  for i in $(seq 150); do echo "line $i" >> "$d/AGENTS.md"; done
+  assert_exit 1 "default fails" -- bash -c "cd '$d' && bash scripts/harness/lint.sh"
+  printf '\n## File Size Budget\n\n- AGENTS.md: warn 180, fail 220\n' >> "$d/INVARIANTS.md"
+  assert_exit 0 "override passes" -- bash -c "cd '$d' && bash scripts/harness/lint.sh"
+}
+t_invariant_missing_severity_fails() {
+  local d out; d="$(_lr)"; echo '- Always lint — Enforced by: ci' >> "$d/INVARIANTS.md"
+  out="$(_run "$d")" && return 1
+  assert_contains "$out" "Always lint" "names bullet"
+}
+t_registry_mismatch_fails() {
+  local d out; d="$(_lr)"; mkdir "$d/.agents"
+  echo '{"runner":"just","commands":{"test":"just test"}}' > "$d/.agents/harness.json"
+  out="$(_run "$d")" && return 1
+  assert_contains "$out" "no commands.check" "mismatch"
+  echo '{"runner":"just","commands":{"check":"just check"}}' > "$d/.agents/harness.json"
+  _run "$d" | grep -q 'harness-lint: OK'
+}
+t_agent_skills_in_claude_fails() {
+  local d out; d="$(_lr)"; printf '@AGENTS.md\n\n## Agent skills\n' > "$d/CLAUDE.md"
+  out="$(_run "$d")" && return 1
+  assert_contains "$out" "move to AGENTS.md" "msg"
+}
+t_sensor_proof_missing_fails() {
+  local d out; d="$(_lr)"; mkdir -p "$d/scripts/harness/sensors"; echo '{}' > "$d/scripts/harness/sensors/registry.json"
+  out="$(_run "$d")" && return 1
+  assert_contains "$out" "sensor-proof.sh missing" "msg"
+}
+t_sensor_recheck_failure_fails() {
+  local d; d="$(_lr)"; mkdir -p "$d/scripts/harness/sensors"; echo '{}' > "$d/scripts/harness/sensors/registry.json"
+  echo 'echo "sensor x silent"; exit 1' > "$d/scripts/harness/sensor-proof.sh"
+  assert_exit 1 "recheck fails lint" -- bash -c "cd '$d' && bash scripts/harness/lint.sh"
+  echo 'exit 0' > "$d/scripts/harness/sensor-proof.sh"
+  assert_exit 0 "recheck ok" -- bash -c "cd '$d' && bash scripts/harness/lint.sh"
+}
+t_clean_template_passes() { skip "t_clean_template_passes" "needs Task 14 templates"; }

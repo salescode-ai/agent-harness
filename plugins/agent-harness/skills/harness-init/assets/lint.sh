@@ -23,21 +23,37 @@ $(sed 's/^/        /' <<<"$bad")"
   grep -qE '^[[:space:]]*@AGENTS\.md' CLAUDE.md || fail "CLAUDE.md does not reference @AGENTS.md"
 fi
 
-# 3. Size budgets
+# 3. Size budgets (defaults; INVARIANTS.md "## Context Budget" / "## File Size Budget" override)
+# bud <section> <key> <default-warn> <default-fail> -> "warn fail"
+bud() {
+  local v=""
+  [[ -f INVARIANTS.md ]] && v=$(awk -v s="## $1" -v k="- $2:" '$0==s{on=1;next} /^## /{on=0} on && index($0,k)==1{print;exit}' INVARIANTS.md | sed -nE 's/.*warn ([0-9]+), fail ([0-9]+).*/\1 \2/p')
+  echo "${v:-$3 $4}"
+}
+read -r a_warn a_fail <<<"$(bud 'File Size Budget' 'AGENTS.md' 100 120)"
+read -r t_warn t_fail <<<"$(bud 'Context Budget' 'auto-loaded tokens' 3000 5000)"
+read -r m_warn m_fail <<<"$(bud 'File Size Budget' 'module AGENTS.md' 80 999999)"
+read -r s_warn s_fail <<<"$(bud 'File Size Budget' 'SKILL.md' 120 999999)"
 if [[ -f AGENTS.md ]]; then
   n=$(wc -l < AGENTS.md | tr -d ' ')
-  (( n > 120 )) && fail "AGENTS.md is $n lines (max 120) — move detail into docs/ or module AGENTS.md"
-  (( n > 100 && n <= 120 )) && warn "AGENTS.md is $n lines (target ≤ 100)"
+  (( n > a_fail )) && fail "AGENTS.md is $n lines (max $a_fail) — move detail into docs/ or module AGENTS.md"
+  (( n > a_warn && n <= a_fail )) && warn "AGENTS.md is $n lines (target ≤ $a_warn)"
 fi
 chars=0
 for f in CLAUDE.md AGENTS.md INVARIANTS.md; do [[ -f "$f" ]] && chars=$(( chars + $(wc -c < "$f") )); done
 tokens=$(( chars / 4 ))
-(( tokens > 5000 )) && fail "auto-loaded set ≈ $tokens tokens (max 5000): CLAUDE.md + AGENTS.md + INVARIANTS.md"
-(( tokens > 3000 && tokens <= 5000 )) && warn "auto-loaded set ≈ $tokens tokens (target ≤ 3000)"
+(( tokens > t_fail )) && fail "auto-loaded set ≈ $tokens tokens (max $t_fail): CLAUDE.md + AGENTS.md + INVARIANTS.md"
+(( tokens > t_warn && tokens <= t_fail )) && warn "auto-loaded set ≈ $tokens tokens (target ≤ $t_warn)"
 while IFS= read -r m; do
   n=$(wc -l < "$m" | tr -d ' ')
-  (( n > 80 )) && warn "$m is $n lines (module target ≤ 80)"
+  (( n > m_fail )) && fail "$m is $n lines (max $m_fail)"
+  (( n > m_warn && n <= m_fail )) && warn "$m is $n lines (module target ≤ $m_warn)"
 done < <(find . -name AGENTS.md -not -path './AGENTS.md' -not -path '*/node_modules/*' -not -path './.git/*' -not -path './.worktrees/*' 2>/dev/null)
+while IFS= read -r m; do
+  n=$(wc -l < "$m" | tr -d ' ')
+  (( n > s_fail )) && fail "$m is $n lines (max $s_fail)"
+  (( n > s_warn && n <= s_fail )) && warn "$m is $n lines (SKILL.md target ≤ $s_warn)"
+done < <(find .agents/skills -name SKILL.md 2>/dev/null)
 
 # 4. ADRs and the index agree
 if [[ -d docs/adr ]]; then
@@ -79,14 +95,51 @@ for f in "${harness_docs[@]}"; do
   done < <(grep -oE '\]\([^)[:space:]]+\)' "$f" | sed -E 's/^\]\((.*)\)$/\1/')
 done
 
-# 7. Make targets named in AGENTS.md exist
-if [[ -f AGENTS.md ]] && command -v make >/dev/null && { [[ -f Makefile ]] || [[ -f makefile ]] || [[ -f GNUmakefile ]]; }; then
+# 7. Make targets named in AGENTS.md exist (or are registered in .agents/harness.json)
+if [[ -f AGENTS.md ]] && [[ -f .agents/harness.json ]]; then
+  if command -v python3 >/dev/null; then
+    reg=$(python3 -c 'import json,sys; print("\n".join(json.load(open(".agents/harness.json")).get("commands",{})))' 2>/dev/null) \
+      || fail ".agents/harness.json is not valid JSON — fix it (expected {\"runner\": ..., \"commands\": {...}})"
+    while IFS= read -r t; do
+      grep -qx "$t" <<<"$reg" || fail "AGENTS.md names 'make $t' but .agents/harness.json has no commands.$t — register it or fix AGENTS.md"
+    done < <(grep -oE '`make [a-z][a-z0-9_-]*' AGENTS.md | awk '{print $2}' | sort -u)
+  fi
+elif [[ -f AGENTS.md ]] && command -v make >/dev/null && { [[ -f Makefile ]] || [[ -f makefile ]] || [[ -f GNUmakefile ]]; }; then
   targets=$(make -pRrq : 2>/dev/null | awk -F: '/^[a-zA-Z0-9][^$#\/\t=]*:([^=]|$)/ {print $1}' | sort -u)
   while IFS= read -r t; do
     grep -qx "$t" <<<"$targets" || fail "AGENTS.md names 'make $t' but the Makefile has no '$t' target"
   done < <(grep -oE '`make [a-z][a-z0-9_-]*' AGENTS.md | awk '{print $2}' | sort -u)
 elif [[ -f AGENTS.md ]] && grep -q '`make ' AGENTS.md; then
   fail "AGENTS.md names make targets but there is no Makefile"
+fi
+
+# 9. CLAUDE.md must not carry an Agent skills block
+[[ -f CLAUDE.md ]] && grep -qE '^##[[:space:]]+Agent skills' CLAUDE.md && fail "CLAUDE.md has a '## Agent skills' section — move to AGENTS.md"
+
+# 10. INVARIANTS.md bullets carry Severity and Enforced by (Budget sections exempt)
+if [[ -f INVARIANTS.md ]]; then
+  while IFS= read -r b; do fail "INVARIANTS.md bullet lacks '— Severity: <Critical|Important|Nice-to-have> — Enforced by: <…>': $b"
+  done < <(awk '/^## /{ex=($0=="## Context Budget"||$0=="## File Size Budget"); cat=1; next}
+    cat && !ex && /^[-*][[:space:]]/ && !/^[-*][[:space:]]+Harness target:/ &&
+    !(/Severity: (Critical|Important|Nice-to-have)/ && /Enforced by:/) {print}' INVARIANTS.md)
+fi
+
+# 11. TODO / [verify] markers in harness files are warnings
+todo_files=(INVARIANTS.md GLOSSARY.md)
+while IFS= read -r f; do todo_files+=("$f"); done < <(find . \( -name AGENTS.md -o -path './docs/*.md' \) -not -path '*/node_modules/*' -not -path './.git/*' -not -path './.worktrees/*' 2>/dev/null | sed 's|^\./||')
+for f in "${todo_files[@]}"; do
+  [[ -f "$f" ]] || continue
+  c=$(grep -cE 'TODO|\[verify\]' "$f")
+  (( c > 0 )) && warn "$f has $c TODO/[verify] marker(s) — resolve before relying on it"
+done
+
+# 12. Sensor fixtures still fire
+if [[ -f scripts/harness/sensors/registry.json ]]; then
+  if [[ ! -f scripts/harness/sensor-proof.sh ]]; then fail "sensor registry present but scripts/harness/sensor-proof.sh missing"
+  else
+    out=$(bash scripts/harness/sensor-proof.sh --recheck 2>&1) || fail "sensor recheck failed — a sensor no longer fires on its fixture:
+$(sed 's/^/        /' <<<"$out")"
+  fi
 fi
 
 # 8. Gitignore covers harness scratch
