@@ -73,3 +73,24 @@ t_member_state() {
   rm "$d/INVARIANTS.md"; assert_eq "$(member_state "$d")" partial "partial"
   rm "$d/AGENTS.md" "$d/Makefile"; assert_eq "$(member_state "$d")" none "none"
 }
+t_workspace_last_check_per_member() {
+  local ws a b; ws="$(mktemp -d)"; mkdir "$ws/a" "$ws/b"
+  cp -R "$(_gate_repo false)/." "$ws/a/"; cp -R "$(_gate_repo true)/." "$ws/b/"
+  echo '{"repos":[{"name":"a"},{"name":"b"}]}' > "$ws/harness-workspace.json"
+  _run_gate "$ws"
+  assert_eq "$RC" 2 "a fails"
+  assert_contains "$(cat "$ws/.harness/last-check-b")" " pass " "b pass"
+  [ ! -e "$ws/.harness/last-check-a" ] || _fail "a has no last-check"
+  [ ! -e "$ws/.harness/last-check" ] || _fail "no shared last-check"
+  [ ! -e "$ws/a/.harness" ] && [ ! -e "$ws/b/.harness" ] || _fail "member dirs written"
+}
+t_path_with_space() {
+  local d s; d="$(_gate_repo false)"; s="$(mktemp -d)/sp ace"; mkdir "$s"; cp -R "$d/." "$s/"
+  _run_gate "$s"
+  assert_eq "$RC" 2 "blocks"
+}
+t_cwd_in_subdir() {
+  local d; d="$(_gate_repo false)"; mkdir "$d/sub"
+  _run_gate "$d/sub"
+  assert_eq "$RC" 2 "blocks"
+}
