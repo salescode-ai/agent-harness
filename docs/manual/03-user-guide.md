@@ -118,7 +118,18 @@ Then **run `make setup` yourself** if you chose "git hooks: on" without a hook m
 
 - **`/agent-harness:harness-init one-shot`** skips step 4 and takes every default. New files start with `<!-- generated in one pass: verify before trusting -->`. Always-asked items with no safe default (Authorization, incidents, glossary meanings, CI, settings.json, new dependencies, compose/seed generation) are left as `TODO` under *Still open*.
 - **Resume.** Run the command again. It reads `init-state.json`, says `Resuming at <layer>`, and never re-asks a recorded answer. If `scan.json` is stale (different `head`) or lacks baselines, the scan is redone first. The session hook reminds you: `harness setup in progress — resume with /harness-init`.
+- **Workspace member.** From a workspace folder, `/agent-harness:harness-init <member>` (or `<member> one-shot`) runs the whole flow inside that member repo and touches nothing else. Without a member name in a workspace folder it stops, lists the members and prints that command. The agent cannot start `harness-init` itself, so a request like "create harness for portal" is answered with the command.
 - **Upgrading a v1 repo** (`AGENTS.md`/`INVARIANTS.md` exist, no state file): same flow, but the tree lists only the differences, and questions already answered by your files are skipped.
+
+### Updating the plugin and refreshing repo scripts
+
+`claude plugin update agent-harness@agent-harness` (or `claude plugin marketplace update agent-harness` first) updates the plugin, its hooks and skills. The scripts init **copied into the repo** (`scripts/harness/cmd.sh`, `lint.sh`, `setup.sh`, `setup-proof.sh`, `sensor-proof.sh`, `local-guard.sh`, `sensors/no-prod-data.sh`, `.githooks/*`, `harness.mk`; in a workspace `scripts/harness/cmd.sh` and `ws.sh`) do not change by themselves:
+
+1. The session hook says `[agent-harness] harness scripts are older than the plugin (<n> files) — run /agent-harness:harness-init to refresh`, and `harness-audit` lists them under observability.
+2. Run `/agent-harness:harness-init` (or `harness-workspace` in a workspace). Before anything else it runs `assets.py status`, then `assets.py refresh`: every **stale** copy (an unmodified older plugin copy) is replaced and listed under *Applied automatically*. A copy you **modified locally** is never overwritten; it is listed as `modified locally, review diff` with the `diff` command to compare it with the plugin copy. Repo-owned files (`Makefile`, `AGENTS.md`, `INVARIANTS.md`, `sensors/registry.json`, fixtures, your own sensors) are never touched.
+3. Commit the refreshed files and `scripts/harness/assets.json`.
+
+A copy counts as unmodified when its sha256 matches `scripts/harness/assets.json` (written at install and refresh) or a released plugin copy, so repos set up before 2.0.2 (no manifest yet) are recognised too. To check by hand: `python3 <plugin>/scripts/assets.py status .`.
 
 ## 3.3 `/agent-harness:harness-audit`
 
@@ -241,7 +252,7 @@ Scope: pin only `agent-harness` in project settings; keep other packs in user sc
 
 **The stop gate or a git hook says nothing during setup.** That's intended. While `.harness/init-state.json` exists without `"gate_wired": true`, the stop gate is silent and git hooks print `harness: setup in progress, skipping`. Finish or resume `/agent-harness:harness-init`.
 
-**`[agent-harness] git hooks not installed — run: make setup`.** `.githooks/` exists, `core.hooksPath` is unset, and there's no hook manager. Run `make setup` or `git config core.hooksPath .githooks` (the agent may run that exact command). The guard denies any other `core.hooksPath` value, `--unset`, `--global` and `-c core.hooksPath=` overrides.
+**`[agent-harness] git hooks not installed — run: make setup`.** `.githooks/` exists, `core.hooksPath` is unset, and there's no hook manager. Run `make setup` or `git config core.hooksPath .githooks` (the agent may run that exact command). Reading it (`git config core.hooksPath`, `git config --get core.hooksPath`) is allowed. The guard denies any other `core.hooksPath` value, `--unset`, `--global` and `-c core.hooksPath=` overrides.
 
 **A git hook prints `harness: check-fast not wired, skipping`.** `cmd.sh` couldn't resolve the target (`make -n check-fast` failed, or it's not in `.agents/harness.json`). Run `make -n check-fast` to see why.
 

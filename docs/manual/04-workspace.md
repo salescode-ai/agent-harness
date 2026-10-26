@@ -47,7 +47,7 @@ Run it in the workspace folder.
 5. **Cross-repo sensors (optional).** Read-only checks such as "backend OpenAPI spec matches the frontend client types", wired into workspace `check`.
 6. **Validate** with `make harness-lint` and `make status`.
 
-**Never writes inside a member repo** unless you name it, e.g. "create harness for portal". It then runs `harness-init` inside that repo, with its own interview.
+**Never writes inside a member repo.** To give a member its own harness, run `/agent-harness:harness-init <member>` from the workspace folder (`<member> one-shot` skips the interview); it works inside that member only. Asked "create harness for portal", the agent answers with that command, since it cannot start `harness-init` itself.
 
 ## Workspace commands
 

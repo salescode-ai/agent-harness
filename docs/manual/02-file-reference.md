@@ -198,7 +198,7 @@ Proposed deny rules: secrets files, `Read(./**/secrets/**)`, `Read(./**/*.pem)`,
 
 ### `scripts/harness/*`
 
-All are copied by init (or `install-local.sh`) and run from the repo root. Leave them alone unless you are fixing a bug. Changes belong upstream in the plugin.
+All are copied by init (or `install-local.sh`) and run from the repo root. Leave them alone unless you are fixing a bug. Changes belong upstream in the plugin: after a plugin update, `harness-init` refreshes unmodified copies (user guide → Updating).
 
 | File | Layer | Purpose | Read/run by |
 |---|---|---|---|
@@ -208,11 +208,12 @@ All are copied by init (or `install-local.sh`) and run from the repo root. Leave
 | `setup-proof.sh` | tools | Clones committed HEAD to a temp folder, resolves and runs `setup` there under its own compose project, tears down. Prints `setup-proof: OK`, `FAIL (<step>)` or `SKIPPED (docker not available)`. `HARNESS_PROOF_KEEP_ENV=1` copies `.env.local` in. | `setup-smith`, init step 5, `harness-audit full` |
 | `sensor-proof.sh` | sensors | `sensor-proof.sh <name>` (3-step proof) or `--recheck` (fixture fires, clean passes, for all sensors) | `sensor-smith`, `lint.sh`, `level.py`, audit |
 | `local-guard.sh` | tools | Refuses `seed`/`reset` unless every DB-like host is local. Checks env, `.env` and `.env.local` (`DATABASE_URL`, DB-scheme `*_URL`, `DB_HOST`, `*_DB_HOST`, `PGHOST`, `MYSQL_HOST`, `MONGO_URL`, `REDIS_URL`) and Spring `spring.datasource.url` in `src/main/resources/application.properties|yml` and the `application-local*`, `-dev*`, `-test*` profiles (prod and other profiles are never read). Oracle thin URLs (`jdbc:oracle:thin:@host:1521/X`, `@//host`) are parsed for their host. | `make seed`, `make reset` |
+| `assets.json` | tools | Manifest of the plugin-owned copies: `{"plugin": "<version>", "sha256": {"<path>": "<sha256>"}}` for `scripts/harness/*` (not `sensors/registry.json` or fixtures), `.githooks/*` and `harness.mk`. A copy whose hash matches is unmodified and may be refreshed; any other content is `modified` and left alone. No marker lines are added to the files themselves. Written by `assets.py install`/`refresh`; commit it. | `assets.py`, session hook, `harness-audit` |
 | `sensors/registry.json` | sensors | `{"sensors":[{"name","severity","invariant","run","mode","clean","fixture","dest"}]}`. `mode: paths` substitutes `{paths}`; `mode: copy` copies fixture files into `dest`, runs, then removes them. | `sensor-proof.sh`, `level.py` |
 | `sensors/no-prod-data.sh` | sensors | `no-prod-data.sh <path…>`: flags real-looking emails (except `@example.*`, `.test`, `.invalid`, `.local`), `prod`/`production` in host or URL contexts only (after `@` or `//`, or as a `host`/`*_HOST`/`url` value; prose and comments are ignored), `rds.amazonaws.com` hosts, real-looking phone numbers, and `.sql`/`.dump` files > 1 MB. Output `file:line: reason — use synthetic data (INVARIANTS.md Data Integrity)`. | `make check` once wired, `sensor-proof.sh` |
 | `sensors/fixtures/<name>/` | sensors | Planted violations, e.g. `no-prod-data/seed.sql` with `jane@acme.com`. Never edit them to make a proof pass. | `sensor-proof.sh` |
 
-Local-host rules in `local-guard.sh`: `localhost`, `::1`, `host.docker.internal`, `*.local`, `*.test`, `*.localhost`, `127.x.x.x` (digits only), and single-label names that are a service in a compose file in the repo (`docker-compose*.yml`, `compose*.yml`) are local. Any other single-label name (e.g. `prod`) is refused. Every host in a multi-host URL is checked.
+Local-host rules in `local-guard.sh`: `localhost`, `::1`, `host.docker.internal`, `*.local`, `*.test`, `*.localhost`, `127.x.x.x` (digits only), and single-label names that are a service in a compose file in the repo (`docker-compose*.yml`, `compose*.yml`) are local. Any other single-label name (e.g. `prod`) is refused with `<host> is not a localhost name or a service in this repo's compose files`. Every host in a multi-host URL is checked.
 
 ### `.env`, `.env.local`, `compose.harness.yml`
 
@@ -269,6 +270,7 @@ These are written only in the workspace folder by `/agent-harness:harness-worksp
 | `INVARIANTS.md` | guides | Contract first, merge order, no breaking API change without a version, no cross-repo imports, one branch name | skill | agents, `cross-repo-reviewer` | Yes |
 | `Makefile` + `ws.sh` | tools | `status`, `changed`, `check`, `check-fast`, `setup`, `claude-md`, `test R= T=`, `branch B= R=`, `bootstrap`, `harness-lint` | skill | you, agents, `harness-verify` | Prefer not |
 | `scripts/harness/cmd.sh` | tools | Resolver used by `ws.sh` for each member | skill | `ws.sh` | No |
+| `scripts/harness/assets.json` | tools | sha256 of the workspace copies of `cmd.sh` and `ws.sh`, so a plugin update can refresh them | `assets.py` | session hook | No |
 | `.env.workspace` | tools | Local wiring, e.g. `API_BASE_URL=http://localhost:<port>` from the backend's `.env.local` | skill | you (copy into the member yourself) | Yes |
 | `plans/` | context | `TEMPLATE.md`, `active/`, `done/` for cross-repo plans | skill | session hook, `harness-session`, `cross-repo-reviewer` | Yes |
 | `.claude/settings.json` | tools | Pins the plugin; denies secrets reads across members | skill (or you, if the write is refused) | Claude Code | Yes |

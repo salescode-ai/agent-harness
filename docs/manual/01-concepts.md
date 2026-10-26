@@ -62,7 +62,7 @@ Every scan finding, generated file, audit item and interview question is tagged 
 | **Acts** | After, and during the loop: the stop gate runs when the agent tries to finish; git hooks run on commit and push; `harness-verify` runs before "done". |
 | **Prevents** | "Done" claims with no evidence, broken builds handed to humans, rules that exist only on paper, and verification theatre (tests skipped or weakened to pass). |
 | **Implemented by** | `harness.mk` targets `check`, `check-fast`, `lint`, `typecheck`, `test`; `stop-gate.sh` (Stop hook); `.githooks/pre-commit` (check-fast) and `.githooks/pre-push` (check); `scripts/harness/sensors/` + `registry.json` + `fixtures/`; `sensor-proof.sh`; agents `verifier`, `invariants-reviewer`, `scope-guard`, `cross-repo-reviewer`, `sensor-smith`; optional CI workflow `harness.yml`. |
-| **Example** | The agent edits a file and tries to stop. `stop-gate.sh` sees uncommitted source changes, runs `check-fast`, it fails, and the stop is blocked with `Stop blocked by agent-harness: a repo's check-fast failed on your changes.` and the last 30 lines of output. |
+| **Example** | The agent edits a file and tries to stop. `stop-gate.sh` sees uncommitted source changes, runs `check-fast`, it fails, and the stop is blocked with `Stop blocked by agent-harness: a repo's check-fast failed on your changes.` and a summary of the output: lines with failure markers (`FAIL`, `ERROR`, `expected`, `Tests run:…Failures`…), then the last 10 lines. |
 
 Invariants carry a severity:
 
