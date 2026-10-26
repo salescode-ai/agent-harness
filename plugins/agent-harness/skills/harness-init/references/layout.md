@@ -15,7 +15,7 @@ repo/
 ├── .agents/harness.json   [tools]    only when the runner is not make: {"runner", "commands"}
 ├── .claude/settings.json  [tools]    agent-harness plugin + permission rules (team-shared)
 ├── .agents/skills/        [guides]   repo-specific skills only; .claude/skills/<name> are symlinks to these
-├── scripts/harness/       [tools]    cmd.sh (command resolver), lint.sh, setup.sh, setup-proof.sh, local-guard.sh
+├── scripts/harness/       [tools]    cmd.sh (command resolver), lint.sh, related-tests.sh, setup.sh, setup-proof.sh, local-guard.sh
 │   ├── assets.json        [tools]    sha256 of each plugin-owned copy (scripts, .githooks/, harness.mk): lets upgrades refresh unmodified copies
 │   └── sensors/           [sensors]  registry.json, project sensors, fixtures/ (planted violations), sensor-proof.sh runs them
 ├── .githooks/             [sensors]  pre-commit → check-fast, pre-push → check (or the repo's hook manager)
@@ -68,7 +68,7 @@ Every caller (hooks, verifier, git hooks, audit) resolves a target with `bash sc
 | Target | Must | Used by |
 |---|---|---|
 | `check` | lint + typecheck + full tests; exit non-zero on any failure | verifier agent, CI, "done" |
-| `check-fast` | lint + typecheck + tests touching changed files; < 60 s | stop-gate hook |
+| `check-fast` | lint + typecheck + the tests related to changed files (sources too); < 60 s | stop-gate hook |
 | `test` | all tests; `T=<path>` runs one file/test | TDD loops in every pack |
 | `smoke` | start the app and hit one real path (if there is a runnable surface) | verifier, session start |
 | `setup` | `scripts/harness/setup.sh`: safe to re-run, isolated per worktree | developers, setup-proof |
@@ -95,6 +95,24 @@ HARNESS_LINT = @echo "lint: none (declined 2026-10-26)"
 ```
 
 and pair it with `- Code is linted — Severity: Important — Enforced by: not yet enforced (declined 2026-10-26)` in `INVARIANTS.md`, so the gap stays visible to audits.
+
+**Skipped tool** (baseline `skipped`: the environment can't run it, or it timed out): wire it the same way, `HARNESS_LINT = @echo "lint: skipped (no JDK 11 on this host, 2026-10-26)"`, with `Enforced by: not yet enforced (skipped: <why>, <date>)`. The default `not configured && false` would keep `check` red and the gate unwired forever.
+
+**Tests in check-fast.** Record each baseline's wall-clock seconds (`baseline_secs` in `scan.json`). Then:
+
+- full-suite baseline `pass` in ≤ 60 s → `HARNESS_TEST_SECS = <seconds>`: check-fast runs `HARNESS_TEST_ALL`;
+- otherwise map changed files to tests with `scripts/harness/related-tests.sh [-C <module>] <stack> "<runner>"`, which receives the changed files:
+
+```make
+HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh maven "./mvnw -B -q test"          # Foo.java → FooTest/FooTests/FooIT + tests naming Foo
+HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh gradle "./gradlew test --console=plain -q"  # same, as --tests
+HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh go "go test"                       # each changed package
+HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh pytest "python3 -m pytest -q"       # test_foo.py / foo_test.py, tests naming foo, else the package's
+HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh jest "CI=true npx jest"            # --findRelatedTests (vitest: related --run; node: node --test)
+HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh -C backend maven "mvn -B -q test"  # monorepo module: runs inside backend/
+```
+
+A failing suite (legacy debt) still uses the helper: only the tests of what you touched run. `HARNESS_TEST_CHANGED` wins over `HARNESS_TEST_SECS`; with both empty check-fast runs no tests.
 
 `HARNESS_SEED`, `HARNESS_RESET` and `HARNESS_DEV` must be set **above** `include harness.mk`: their targets are defined only when set, so an unconfigured repo has no `seed` target and `make setup` skips that step.
 

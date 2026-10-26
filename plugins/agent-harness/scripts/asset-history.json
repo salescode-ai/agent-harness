@@ -18,6 +18,7 @@
   "69648245076d2a9b7fb41c9dd449fc44635d38cd57b4b8f03405415c9a96a4cc": "2.0.0",
   "845cb2a4e439fec57820aefe8ce64b33ec9cdf563eb346a6c019e83400962f38": "2.0.0",
   "9ca8121ab2a4647d4e3a507d23d5e49fedad7724255535eddad1db3254cf00bd": "2.0.0",
+  "a9a93f426a22876e1eaac15456cc1b20bc2a7c6cb269202c7fa1156e31b4e269": "2.0.3",
   "e33fa93dba7944e49094571b1a3176001e1beecb101d351f3994c1e89c87133d": "2.0.2"
  },
  "skills/harness-init/assets/harness/local-guard.sh": {
@@ -25,6 +26,9 @@
   "28557d8b76dc249d4f87e43c267e4f17488f0c03e4383d3470caf56395b482ae": "2.0.0",
   "84d02e434b95b0a8f79dc8537bd5b83d3a279f65934440ac315852ccc7537310": "2.0.0",
   "c1631460f9c1869b1b488a2ce0417ef3e9706934b68f341abca9784b80255279": "2.0.2"
+ },
+ "skills/harness-init/assets/harness/related-tests.sh": {
+  "b2ebee16334b248bf39b97fc1fcdcbc9c0cbddb3f83d4448fc1eaaa6f01baa5f": "2.0.3"
  },
  "skills/harness-init/assets/harness/sensor-proof.sh": {
   "295836d31c8d06a3ffa6c0cc3b522481e657c6f620a3dcb0c7c42cc4da9a4d09": "2.0.0",

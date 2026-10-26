@@ -65,9 +65,10 @@ Scope by target level: `Functional` → Guides and Sensors; `Robust` → all fiv
 **scan.json keys.** `commands` (`lint`, `typecheck`, `test` with `baseline`), `stacks`, `risk_paths`, `seeds`, `hook_manager`, `ci`.
 
 **Applied automatically.**
-- `check` = lint + typecheck + tests + harness-lint; `check-fast` = changed files, under 60 s.
+- `check` = lint + typecheck + tests + harness-lint; `check-fast` = lint + typecheck + the tests a change can break, under 60 s: the whole suite when its baseline took ≤ 60 s (`HARNESS_TEST_SECS`), else `scripts/harness/related-tests.sh` (`layout.md` → Tests in check-fast). A changed source file must select its tests, not only a changed test file.
 - Critical invariant, always: `- No real customer or production data in seeds or fixtures — Severity: Critical — Enforced by: scripts/harness/sensors/no-prod-data.sh`, kept only if its proof passes, else `not yet enforced`.
 - Git hooks: pre-commit runs `check-fast`, pre-push runs `check`.
+- A tool whose baseline is `skipped` (environment, timeout) is wired like a declined one, `@echo "<tool>: skipped (<why>, <date>)"` plus a `not yet enforced (skipped: <why>, <date>)` invariant; otherwise `check` can never pass and the gate never wires.
   - `hook_manager: none` → `.githooks/` from `assets/githooks/`. Only after question 4 is answered "on": `make setup` sets `core.hooksPath .githooks` (run it, or `git config core.hooksPath .githooks`, so this checkout is covered; the guard allows only that exact value). Never at install time.
   - With a hook manager, still copy `assets/githooks/*` to `.githooks/` (do **not** set `core.hooksPath`) and have the manager call them; they resolve the target and skip quietly when it is not wired:
   - `husky` → append `bash .githooks/pre-commit  # harness check-fast` to `.husky/pre-commit` and `bash .githooks/pre-push  # harness check` to `.husky/pre-push`.

@@ -125,3 +125,15 @@ t_init_member_argument_and_refresh() {
   grep -qF '/agent-harness:harness-init <repo>` (no interview: `/agent-harness:harness-init <repo> one-shot`)' "$t" || _fail "workspace AGENTS.md: opt-in command"
   grep -qF 'assets.py" status .' "$PLUGIN/skills/harness-audit/SKILL.md" || _fail "audit: stale assets"
 }
+t_init_wires_related_tests_and_skipped_tools() {
+  local f="$PLUGIN/skills/harness-init/SKILL.md" l="$PLUGIN/skills/harness-init/references/layout.md" m
+  for m in 'baseline_secs' 'HARNESS_TEST_SECS = <baseline_secs>' 'scripts/harness/related-tests.sh' \
+           'skipped (<why>, <date>)' '"gate_reason"'; do
+    grep -qF -- "$m" "$f" || _fail "init SKILL.md missing '$m'"
+  done
+  for m in 'related-tests.sh maven' 'related-tests.sh go' 'related-tests.sh pytest' 'related-tests.sh jest' \
+           'related-tests.sh gradle' 'lint: skipped ('; do
+    grep -qF -- "$m" "$l" || _fail "layout.md missing '$m'"
+  done
+  if grep -qF '`skipped` tools are not wired' "$f"; then _fail "skipped tools left unwired"; fi
+}

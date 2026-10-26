@@ -19,8 +19,12 @@ HARNESS_SETUP     ?= bash scripts/harness/setup.sh
 HARNESS_SEED      ?=
 HARNESS_RESET     ?=
 HARNESS_DEV       ?=
-# Tests for changed files only (receives the file list). Leave empty to skip tests in check-fast.
+# Tests for changed files (receives the file list), usually scripts/harness/related-tests.sh:
+#   HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh maven "./mvnw -B -q test"
 HARNESS_TEST_CHANGED ?=
+# Seconds the full suite took at init (its green baseline). With HARNESS_TEST_CHANGED empty and this <= 60,
+# check-fast runs the full suite (HARNESS_TEST_ALL). Both empty: check-fast runs no tests.
+HARNESS_TEST_SECS ?=
 # Files changed vs the base branch, plus untracked new files (used by check-fast): origin/HEAD, else origin/main, else origin/master
 HARNESS_BASE      ?= $(or $(shell git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null),$(if $(shell git rev-parse -q --verify origin/main 2>/dev/null),origin/main,origin/master))
 CHANGED            = $(shell git diff --name-only --diff-filter=ACMR $(HARNESS_BASE)...HEAD 2>/dev/null; git diff --name-only --diff-filter=ACMR HEAD 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null)
@@ -60,6 +64,10 @@ _HELP_check-fast := Quick gate (< 60 s): lint + typecheck + tests for changed fi
 check-fast: lint typecheck ## Quick gate (< 60 s): lint + typecheck + tests for changed files if configured
 ifneq ($(strip $(HARNESS_TEST_CHANGED)),)
 	$(HARNESS_TEST_CHANGED) $(CHANGED)
+else
+ifeq ($(shell [ "$(strip $(HARNESS_TEST_SECS))" -le 60 ] 2>/dev/null && echo y),y)
+	$(HARNESS_TEST_ALL)
+endif
 endif
 	@echo "check-fast: OK"
 endif
@@ -153,10 +161,10 @@ endif
 #   HARNESS_TYPECHECK = mypy --no-error-summary src
 #   HARNESS_TEST_ALL  = pytest -q --cov=src
 #   HARNESS_TEST_ONE  = pytest -q
-#   HARNESS_TEST_CHANGED = pytest -q --testmon   # or a script mapping changed files to tests
+#   HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh pytest "pytest -q"   # or HARNESS_TEST_SECS = 8
 # Example wiring (Node/TypeScript):
 #   HARNESS_LINT      = npx eslint --quiet .
 #   HARNESS_TYPECHECK = npx tsc --noEmit
 #   HARNESS_TEST_ALL  = npx vitest run --silent
 #   HARNESS_TEST_ONE  = npx vitest run
-#   HARNESS_TEST_CHANGED = npx vitest related --run
+#   HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh vitest "npx vitest"
