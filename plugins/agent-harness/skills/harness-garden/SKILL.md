@@ -7,7 +7,7 @@ description: Garbage-collect the harness — find and fix drift between the harn
 
 Code changes every day; the harness rots unless someone weeds it. This skill audits, then fixes the safe things and proposes the rest. It also applies the ranked fixes a `/harness-audit` report hands over.
 
-The check command is resolved, not assumed: `eval "$(bash scripts/harness/cmd.sh . check)"` (default `make check`).
+The check command is resolved, not assumed (default `make check`): `c="$(bash scripts/harness/cmd.sh . check)" || { echo "check not wired (exit $?)"; exit 1; }; eval "$c"`. An unwired target is a finding, not a pass.
 
 ## 1. Audit
 

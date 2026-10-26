@@ -8,14 +8,14 @@ disable-model-invocation: true
 
 Measure, don't grade. The level and layer scores come from a script; your judgement stays in the conversation. `${CLAUDE_PLUGIN_ROOT}` is this plugin's folder (two levels above this file). Checklists: `references/checks.md`.
 
-**Read-only.** Do not edit, create or delete any file, and do not commit. The only write is the log line in step 5. Every fix is handed to `harness-garden`.
+**Read-only.** Do not edit, create or delete any file, and do not commit. The only write is the log line (step 1 for `quick`, step 5 for `full`). Every fix is handed to `harness-garden`.
 
 Argument: `quick` (default) or `full`.
 
 ## 1. Measure
 
 1. If `.harness/scan.json` is missing or its `head` differs from `git rev-parse HEAD`, run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/scan.py" .` (prints only; no `--write`, keep the output in the conversation).
-2. `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/level.py" . --json --run-checks`
+2. `quick`: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/level.py" . --json --run-checks --log` — one call measures and appends the log line, so the reported and the logged level are the same measurement. `full`: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/level.py" . --json --run-checks` now, and log in step 5 once the health score is known.
    Read: `level`, `target`, `layers.<key>.score` and `layers.<key>.missing` for `guides`, `tools`, `sensors`, `context`, `observability`, `next_level_blockers`, `tokens`.
 3. In a multi-repo workspace (a `harness-workspace.json` here), level.py also measures every member; report each member's level on one line.
 
@@ -58,7 +58,7 @@ Never recommend work beyond the `target` level; say what the next level would ne
 
 ## 5. Log (the only write)
 
-- `quick`: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/level.py" . --log`
-- `full`: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/level.py" . --log --health <completeness score>`
+- `quick`: already logged in step 1.
+- `full`: compute the completeness score first, then `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/level.py" . --json --run-checks --log --health <completeness score>`. If its `level` differs from step 1, report this one (it is what was logged).
 
 This appends one script-measured line (date, level, layer scores, health, tokens) to `docs/harness/AUDIT-LOG.md`. Do not edit the log by hand or add judgements to it.

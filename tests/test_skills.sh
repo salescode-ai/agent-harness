@@ -79,3 +79,20 @@ PY
   out="$(cat "$tmp")"; rm -f "$tmp"
   assert_eq "$out" "" "referenced plugin paths exist"
 }
+t_no_false_green_eval() {
+  # eval "$(cmd.sh …)" turns an unresolved target (exit 3/4, empty output) into exit 0
+  local out
+  out="$(grep -rn 'eval "$(bash scripts/harness/cmd.sh' "$PLUGIN/skills" "$PLUGIN/agents" || true)"
+  assert_eq "$out" "" "two-step cmd.sh form only"
+}
+t_logged_level_uses_run_checks() {
+  local out
+  out="$(grep -rhn 'level.py[^`]*--log' "$PLUGIN/skills" "$PLUGIN/agents" | grep -v -- '--run-checks' || true)"
+  assert_eq "$out" "" "--log always with --run-checks"
+}
+t_init_base_and_baseline_rules() {
+  local f="$PLUGIN/skills/harness-init/SKILL.md" m
+  for m in 'git symbolic-ref --short refs/remotes/origin/HEAD' 'HARNESS_BASE' 'CI=true' 'skipped:timeout' 'compose file or seed generation'; do
+    grep -qF "$m" "$f" || _fail "init SKILL.md missing '$m'"
+  done
+}

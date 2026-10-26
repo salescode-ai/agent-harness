@@ -16,7 +16,7 @@ Write down, in three lines:
 
 ## 2. Computational gate (deterministic, cheap first)
 
-Commands are resolved, not assumed: `bash scripts/harness/cmd.sh . <target>` prints the repo's command (from `.agents/harness.json`, default `make <target>`); run it with `eval "$(bash scripts/harness/cmd.sh . <target>)"`. Exit 3 means the target is not wired: say so under Open.
+Commands are resolved, not assumed: `bash scripts/harness/cmd.sh . <target>` prints the repo's command (from `.agents/harness.json`, default `make <target>`); run it in two steps so an unwired target can't pass silently: `c="$(bash scripts/harness/cmd.sh . check)" || { echo "check not wired (exit $?)"; exit 1; }; eval "$c"`. Exit 3 (not wired) or 4 (make missing) is **not** a pass: say so under Open, and never report the gate green.
 
 Run in order, stop at the first failure and fix it before going on:
 1. `check-fast`

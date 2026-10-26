@@ -42,14 +42,16 @@ Scope by target level: `Functional` → Guides and Sensors; `Robust` → all fiv
 
 **Questions (defaults).**
 1. Runner? a) `make` ➡️ b) register another (`.agents/harness.json` with `runner` and `commands`; `harness-lint` then checks `AGENTS.md` agrees).
-2. For each unresolved dependency, one at a time: "Where can I read the details for X?" a) wiki URL b) another repo c) a teammate d) not needed locally ➡️ only if nothing in code reads it. Record each answer in `docs/SETUP.md`.
-3. Local services: a) isolated per worktree (own compose project, free ports, own DB); with no compose file, propose a local-only `compose.harness.yml` (versions from config) ➡️ b) shared across worktrees c) I run them myself.
+2. Local services across worktrees: a) isolated per worktree (own compose project, free ports, own DB) ➡️ b) shared.
+3. Only when services are needed and there is no compose file — generate a local-only `compose.harness.yml` (versions from config)? a) show it first, decide then ➡️ b) no, I run them myself. Never written without an explicit yes; "defaults" and one-shot do not count as one.
 4. Each external service that can't run locally: a) stub from OpenAPI or recorded responses ➡️ when a contract exists b) shared dev environment URL c) not needed (noted unavailable).
 5. Permission rules for `.claude/settings.json`: a) apply ➡️ b) show only. Proposed rules:
    - deny `Read(./.env)`, `Read(./.env.*)`, `Read(./**/secrets/**)`, `Read(./**/*.pem)`, `Read(./**/*.key)`;
    - deny the dangerous infrastructure and production commands found in the repo (e.g. `Bash(terraform apply:*)`, `Bash(kubectl delete:*)`, a deploy script), each with its `file:line`;
    - allow the runner's commands, e.g. `Bash(make check:*)`, `Bash(make test:*)`.
    Start from `assets/claude-settings.json`. Claude Code may refuse the write: then show the full JSON for the developer to add, and do not work around the refusal.
+
+**Then, one at a time, for each unresolved dependency** (`env_vars` with `resolved: false`, services with no config): "Where can I read the details for X?" a) wiki URL b) another repo c) a teammate d) not needed locally. Record each answer in `docs/SETUP.md`. `setup-smith` asks separately, with an explicit yes, about a synthetic seed when the repo has none.
 
 **Assumed — change any time.** Port range, compose project naming, `.env.local` as the worktree file.
 
@@ -66,9 +68,10 @@ Scope by target level: `Functional` → Guides and Sensors; `Robust` → all fiv
 - Critical invariant, always: `- No real customer or production data in seeds or fixtures — Severity: Critical — Enforced by: scripts/harness/sensors/no-prod-data.sh`, kept only if its proof passes, else `not yet enforced`.
 - Git hooks: pre-commit runs `check-fast`, pre-push runs `check`.
   - `hook_manager: none` → `.githooks/` from `assets/githooks/`; `make setup` sets `core.hooksPath .githooks`; run `git config core.hooksPath .githooks` now so this checkout is covered.
-  - `husky` → append to `.husky/pre-commit`: `eval "$(bash scripts/harness/cmd.sh . check-fast)"`, and to `.husky/pre-push` the same with `check`.
-  - `lefthook` → in `lefthook.yml`: `pre-commit: commands: harness-check-fast: run: eval "$(bash scripts/harness/cmd.sh . check-fast)"`, and a `pre-push` entry with `check`.
-  - `pre-commit` → a `repo: local` hook in `.pre-commit-config.yaml`: `id: harness-check-fast`, `entry: bash -c 'eval "$(bash scripts/harness/cmd.sh . check-fast)"'`, `language: system`, `pass_filenames: false`; and one for `check` with `stages: [pre-push]`.
+  - With a hook manager, still copy `assets/githooks/*` to `.githooks/` (do **not** set `core.hooksPath`) and have the manager call them; they resolve the target and skip quietly when it is not wired:
+  - `husky` → append `bash .githooks/pre-commit  # harness check-fast` to `.husky/pre-commit` and `bash .githooks/pre-push  # harness check` to `.husky/pre-push`.
+  - `lefthook` → in `lefthook.yml`: `pre-commit: commands: harness-check-fast: run: bash .githooks/pre-commit`, and `pre-push: commands: harness-check: run: bash .githooks/pre-push`.
+  - `pre-commit` → a `repo: local` hook in `.pre-commit-config.yaml`: `id: harness-check-fast`, `entry: bash .githooks/pre-commit`, `language: system`, `pass_filenames: false`; and `id: harness-check`, `entry: bash .githooks/pre-push`, `stages: [pre-push]`.
 
 **Questions (defaults).**
 1. Proposed invariants, each with severity: a) Critical (fails `check`, blocks the stop gate) b) Important ➡️ (warning; `harness-verify` sends it to a human) c) Nice-to-have (audit only). Format: `- <rule> — Severity: <tier> — Enforced by: <target | hook | sensor | human review | not yet enforced>`.
@@ -118,7 +121,7 @@ Where checks run (show before question 5):
 **Applied automatically.**
 - `## Cadence` in `AGENTS.md`: quick audit monthly, full audit quarterly or after any incident, garden weekly.
 - Default limits (root `AGENTS.md` ≤ 100 lines, auto-loaded ≤ 3k tokens warn / 5k fail).
-- First history row: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/level.py" . --log` → `docs/harness/AUDIT-LOG.md`.
+- First history row: written by the final report's `level.py . --json --run-checks --log` (`SKILL.md` step 6) → `docs/harness/AUDIT-LOG.md`.
 
 **Questions.** None by default. Cadence and budget overrides are assumed; ask only if the developer raises them (overrides go in `INVARIANTS.md` `## Context Budget` / `## File Size Budget`). Enterprise target with CI present: a) add a CI audit job b) no ➡️.
 

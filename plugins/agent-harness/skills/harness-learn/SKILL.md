@@ -26,7 +26,7 @@ Prefer the top of this ladder. A rule a machine checks beats a rule an agent mus
 | 3. Check step / CI step | A check exists but is not run | `harness.mk` (or `.agents/harness.json`), CI workflow | add migration dry-run to `check` |
 | 4. Invariant | A hard rule a machine can't check yet | `INVARIANTS.md`: `- <rule> — Severity: <Critical\|Important\|Nice-to-have> — Enforced by: not yet enforced` | "no PII in logs" |
 | 5. Footgun | A trap with a known safe path | root or module `AGENTS.md` (one line + ADR link) | "dates are IST in the DB" |
-| 6. Routing / artifact line | A skill used the wrong default | `AGENTS.md` Skills and plugins or Work Artifacts | plans go in `docs/plans/active/` |
+| 6. Routing / artifact line | A skill used the wrong default | `AGENTS.md` `## Agent skills` or Work Artifacts | plans go in `docs/plans/active/` |
 | 7. ADR | The *why* behind a choice was missing | `docs/adr/NNNN-*.md` + index row | why we keep the legacy API |
 | 8. Glossary | Wrong or inconsistent domain word | `GLOSSARY.md` | "outlet", not "store" |
 
@@ -38,7 +38,7 @@ Write rules as instructions with the reason, not just prohibitions: *"Use `Money
    Every new invariant carries a severity (Critical fails `check`; Important goes to a human in `harness-verify`; Nice-to-have shows in the audit) — ask the developer which.
 2. Check you did not duplicate an existing rule (one owner per fact). Update instead of adding.
 3. Changes to `INVARIANTS.md` or Agent Authorization need a human yes — propose, don't write.
-4. Run `bash scripts/harness/lint.sh` and the check command: `eval "$(bash scripts/harness/cmd.sh . check)"` (default `make check`).
+4. Run `bash scripts/harness/lint.sh` and the check command (default `make check`): `c="$(bash scripts/harness/cmd.sh . check)" || { echo "check not wired (exit $?)"; exit 1; }; eval "$c"`.
 
 ## 4. Prune
 

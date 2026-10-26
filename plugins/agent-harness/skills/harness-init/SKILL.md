@@ -19,7 +19,7 @@ Scan first, ask last. Apply what the code proves; ask only what code can't answe
 
 ## 0. Resume or upgrade
 
-- Read `.harness/init-state.json` if present: `{"layers_done":[…], "answers":{…}, "gate_wired":bool, "target":"Robust"}`. Layer keys: `guides`, `tools`, `sensors`, `context`, `observability`. Say "Resuming at <next layer>" and jump to step 4 for the first layer not in `layers_done`; never re-ask a recorded answer.
+- Read `.harness/init-state.json` if present: `{"layers_done":[…], "answers":{…}, "gate_wired":bool, "target":"Robust"}`. Layer keys: `guides`, `tools`, `sensors`, `context`, `observability`. Say "Resuming at <next layer>" and jump to step 4 for the first layer **in scope for `target`** (Functional: `guides`, `sensors`; Robust/Enterprise: all five) that is not in `layers_done`; never re-ask a recorded answer. If `.harness/scan.json` is missing, its `head` differs from `git rev-parse HEAD`, or any `commands[]` entry lacks `baseline`, redo step 1 (scan and baselines) first.
 - **v1 upgrade** (`AGENTS.md`/`INVARIANTS.md` exist, no state file): same flow, but the tree in step 3 lists only differences and questions already answered by existing files are skipped.
 
 ## 1. Scan (no questions)
@@ -27,7 +27,7 @@ Scan first, ask last. Apply what the code proves; ask only what code can't answe
 0. Run the probe in `references/probe.md` (fresh repo only); keep the answer in the conversation for step 5.
 1. `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/scan.py" . --write` → `.harness/scan.json` (gitignored, keyed to `head`). If it exists with the current `git rev-parse HEAD`, reuse it.
 2. Dispatch `repo-cartographer` (`agent-harness:repo-cartographer`; no subagents → follow `${CLAUDE_PLUGIN_ROOT}/agents/repo-cartographer.md` yourself). Keep its report in the conversation.
-3. **Green baseline.** After the cartographer returns (it re-runs the scan), run every `commands[]` entry except `install`, `dev` and watch modes from its `module` folder on the untouched repo (timeout 5 min each). Add `"baseline": "pass"` · `"fail: <n> errors"` · `"skipped: <why>"` to that entry in `scan.json`. A failure caused by the environment (no Docker, no JDK) is `skipped`, not `fail`.
+3. **Green baseline.** After the cartographer returns (it re-runs the scan), run every `commands[]` entry except `install`, `dev` and watch modes from its `module` folder on the untouched repo (timeout 5 min each). Run non-interactively: Jest / react-scripts with `CI=true` (otherwise they watch), Maven with `-B -q`, Gradle with `--console=plain`. Add `"baseline": "pass"` · `"fail: <n> errors"` · `"skipped: <why>"` to that entry in `scan.json`. A failure caused by the environment (no Docker, no JDK) is `skipped`, not `fail`. A timeout is `"skipped:timeout"`: not wired, and reported under Still open.
 
 ## 2. Decide auto vs ask
 
@@ -55,8 +55,9 @@ After **one** yes, write everything. **Install step** (copy, then `chmod +x` the
 - `${CLAUDE_PLUGIN_ROOT}/scripts/harness-cmd.sh` → `scripts/harness/cmd.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/harness-init/assets/harness/*` → `scripts/harness/` (setup.sh, setup-proof.sh, sensor-proof.sh, local-guard.sh, sensors/)
 - `${CLAUDE_PLUGIN_ROOT}/skills/harness-init/assets/lint.sh` → `scripts/harness/lint.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/harness-init/assets/githooks/*` → `.githooks/` — only when `scan.json` `hook_manager` is `none`; otherwise add the two commands to that manager's config (layers.md → Sensors)
-- `${CLAUDE_PLUGIN_ROOT}/skills/harness-init/assets/harness.mk` → repo root. Add `include harness.mk` to the `Makefile` **after** the repo's own default target (create a `Makefile` with only the include if none exists). For each target the Makefile already defines (`help`, `check`, `test`, `setup`…), put `HARNESS_DEFINE_<NAME>=0` above the include (upper-case, `-` → `_`) and ask which one wins. Set `HARNESS_*` variables only to commands whose baseline is `pass`. Then `make -n help` must succeed.
+- `${CLAUDE_PLUGIN_ROOT}/skills/harness-init/assets/githooks/*` → `.githooks/`. With `hook_manager: none` set `core.hooksPath`; otherwise the manager's config calls these scripts (layers.md → Sensors)
+- `${CLAUDE_PLUGIN_ROOT}/skills/harness-init/assets/harness.mk` → repo root. Add `include harness.mk` to the `Makefile` **after** the repo's own default target (create a `Makefile` with only the include if none exists). For each target the Makefile already defines (`help`, `check`, `test`, `setup`…), put `HARNESS_DEFINE_<NAME>=0` above the include (upper-case, `-` → `_`) and ask which one wins. Set `HARNESS_*` variables to commands whose baseline is `pass`; a tool whose baseline is `fail` is wired in its changed-files form (`references/layout.md`, `harness_changed`) and its debt recorded as a `not yet enforced (<n> errors, <date>)` invariant, so `check` can pass on today's code. `skipped` tools are not wired. Then `make -n help` must succeed.
+- **Base branch.** `b="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)"`; if empty, use `origin/main` if `git rev-parse -q --verify origin/main` succeeds, else `origin/master`, else the current branch's upstream (`git rev-parse --abbrev-ref @{u}`). Write `HARNESS_BASE = <that ref>` (e.g. `origin/master`) into the `Makefile` above the include, and list it under Assumed.
 - Templates from `assets/` (AGENTS.md, INVARIANTS.md, CLAUDE.md, GLOSSARY.md, docs/); append `assets/gitignore.append` to `.gitignore`.
 
 New files carry `TODO` where an answer is pending. TODOs are lint **warnings** during setup.
@@ -85,14 +86,14 @@ Assumed — change any time: hook names · check-fast base origin/main · fixtur
 ## 5. Verify
 
 1. `bash scripts/harness/lint.sh` — FAILs fixed, TODO warnings listed.
-2. Check gate: `eval "$(bash scripts/harness/cmd.sh . check-fast)"`, then the same with `check`. When check-fast is wired and green, set `"gate_wired": true` (until then the stop gate stays silent).
-3. Setup proof: `setup-smith` runs `bash scripts/harness/setup-proof.sh` in a fresh clone (commit the wiring first, or tell the developer the proof sees only committed files).
+2. Check gate: `c="$(bash scripts/harness/cmd.sh . check-fast)" || { echo "check-fast not wired (exit $?)"; exit 1; }; eval "$c"`; then the same with `check`. An unresolved target (exit 3/4, empty output) is **not** green. Set `"gate_wired": true` only when check-fast resolved **and** exited 0 (until then the stop gate stays silent).
+3. Setup proof (only when `tools` is in scope for the target; otherwise skip and say so): `setup-smith` runs `bash scripts/harness/setup-proof.sh` in a fresh clone (commit the wiring first, or tell the developer the proof sees only committed files).
 4. Sensors: `bash scripts/harness/sensor-proof.sh --recheck`.
 5. Probe again (fresh session if possible); report the difference in the conversation only.
 
 ## 6. Final report
 
-Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/level.py" .` and report:
+Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/level.py" . --json --run-checks --log` (runs the real check, so the reported and the logged level agree; the log line seeds the audit history) and report from its output:
 
 ```text
 Level: <measured> · target: <target> · blocked by: <first blockers>
@@ -104,4 +105,4 @@ Next: /harness-audit in a month · /harness-garden weekly
 
 ## one-shot mode
 
-Same flow without step 4: every ➡️ default is taken, nothing is asked, and every new file starts with `<!-- generated in one pass: verify before trusting -->`. Always-asked items with no safe default (Authorization, incidents, glossary meanings, CI, settings.json, new dependencies) are left as `TODO` and listed under Still open. Save `init-state.json` with all layer keys and `"answers": {"mode": "one-shot"}`.
+Same flow without step 4: every ➡️ default is taken, nothing is asked, and every new file starts with `<!-- generated in one pass: verify before trusting -->`. Always-asked items with no safe default (Authorization, incidents, glossary meanings, CI, settings.json, new dependencies, compose file or seed generation) are never applied by default: they are left as `TODO` and listed under Still open. Save `init-state.json` with all layer keys and `"answers": {"mode": "one-shot"}`.
