@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # local-guard.sh -- refuse seed/reset unless every DB-ish host is local. Run from the repo root.
-# Reads env, .env, .env.local and Spring src/main/resources/application*.properties|yml.
+# Reads env, .env, .env.local and Spring src/main/resources/application.properties|yml plus the
+# local/dev/test profiles (application-local*, -dev*, -test*); prod/other profiles are never read.
 # HARNESS_ALLOW_SEED=1 overrides with a warning.
 bad=""
 local_host() {
@@ -9,10 +10,22 @@ local_host() {
     ''|localhost|::1|host.docker.internal|*.local|*.test|*.localhost) return 0;;
     *.*|*:*) return 1;;
   esac
-  return 0  # bare single-label name = compose service
+  # bare single-label name: local only when it is a service in a compose file in this repo
+  printf '%s\n' "$SERVICES" | grep -qxF "$1"
 }
-hosts_of() { # url or bare host -> one host per line (multi-host URLs: h1:1,h2:2)
-  local v="$1" h; v="${v#*://}"; v="${v%%/*}"; v="${v%%\?*}"; v="${v##*@}"
+compose_services() { # top-level keys under "services:" in the repo's compose files
+  local f
+  for f in docker-compose*.yml docker-compose*.yaml compose*.yml compose*.yaml; do
+    [ -f "$f" ] || continue
+    awk '/^services:/{s=1;next} /^[^[:space:]#]/{s=0}
+      s && /^[[:space:]]+[A-Za-z0-9._-]+:[[:space:]]*(#.*)?$/ {
+        match($0,/^[[:space:]]+/); if(!ind) ind=RLENGTH
+        if(RLENGTH==ind){ sub(/^[[:space:]]+/,""); sub(/:.*/,""); print } }' "$f"
+  done
+}
+SERVICES="$(compose_services)"
+hosts_of() { # url or bare host -> one host per line (multi-host URLs: h1:1,h2:2; Oracle thin @host / @//host)
+  local v="$1" h; v="${v#*://}"; v="${v#*@//}"; v="${v%%/*}"; v="${v%%\?*}"; v="${v##*@}"
   printf '%s\n' "$v" | tr ',' '\n' | while IFS= read -r h; do
     case "$h" in \[*) h="${h#[}"; h="${h%%]*}";; *) h="${h%%:*}";; esac
     printf '%s\n' "$h"
@@ -29,17 +42,20 @@ check() { # name value; only DB-scheme URLs count for generic *_URL vars
 envfile() { # KEY=VALUE lines from a dotenv file; tolerates "export", indentation and spaces around =
   sed -nE 's/^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$/\2=\3/p' "$1"
 }
+local_profile() { # default, local, dev and test profile files only (a prod profile always points at prod)
+  case "${1##*/}" in application.*|application-local*|application-dev*|application-test*) [ -f "$1" ];; *) return 1;; esac
+}
 spring() { # Spring datasource settings -> SPRING_DATASOURCE_URL / SPRING_DATASOURCE_HOST lines
   local f
   for f in src/main/resources/application*.properties */src/main/resources/application*.properties; do
-    [ -f "$f" ] || continue
+    local_profile "$f" || continue
     sed -nE 's/^[[:space:]]*spring\.datasource\.([A-Za-z.-]*)url[[:space:]]*[=:][[:space:]]*(.*)$/SPRING_DATASOURCE_URL=\2/p
 s/^[[:space:]]*spring\.datasource\.([A-Za-z.-]*)host[[:space:]]*[=:][[:space:]]*(.*)$/SPRING_DATASOURCE_HOST=\2/p' "$f"
   done
   # shortcut: YAML is read line by line (any "url:" holding a DB/jdbc URL); upgrade if non-datasource DB URLs misfire
   for f in src/main/resources/application*.yml src/main/resources/application*.yaml \
            */src/main/resources/application*.yml */src/main/resources/application*.yaml; do
-    [ -f "$f" ] || continue
+    local_profile "$f" || continue
     sed -nE 's/^[[:space:]]*(spring\.datasource\.)?url:[[:space:]]*(.*)$/SPRING_DATASOURCE_URL=\2/p' "$f"
   done
 }

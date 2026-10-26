@@ -153,6 +153,7 @@ t_local_guard() {
   assert_exit 1 "prod url" -- bash -c "cd '$d' && env -i PATH=\"\$PATH\" DATABASE_URL=postgres://u:p@db.prod.example.com:5432/x bash '$g'"
   assert_contains "$(run DATABASE_URL=postgres://u:p@db.prod.example.com:5432/x || true)" "DATABASE_URL=db.prod.example.com" "names var and host"
   run DATABASE_URL=postgres://u@localhost/x >/dev/null
+  printf 'services:\n  postgres:\n    image: postgres\n  a:\n    image: x\n  b:\n    image: x\n  mysql:\n    image: mysql\n' > "$d/docker-compose.yml"
   run DATABASE_URL=postgres://u@postgres:5432/x REDIS_URL=redis://[::1]:6379 DB_HOST=127.0.0.1 >/dev/null
   run API_URL=https://api.example.com >/dev/null   # not a db scheme
   printf 'DB_HOST=rds.amazonaws.com\n' > "$d/.env"
@@ -161,6 +162,7 @@ t_local_guard() {
 }
 t_local_guard_bypasses_closed() {
   local d g; d="$(mktemp -d)"; g="$S/local-guard.sh"
+  printf 'services:\n  a:\n    image: x\n  b:\n    image: x\n  mysql:\n    image: mysql\n' > "$d/compose.yml"
   gr() { ( cd "$d" && env -i PATH="$PATH" "$@" bash "$g" ) >/dev/null 2>&1; }
   gr DB_HOST=127.evil.com && _fail "127.evil.com allowed"
   gr DB_HOST=127.0.0.1 || _fail "127.0.0.1 refused"
@@ -197,4 +199,27 @@ t_make_seed_refuses_without_guard() {
   out="$(cd "$d" && make reset 2>&1)" && return 1
   assert_contains "$out" "reset: scripts/harness/local-guard.sh missing — refusing" "reset msg"
   assert_contains "$(cd "$d" && HARNESS_ALLOW_SEED=1 make -s seed 2>&1)" seeded "override"
+}
+t_local_guard_skips_prod_profiles() {
+  local d g; d="$(mktemp -d)"; g="$S/local-guard.sh"; mkdir -p "$d/src/main/resources"
+  gr() { ( cd "$d" && env -i PATH="$PATH" "$@" bash "$g" ) >/dev/null 2>&1; }
+  printf 'spring.datasource.url=jdbc:postgresql://db.prod.example.com/x\n' > "$d/src/main/resources/application-prod.properties"
+  printf 'spring:\n  datasource:\n    url: jdbc:postgresql://db.prod.example.com/x\n' > "$d/src/main/resources/application-production.yml"
+  printf 'spring.datasource.url=jdbc:postgresql://localhost/x\n' > "$d/src/main/resources/application.properties"
+  gr || _fail "prod profile files must not be read"
+  printf 'spring.datasource.url=jdbc:postgresql://db.prod.example.com/x\n' > "$d/src/main/resources/application-test.properties"
+  gr && _fail "test profile must be read"
+  true
+}
+t_local_guard_single_label_needs_compose_service() {
+  local d g; d="$(mktemp -d)"; g="$S/local-guard.sh"
+  gr() { ( cd "$d" && env -i PATH="$PATH" "$@" bash "$g" ) >/dev/null 2>&1; }
+  gr SPRING_DATASOURCE_URL=jdbc:oracle:thin:@prod:1521/X && _fail "oracle thin single-label host allowed"
+  gr SPRING_DATASOURCE_URL=jdbc:oracle:thin:@//prod:1521/X && _fail "oracle thin @// host allowed"
+  gr DB_HOST=db && _fail "single-label without compose allowed"
+  printf 'services:\n  db:  # local\n    image: postgres\n    environment:\n      oracle: x\n' > "$d/docker-compose.yml"
+  gr DB_HOST=db || _fail "compose service refused"
+  gr SPRING_DATASOURCE_URL=jdbc:oracle:thin:@db:1521/X || _fail "oracle thin compose service refused"
+  gr DB_HOST=oracle && _fail "nested key is not a service"
+  gr SPRING_DATASOURCE_URL=jdbc:oracle:thin:@localhost:1521/X || _fail "localhost refused"
 }
