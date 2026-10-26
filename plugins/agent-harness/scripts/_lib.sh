@@ -45,7 +45,7 @@ active_plan() { # active_plan <root> <branch>: plan for the branch's ticket key 
   [[ -z "$cands" ]] && return
   if [[ -n "$key" ]]; then  # file name, then the plan's Ticket: line
     f="$(grep -iE -- "(^|[^A-Za-z0-9])$key([^0-9]|$)" <<<"$cands" | head -1)"
-    [[ -z "$f" ]] && f="$(while IFS= read -r c; do grep -qiE -- "Ticket[*]*:[*]*[[:space:]]*$key([^0-9]|$)" "$root/$c" 2>/dev/null && { echo "$c"; break; }; done <<<"$cands")"
+    [[ -z "$f" ]] && f="$(while IFS= read -r c; do grep -qiE -- "Ticket[*]*:(.*[^A-Za-z0-9])?$key([^0-9]|$)" "$root/$c" 2>/dev/null && { echo "$c"; break; }; done <<<"$cands")"
     [[ -n "$f" ]] && { echo "$f"; return; }
   fi
   if [[ -n "$slug" ]]; then f="$(grep -i -- "$slug" <<<"$cands" | head -1)"; [[ -n "$f" ]] && { echo "$f"; return; }; fi

@@ -78,8 +78,8 @@ if [[ -d .claude/skills ]]; then
   done
 fi
 while IFS= read -r s; do
-  head -5 "$s" | grep -q '^name:' || fail "$s has no 'name:' in its front matter"
-  head -8 "$s" | grep -q '^description:' || fail "$s has no 'description:' in its front matter"
+  head -5 "$s" | grep '^name:' >/dev/null || fail "$s has no 'name:' in its front matter"
+  head -8 "$s" | grep '^description:' >/dev/null || fail "$s has no 'description:' in its front matter"
 done < <(find .agents/skills -name SKILL.md 2>/dev/null)
 
 # 6. Relative links in harness docs resolve
@@ -184,7 +184,7 @@ if (( reg_ok )) && [[ "$runner" == make && -f harness.mk ]] && command -v make >
   test_re='(^|/)(src/test[^/]*|tests?|__tests__|spec)/|\.(test|spec)\.|_test\.(go|py)$|(^|/)test_[^/]*\.py$|Tests?\.[a-z]+$|IT\.[a-z]+$'
   srcs=$(sed -n 's/^file=//p' <<<"$plan" | grep -E "$src_re" | grep -vE "$test_re" | sort -u)
   if [[ "$secs" =~ ^[0-9]+$ ]] && (( secs <= 60 )) && [[ "$mode" == none ]]; then srcs=""; fi  # full suite runs
-  if [[ -n "$srcs" ]] && git ls-files --cached --others --exclude-standard 2>/dev/null | grep -qE "$test_re"; then
+  if [[ -n "$srcs" ]] && git ls-files --cached --others --exclude-standard 2>/dev/null | grep -E "$test_re" >/dev/null; then  # not grep -q: under pipefail its early exit SIGPIPEs git (141) on big repos
     case "$mode" in
       related) untested=$(sed -n 's/^none: //p' <<<"$plan") ;;
       custom)  untested=""; warn "check-fast: HARNESS_TEST_CHANGED does not use related-tests.sh, so changed source files ($(head -1 <<<"$srcs")…) may select no tests; wire scripts/harness/related-tests.sh (see layout.md)" ;;

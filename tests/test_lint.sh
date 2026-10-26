@@ -112,6 +112,19 @@ t_check_fast_untested_source_warns() {
   d="$(_tp 'HARNESS_TEST_CHANGED = ./mvnw test $(TEST_FILES)')"; out="$(_run "$d")"
   assert_contains "$out" "does not use related-tests.sh" "custom wiring flagged once"
 }
+t_check_fast_warning_survives_sigpipe() {
+  # a big repo: grep stops reading early, so under pipefail `ls-files | grep -q` returned 141 and skipped the warning
+  local d out b real; d="$(_tp 'HARNESS_TEST_CHANGED = ./mvnw test $(TEST_FILES)')"; b="$(mktemp -d)"; real="$(command -v git)"
+  printf '#!/usr/bin/env bash
+if [ "$*" = "ls-files --cached --others --exclude-standard" ]; then
+  echo src/test/java/a/FooTest.java; yes src/main/java/a/Gen.java | head -n 300000; exit
+fi
+exec "%s" "$@"
+' "$real" > "$b/git"
+  chmod +x "$b/git"
+  out="$(cd "$d" && PATH="$b:$PATH" bash scripts/harness/lint.sh 2>&1)"
+  assert_contains "$out" "does not use related-tests.sh" "warning printed on a large ls-files"
+}
 _plan() { # _plan <repo> <dir> <name> <ticket line> [extra]: a plan file from the template header
   mkdir -p "$1/docs/plans/$2"; printf '# Plan: x\n\n**Status**: active · **Owner**: me\n%s\n\n## Steps\n- [ ] 1. a\n%b' "$4" "${5:-}" > "$1/docs/plans/$2/$3"
 }
@@ -120,7 +133,8 @@ t_plan_ticket_required() {
   for t in '**Ticket**: ABC-12' '**Ticket**: #42' 'Ticket: .scratch/feat/issues/01-a.md' '**Ticket**: none (spike, no tracker)'; do
     _plan "$d" active p.md "$t"; out="$(_run "$d")" || _fail "accepted form refused: $t"
   done
-  for t in '**Ticket**: <KEY-123 | #123 | none (<reason>)>' '**Ticket**: none' '**Ticket**: TODO' '**Owner**: me' '**Ticket**: soon'; do
+  for t in '**Ticket**: <KEY-123 | #123 | none (<reason>)>' '**Ticket**: none' '**Ticket**: TODO' '**Owner**: me' '**Ticket**: soon' \
+           '**Ticket**: KEY-123' '**Ticket**: ABC-123' 'Ticket: XXX-000' '**Ticket**: [KEY-7](https://x/browse/KEY-7)'; do
     _plan "$d" active p.md "$t"; out="$(_run "$d")" && _fail "placeholder accepted: $t"
     assert_contains "$out" "docs/plans/active/p.md" "names the plan"
   done

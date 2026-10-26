@@ -141,13 +141,13 @@ case "$cmd" in
   lint)
     fail=0
     [[ -f "$WS/AGENTS.md" ]] || { echo "FAIL  workspace AGENTS.md missing"; fail=1; }
-    if [[ -f "$WS/CLAUDE.md" ]] && grep -vE '^[[:space:]]*$|^[[:space:]]*#|^[[:space:]]*@[^ ]+[[:space:]]*$' "$WS/CLAUDE.md" | grep -q .; then echo "FAIL  workspace CLAUDE.md has real content"; fail=1; fi
+    if [[ -f "$WS/CLAUDE.md" ]] && grep -vE '^[[:space:]]*$|^[[:space:]]*#|^[[:space:]]*@[^ ]+[[:space:]]*$' "$WS/CLAUDE.md" | grep . >/dev/null; then echo "FAIL  workspace CLAUDE.md has real content"; fail=1; fi
     while IFS=$'\t' read -r name path _ _; do
       grep -q -- "$name" "$WS/AGENTS.md" 2>/dev/null || { echo "FAIL  $name is in the manifest but not in AGENTS.md"; fail=1; }
       is_repo "$path" || { echo "warn  $name not checked out"; continue; }
       st="$(state "$path")"; [[ "$st" == present ]] || skip_warn "$name" "$st" "$path"
     done <<<"$(members)"
-    for o in $(merge_order); do members | cut -f1 | grep -qx "$o" || { echo "FAIL  mergeOrder names unknown repo $o"; fail=1; }; done
+    for o in $(merge_order); do members | cut -f1 | grep -x "$o" >/dev/null || { echo "FAIL  mergeOrder names unknown repo $o"; fail=1; }; done
     for f in "$WS"/plans/active/*.md; do  # cross-repo plans carry a ticket (the same reading as a repo's harness-lint)
       [[ -f "$f" ]] || continue
       [[ -f "$WS/scripts/harness/plan-check.sh" ]] || { echo "warn  scripts/harness/plan-check.sh missing — plan tickets not checked; run /agent-harness:harness-upgrade"; break; }

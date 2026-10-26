@@ -62,3 +62,14 @@ t_session_plan_by_ticket_key_and_verification() {
   assert_contains "$out" "active plan: docs/plans/active/2026-10-27-checkout.md" "key from the Ticket: line, any case"
   assert_contains "$out" "last verification: none on this machine" "no entry"
 }
+t_session_plan_by_ticket_key_any_form() {
+  local d out t; d="$(_sess_repo)"; mkdir -p "$d/docs/plans/active"; git -C "$d" checkout -q -b SHOP-12-x
+  for t in '**Ticket**: **SHOP-12**' '**Ticket**: [SHOP-12](https://x.atlassian.net/browse/SHOP-12)' \
+           'Ticket: https://x.atlassian.net/browse/SHOP-12' '**Ticket**: SHOP-100, SHOP-12' '**Ticket**:SHOP-12'; do
+    printf '# Plan: a\n%s\n## Steps\n- [ ] 1. a\n' "$t" > "$d/docs/plans/active/2026-10-27-pay.md"
+    touch -t 202601010000 "$d/docs/plans/active/2026-10-27-pay.md"
+    printf '# Plan: b\n**Ticket**: SHOP-120\n## Steps\n- [ ] 1. b\n' > "$d/docs/plans/active/2026-10-28-other.md"
+    out="$(_sess "$d")"
+    assert_contains "$out" "active plan: docs/plans/active/2026-10-27-pay.md" "$t"
+  done
+}

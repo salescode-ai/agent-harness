@@ -46,9 +46,12 @@ case "$cmd" in
     [[ -f "$plan" ]] || { echo "$plan: no such plan" >&2; exit 2; }
     v="$(ticket_of "$plan")"
     if [[ -z "$v" || "$v" == *"<"* || "$v" =~ ^(TODO|tbd|TBD|\[verify\]|none|none\ *\(\ *\))$ ]]; then
-      echo "$plan has no ticket — set 'Ticket: <KEY-123 | #123 | .scratch/... | none (<reason>)>' under the title"; exit 1
+      echo "$plan has no ticket — set 'Ticket: <your Jira key | #<issue> | .scratch/... | none (<reason>)>' under the title"; exit 1
     fi
     key="$(grep -oE '(^|[^A-Za-z0-9])[A-Z][A-Z0-9]+-[0-9]+([^0-9]|$)' <<<"$v" | head -1 | grep -oE '[A-Z][A-Z0-9]+-[0-9]+')"
+    if [[ "$key" =~ ^(KEY-[0-9]+|ABC-123|XXX-0+)$ ]]; then  # template / hint examples, not tickets
+      echo "$plan Ticket $key is an example key — set the real ticket"; exit 1
+    fi
     if [[ -n "$key" ]]; then
       jira="$(grep -oE 'Jira project `[A-Z][A-Z0-9]+`' docs/agents/issue-tracker.md 2>/dev/null | head -1 | tr -d '`' | awk '{print $3}')"
       [[ -n "$jira" && "${key%-*}" != "$jira" ]] && { echo "$plan Ticket $key is not in Jira project $jira (docs/agents/issue-tracker.md)"; exit 2; }
@@ -56,7 +59,7 @@ case "$cmd" in
     fi
     # #123, an issue/browse/merge-request URL, a .scratch/ path, or none (<reason>)
     grep -qE '(^|[^&A-Za-z0-9])#[0-9]+|https?://[^ ]+/(issues|browse|pull|merge_requests)/[^ ]+|(^|[ (])\.scratch/|^none \(.+\)$' <<<"$v" && exit 0
-    echo "$plan Ticket '$v' names no Jira key (ABC-123), #123, issue URL, .scratch/ path or 'none (<reason>)'"; exit 1 ;;
+    echo "$plan Ticket '$v' names no Jira key (<PROJECT>-<number>), #123, issue URL, .scratch/ path or 'none (<reason>)'"; exit 1 ;;
   fresh)
     [[ -f "$plan" ]] || { echo "no verification evidence on this machine ($plan) — run harness-verify"; exit 1; }
     e="$(latest "$plan")"

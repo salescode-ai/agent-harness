@@ -27,7 +27,7 @@ Run `… migrate.py status .` again (after the refresh). Each line is `<kind> <i
 
 1. **auto** — `… migrate.py apply .`: new files, unedited plugin templates, local `.harness/` state. List each under Applied automatically.
 2. **propose** — `… migrate.py diff .` prints ONE unified diff for every repo-owned edit. Show it whole, then ask once: "Apply these edits? yes / no / skip <id,…>". Only on yes: `… migrate.py accept .` (with `--skip <ids>` if asked). On no, nothing is written; list them under Still open.
-   - `plan-ticket` lines that propose `none (no ticket recorded before 2.0.4)` need a real answer: ask for the key (or a true reason) per plan before the diff is accepted; never let the upgrade end with an active plan lint will fail on, without saying so.
+   - `plan-ticket` lines that propose `none (no ticket recorded before 2.0.4)` need a real answer: lint accepts any `none (<reason>)`, so it will **not** flag this fallback later. Ask for the key (or a true reason) per plan before the diff is accepted; a kept fallback goes under Still open.
 3. **manual** — each needs a decision or a run; do them with the developer, one short question each (options + ➡️ default), following `references/migrations.md`. `gate-wired` is done by step 3.
 
 Re-run `… migrate.py status .`: a second run must show nothing but manual items the developer declined. That is the idempotence check; report anything else as a bug.
