@@ -67,3 +67,26 @@ t_git_long_option_abbreviations() {
     assert_eq "$(guard "$c")" "" "allow: $c"
   done
 }
+t_infra_destroy_asks() {
+  local c
+  for c in 'kubectl delete pod x' 'kubectl -n prod delete deploy/api' 'terraform destroy' 'terraform -chdir=infra destroy -auto-approve' \
+           'terraform apply -auto-approve' 'terraform apply --auto-approve=true' 'helm uninstall api' 'cd x && helm -n prod uninstall api' \
+           'bash -c "kubectl delete ns dev"'; do
+    assert_contains "$(guard "$c")" '"ask"' "ask: $c"
+  done
+  for c in 'kubectl get pods' 'kubectl logs delete-me' 'kubectl describe pod x' 'terraform plan' 'terraform apply' 'terraform apply plan.out' 'terraform apply -auto-approve=false' \
+           'helm list' 'helm status api' 'grep "kubectl delete" notes.md' 'git commit -m "terraform destroy docs"'; do
+    assert_eq "$(guard "$c")" "" "allow: $c"
+  done
+  assert_contains "$(guard 'kubectl delete pod x; git push --force')" '"deny"' "a deny later in the command still wins"
+}
+t_invariants_writes_via_bash_ask() {
+  local c
+  for c in 'echo "- rule" >> INVARIANTS.md' 'printf x > docs/../INVARIANTS.md' 'cat x | tee -a INVARIANTS.md' "sed -i '' s/a/b/ INVARIANTS.md" \
+           'cp /tmp/i.md INVARIANTS.md' 'perl -pi -e s/a/b/ INVARIANTS.md'; do
+    assert_contains "$(guard "$c")" '"ask"' "ask: $c"
+  done
+  for c in 'cat INVARIANTS.md' 'grep Severity INVARIANTS.md > out.txt' 'sed -n 1,5p INVARIANTS.md' 'git diff INVARIANTS.md' 'cp INVARIANTS.md /tmp/x'; do
+    assert_eq "$(guard "$c")" "" "allow: $c"
+  done
+}

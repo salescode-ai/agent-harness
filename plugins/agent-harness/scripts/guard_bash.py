@@ -212,6 +212,33 @@ def writes_target(cmd, segs, is_target):
     return False
 
 
+def _is_invariants(t):
+    return os.path.basename(t.rstrip("/")) == "INVARIANTS.md"
+
+
+def infra_ask(prog, args):
+    """Reason to ask before a command that destroys cluster or cloud resources, else None."""
+    pos = [a for a in args if not a.startswith("-")]
+    if prog in ("kubectl", "helm"):  # subcommand = first word not taken by a global flag's value (-n ns, --context x)
+        pos, skip = [], False
+        for a in args:
+            if skip:
+                skip = False
+            elif a in ("-n", "--namespace", "--context", "--kube-context", "--kubeconfig", "--cluster", "--user", "-s", "--server"):
+                skip = True
+            elif not a.startswith("-"):
+                pos.append(a)
+    if prog == "kubectl" and pos[:1] == ["delete"]:
+        return "kubectl delete removes cluster resources. Confirm the context and namespace are local or dev."
+    if prog in ("terraform", "tofu"):
+        sub = pos[:1]
+        if sub == ["destroy"] or (sub == ["apply"] and any(a.lstrip("-") in ("auto-approve", "auto-approve=true") for a in args)):
+            return "terraform %s changes real infrastructure without a review step. Confirm the workspace/state is local or dev." % sub[0]
+    if prog == "helm" and pos[:1] and pos[0] in ("uninstall", "delete", "del", "un"):
+        return "helm uninstall removes a release from the cluster. Confirm the kube context is local or dev."
+    return None
+
+
 def payloads(argv):
     """Command strings a segment runs indirectly: `bash|sh|zsh -c '<cmd>'` and `eval <cmd>`."""
     prog = os.path.basename(argv[0])
@@ -231,6 +258,7 @@ def check(cmd, cwd, depth=0):
         segs = list(segments(cmd))
     except ValueError:  # unbalanced quotes: let the shell report it
         return
+    asks = []
     for seg in segs:
         env, argv = strip_prefix(seg)
         if argv[:1] == ["cd"] and len(argv) > 1:
@@ -243,6 +271,9 @@ def check(cmd, cwd, depth=0):
         if not argv:
             continue
         prog = os.path.basename(argv[0])
+        a = infra_ask(prog, argv[1:])
+        if a:
+            asks.append(a)
         if prog == "git":
             check_git(argv, env, cwd)
         elif prog == "rm":
@@ -254,6 +285,10 @@ def check(cmd, cwd, depth=0):
         decide("deny", CLAUDE_MD_MSG)
     if writes_target(cmd, segs, _is_env):
         decide("deny", ENV_MSG)
+    if writes_target(cmd, segs, _is_invariants):
+        decide("ask", "INVARIANTS.md changes need human sign-off (Harness Integrity). Confirm this edit was requested.")
+    if asks:
+        decide("ask", asks[0])
     # SQL lives inside quoted strings, so check the raw text here
     if re.search(r"(?i)(^|[^A-Za-z_])(drop|truncate)\s+(table|database|schema)\b", cmd):
         decide("ask", "Destructive SQL detected. Confirm this targets a local or dev database.")
