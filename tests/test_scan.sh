@@ -60,3 +60,25 @@ t_wrapper() {
   local d; d="$(mk_repo node-app)"
   assert_contains "$(bash "$PLUGIN/skills/harness-init/scripts/scan.sh" "$d")" '"stacks"' "wrapper"
 }
+t_deep_java_paths() {
+  local d o; d="$(mktemp -d)"
+  mkdir -p "$d/src/main/java/com/acme/app/security" "$d/src/main/resources/db/migration"
+  : > "$d/src/main/java/com/acme/app/security/A.java"; : > "$d/src/main/resources/db/migration/V1__a.sql"
+  printf 'spring:\n  datasource:\n    url: x\n' > "$d/src/main/resources/application.yml"
+  o="$(python3 "$SCAN" "$d")"
+  assert_eq "$(_j "$o" "d['risk_paths']")" "['src/main/java/com/acme/app/security']" "risk"
+  assert_eq "$(_j "$o" "d['migrations']")" "['src/main/resources/db/migration']" "migr"
+  assert_eq "$(_j "$o" "[e['source'] for e in d['env_vars']]")" "['src/main/resources/application.yml:3']" "env"
+}
+t_cache_dirty_rescans() {
+  local d; d="$(mk_repo node-app)"
+  python3 "$SCAN" "$d" --write >/dev/null
+  printf '{"scripts":{"lint":"x","build":"y"}}\n' > "$d/package.json"
+  assert_contains "$(python3 "$SCAN" "$d" --write)" "npm run build" "rescanned"
+  assert_contains "$(cat "$d/.harness/scan.json")" "npm run build" "rewritten"
+}
+t_engines_node() {
+  local d o; d="$(mktemp -d)"; printf '{\n "engines": {\n  "node": ">=18"\n }\n}\n' > "$d/package.json"
+  o="$(python3 "$SCAN" "$d")"
+  assert_eq "$(_j "$o" "[(v['version'],v['source']) for v in d['versions']]")" "[('>=18', 'package.json:3')]" "engines"
+}

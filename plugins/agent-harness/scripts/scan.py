@@ -4,10 +4,10 @@ import json, os, re, subprocess, sys
 from pathlib import Path
 
 SKIP = {"node_modules", ".git", "build", "dist", "target", ".venv", "vendor", ".harness"}
-MAX_DEPTH, MAX_FILES, MAX_READ = 4, 20000, 1_000_000
+WALK_DEPTH, MANIFEST_DEPTH, MAX_FILES, MAX_READ = 10, 6, 20000, 1_000_000
 MANIFESTS = {"package.json": "node", "pom.xml": "java-maven", "build.gradle": "java-gradle",
              "build.gradle.kts": "java-gradle", "pyproject.toml": "python", "go.mod": "go"}
-RISK = {"auth", "security", "payment", "payments", "billing", "crypto"}
+RISK = {"auth", "authentication", "authorization", "security", "payment", "payments", "billing", "crypto"}
 
 
 def read(p):
@@ -31,7 +31,7 @@ def walk(root):
     for cur, ds, fs in os.walk(root):
         rel = os.path.relpath(cur, root)
         depth = 0 if rel == "." else rel.count(os.sep) + 1
-        ds[:] = sorted(d for d in ds if d not in SKIP) if depth < MAX_DEPTH else []
+        ds[:] = sorted(d for d in ds if d not in SKIP) if depth < WALK_DEPTH else []
         for d in ds:
             dirs.append(os.path.normpath(os.path.join(rel, d)))
         for f in sorted(fs):
@@ -98,7 +98,7 @@ def scan(root):
         pass
     stacks, modules, cmds, versions, services, env = [], [], [], [], [], []
     for f in files:
-        if base(f) in MANIFESTS and f.count(os.sep) < MAX_DEPTH:
+        if base(f) in MANIFESTS and f.count(os.sep) < MANIFEST_DEPTH:
             mod = os.path.dirname(f) or "."
             modules.append({"path": mod, "manifest": f})
             if MANIFESTS[base(f)] not in stacks: stacks.append(MANIFESTS[base(f)])
@@ -109,6 +109,11 @@ def scan(root):
             lines = read(root / f)
             if lines: versions.append({"tool": "python" if "python" in b else "node",
                                        "version": lines[0].strip().lstrip("v"), "source": f"{f}:1"})
+        elif b == "package.json":
+            try: eng = json.loads("\n".join(read(root / f))).get("engines", {}).get("node")
+            except (ValueError, AttributeError): eng = None
+            if isinstance(eng, str):
+                versions.append({"tool": "node", "version": eng, "source": f"{f}:{find(read(root / f), chr(34) + 'node' + chr(34))}"})
         elif b == ".tool-versions":
             for i, l in enumerate(read(root / f)):
                 p = l.split()
@@ -164,15 +169,23 @@ def scan(root):
     return r
 
 
+def git_out(root, *a):
+    try:
+        return subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
 def main():
     args = [a for a in sys.argv[1:] if a != "--write"]
-    root = args[0] if args else "."
+    root = str(Path(args[0] if args else ".").resolve())
     out = Path(root) / ".harness" / "scan.json"
     if "--write" in sys.argv and out.is_file():
         try:
             old = json.loads(out.read_text())
-            head = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-            if head and old.get("head") == head:
+            head = git_out(root, "rev-parse", "HEAD")
+            # cache only for a clean tree (scan.json itself excluded), else manifests may have changed
+            if head and old.get("head") == head and not git_out(root, "status", "--porcelain", "--", ".", ":!.harness"):
                 print(json.dumps(old, indent=2)); return
         except (ValueError, OSError):
             pass
