@@ -35,3 +35,15 @@ t_no_make_exit4() {
   PATH="$b" "$(command -v bash)" "$CMD" "$d" check >/dev/null 2>"$d/err" || rc=$?
   assert_eq "$rc" 4 "exit"; assert_contains "$(cat "$d/err")" "harness-cmd: make not found" "msg"
 }
+t_registered_T_quoted() {
+  local d; d="$(_mk repo)"; mkdir "$d/.agents"
+  printf '{"commands":{"test":"printf \\"%%s\\\\n\\" {T}"}}' > "$d/.agents/harness.json"
+  local out; out="$(cd "$d" && eval "$("$CMD" "$d" test 'a b;touch PWNED')")"
+  assert_eq "$out" "a b;touch PWNED" "one argument"
+  [ ! -e "$d/PWNED" ] || _fail "injected command ran"
+}
+t_registered_no_T_keeps_spacing() {
+  local d; d="$(_mk repo)"; mkdir "$d/.agents"
+  echo '{"commands":{"test":"echo \"a  b\" {T}"}}' > "$d/.agents/harness.json"
+  assert_eq "$("$CMD" "$d" test)" 'echo "a  b"' "spacing"
+}
