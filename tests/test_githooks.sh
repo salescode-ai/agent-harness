@@ -26,3 +26,13 @@ t_precommit_skips_unwired() {
   assert_contains "$out" "scripts/harness/cmd.sh missing, skipping" "msg"
 }
 t_hooks_executable() { [ -x "$HOOKS/pre-commit" ] && [ -x "$HOOKS/pre-push" ]; }
+t_hooks_skip_mid_init() {
+  local d out h; d="$(_hook_repo false)"; mkdir "$d/.harness"
+  echo '{"layers_done": []}' > "$d/.harness/init-state.json"
+  for h in pre-commit pre-push; do
+    out="$(cd "$d" && bash "$HOOKS/$h" 2>&1)" || _fail "$h blocked mid-init"
+    assert_contains "$out" "harness: setup in progress, skipping" "$h msg"
+  done
+  echo '{"gate_wired": true}' > "$d/.harness/init-state.json"
+  (cd "$d" && bash "$HOOKS/pre-commit") >/dev/null 2>&1 && _fail "wired: pre-commit should fail" || true
+}

@@ -11,9 +11,7 @@ STATE=""; LC_SUFFIX=""; FAILED=0; REPORT=""
 gate_repo() { # gate_repo <repo dir> <base> <label>
   local dir="$1" base="$2" label="$3" cmd dirty ahead=0 fp out rc
   [[ -f "$dir/AGENTS.md" ]] || return 0
-  # half-built harness: init-state.json says the gate isn't wired yet (bad JSON or no python3 -> ignored)
-  [[ -f "$dir/.harness/init-state.json" ]] && command -v python3 >/dev/null &&
-    python3 -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get('gate_wired') is False else 1)" "$dir/.harness/init-state.json" 2>/dev/null && return 0
+  init_pending "$dir" && return 0  # half-built harness: harness-init has not wired the gate yet
   cmd="$(harness_cmd "$dir" check-fast 2>/dev/null)" || return 0
   dirty="$(git -C "$dir" status --porcelain -- . ':(exclude)docs' ':(exclude)*.md' ':(exclude).harness' 2>/dev/null)"
   git -C "$dir" rev-parse --verify -q "$base" >/dev/null && ahead="$(git -C "$dir" rev-list --count "$base"..HEAD 2>/dev/null || echo 0)"

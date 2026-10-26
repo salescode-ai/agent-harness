@@ -68,7 +68,7 @@ Scope by target level: `Functional` → Guides and Sensors; `Robust` → all fiv
 - `check` = lint + typecheck + tests + harness-lint; `check-fast` = changed files, under 60 s.
 - Critical invariant, always: `- No real customer or production data in seeds or fixtures — Severity: Critical — Enforced by: scripts/harness/sensors/no-prod-data.sh`, kept only if its proof passes, else `not yet enforced`.
 - Git hooks: pre-commit runs `check-fast`, pre-push runs `check`.
-  - `hook_manager: none` → `.githooks/` from `assets/githooks/`; `make setup` sets `core.hooksPath .githooks`; run `git config core.hooksPath .githooks` now so this checkout is covered.
+  - `hook_manager: none` → `.githooks/` from `assets/githooks/`. Only after question 4 is answered "on": `make setup` sets `core.hooksPath .githooks` (ask the developer to run it, or `git config core.hooksPath .githooks`, so this checkout is covered; the agent's guard blocks that command). Never at install time.
   - With a hook manager, still copy `assets/githooks/*` to `.githooks/` (do **not** set `core.hooksPath`) and have the manager call them; they resolve the target and skip quietly when it is not wired:
   - `husky` → append `bash .githooks/pre-commit  # harness check-fast` to `.husky/pre-commit` and `bash .githooks/pre-push  # harness check` to `.husky/pre-push`.
   - `lefthook` → in `lefthook.yml`: `pre-commit: commands: harness-check-fast: run: bash .githooks/pre-commit`, and `pre-push: commands: harness-check: run: bash .githooks/pre-push`.
@@ -78,6 +78,7 @@ Scope by target level: `Functional` → Guides and Sensors; `Robust` → all fiv
 1. Proposed invariants, each with severity: a) Critical (fails `check`, blocks the stop gate) b) Important ➡️ (warning; `harness-verify` sends it to a human) c) Nice-to-have (audit only). Format: `- <rule> — Severity: <tier> — Enforced by: <target | hook | sensor | human review | not yet enforced>`.
 2. Candidate sensors from `references/sensor-catalog.md` that match evidence: a) build and prove ➡️ b) skip. For each accepted one, dispatch `sensor-smith` (`agent-harness:sensor-smith`) with the invariant line and `scan.json`; wire it into `check` only after `sensor-proof.sh <name>` passes.
 3. A tool is missing for a sensor: a) add it as a dev dependency (named, with the install line) b) use a plain test or script ➡️.
+   The repo has no linter or type checker at all: a) declined ➡️ — `HARNESS_LINT = @echo "lint: none (declined <date>)"` plus a `not yet enforced (declined <date>)` invariant (`layout.md`) b) add one now (as a dependency).
 4. Git hooks: a) on ➡️ b) off (the session hook will warn).
 5. CI workflow? Show the "Where checks run" table below first. a) no, hooks are enough ➡️ b) yes: copy `assets/harness.yml` to `.github/workflows/` or translate it to the repo's CI. Enterprise requires b.
 
@@ -89,7 +90,7 @@ Where checks run (show before question 5):
 | Git hooks: pre-commit runs `check-fast`, pre-push runs `check` | on | If a hook manager exists (husky, lefthook, pre-commit), add to its config. Otherwise use `.githooks/` with `core.hooksPath`, set by `make setup`. The session hook warns when the hooks are off. |
 | CI workflow | opt-in | Generated only on a yes, after the explanation is shown. It is the only check nobody can skip; required for Enterprise. |
 
-**Assumed — change any time.** Fixture folder, `HARNESS_BASE` (`origin/main`), sensor names.
+**Assumed — change any time.** Fixture folder, `HARNESS_BASE` (derived: `origin/HEAD`, else `origin/main`, else `origin/master`), sensor names.
 
 **Writes.** `INVARIANTS.md` rules, `harness.mk` variables, `scripts/harness/sensors/` (registry, sensors, fixtures), hook config, CI workflow (only after a yes).
 

@@ -48,6 +48,15 @@ active_plan() { # active_plan <root> <branch>: plan matching the branch, else ne
     grep -qE '^[[:space:]]*- \[ \]' "$root/$f" && { echo "$f"; return; }
   done <<<"$(head -10 <<<"$cands")"
 }
+init_pending() { # init_pending <dir>: true while harness-init is mid-setup (init-state.json without "gate_wired": true)
+  local f="$1/.harness/init-state.json"
+  [[ -f "$f" ]] || return 1
+  command -v python3 >/dev/null || { ! grep -qE '"gate_wired"[[:space:]]*:[[:space:]]*true' "$f"; return; }
+  python3 -c "import json,sys
+try: d=json.load(open(sys.argv[1]))
+except Exception: sys.exit(1)  # unreadable state file: ignore it, keep gating
+sys.exit(0 if isinstance(d,dict) and d.get('gate_wired') is not True else 1)" "$f" 2>/dev/null
+}
 harness_cmd() { # harness_cmd <dir> <target> [T]: print the command for a harness target (see harness-cmd.sh)
   "$(dirname "${BASH_SOURCE[0]}")/harness-cmd.sh" "$@"
 }

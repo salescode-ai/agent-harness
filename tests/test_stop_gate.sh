@@ -94,3 +94,12 @@ t_cwd_in_subdir() {
   _run_gate "$d/sub"
   assert_eq "$RC" 2 "blocks"
 }
+t_init_state_without_gate_key_silent() {
+  local d; d="$(_gate_repo false)"; mkdir "$d/.harness"
+  echo '{"layers_done": []}' > "$d/.harness/init-state.json"
+  _run_gate "$d"
+  assert_eq "$RC" 0 "silent mid-init"; assert_eq "$ERR" "" "no output"
+  echo '{"layers_done": [], "gate_wired": true}' > "$d/.harness/init-state.json"
+  _run_gate "$d"
+  assert_eq "$RC" 2 "gates once wired"
+}

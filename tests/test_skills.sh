@@ -96,3 +96,13 @@ t_init_base_and_baseline_rules() {
     grep -qF "$m" "$f" || _fail "init SKILL.md missing '$m'"
   done
 }
+t_init_state_first_and_declined_tools() {
+  local f="$PLUGIN/skills/harness-init/SKILL.md" m
+  for m in '**first** save `.harness/init-state.json` with `"gate_wired": false`' 'Do **not** set `core.hooksPath` here' \
+           'lint: none (declined <date>)' 'into `HARNESS_TEST_ALL`'; do
+    grep -qF "$m" "$f" || _fail "init SKILL.md missing '$m'"
+  done
+  grep -qF 'lint: none (declined' "$PLUGIN/skills/harness-init/references/layout.md" || _fail "layout: declined form"
+  grep -qF 'declined' "$PLUGIN/skills/harness-init/references/layers.md" || _fail "layers: declined option"
+  if grep -qF 'run `git config core.hooksPath .githooks` now' "$PLUGIN/skills/harness-init/references/layers.md"; then _fail "hooksPath at install"; fi
+}

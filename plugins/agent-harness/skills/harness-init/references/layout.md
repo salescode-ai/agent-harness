@@ -87,6 +87,16 @@ HARNESS_LINT = @if [ -n "$(strip $(UI_CHANGED))" ]; then cd ui && npx eslint $(U
 
 New and edited files must be clean; untouched legacy files don't block anyone. Record the debt in `INVARIANTS.md` so it is paid down deliberately.
 
+**Declined tool** (the repo has no linter or type checker, e.g. many Maven or CRA projects): don't leave the failing default. Write
+
+```make
+HARNESS_LINT = @echo "lint: none (declined 2026-10-26)"
+```
+
+and pair it with `- Code is linted — Severity: Important — Enforced by: not yet enforced (declined 2026-10-26)` in `INVARIANTS.md`, so the gap stays visible to audits.
+
+`HARNESS_SEED`, `HARNESS_RESET` and `HARNESS_DEV` must be set **above** `include harness.mk`: their targets are defined only when set, so an unconfigured repo has no `seed` target and `make setup` skips that step.
+
 ## Module AGENTS.md — create only if one is true
 
 - handles auth, payments, PII, migrations, or a public API contract
