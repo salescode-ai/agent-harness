@@ -4,6 +4,15 @@
   "8317666b56d8aa083bc783b0f39a774699b4193fffd3f23965643d0ea49dc347": "2.0.2",
   "880f28c133fc875500b8915836f7d8a299ed8806e031f4c115fd184799ff515a": "2.0.0"
  },
+ "skills/harness-init/assets/docs/adr/TEMPLATE.md": {
+  "1fa8ebf4c8a8aa5d0698ff940bbc40a55c948ae79d4234ffef640e454b97ec56": "2.0.0",
+  "72d8f44105d2325a78cb1d5f5ab7d40f4584d034d51d265db8a4c6b5d08be417": "2.0.4"
+ },
+ "skills/harness-init/assets/docs/plans/TEMPLATE.md": {
+  "4a26dced80bc9e94b8c406d5c4635fa0217a50e0bd5f06072c119b6a153fcb3c": "2.0.4",
+  "93f4fd09c59a31550568e6947c2c4e7825ea2d464c98959f64a960fc515b28cb": "2.0.4-dev",
+  "ae6a78700f1b1da67202d57fb303f48552398a42be932953c3ff3dd8054cdb51": "2.0.0"
+ },
  "skills/harness-init/assets/githooks/pre-commit": {
   "ac3a9701d86d94a45d8af636f8185b38bc867badd8b0feb2645153f82132567f": "2.0.2",
   "ad045c8788302ba7f920e750c3061ad0060c3a19294b368551c778cd7bd57f43": "2.0.0"
@@ -26,13 +35,18 @@
  "skills/harness-init/assets/harness/local-guard.sh": {
   "26fc8efc7c0c0a722ae4b6137e4d935bfb752603ce4044cbf6a255512c66eb1d": "2.0.0",
   "28557d8b76dc249d4f87e43c267e4f17488f0c03e4383d3470caf56395b482ae": "2.0.0",
+  "6710c9aadc83b0d516136f96f82271b4302ed7d60063afc64977e28912fdc23d": "2.0.4",
   "84d02e434b95b0a8f79dc8537bd5b83d3a279f65934440ac315852ccc7537310": "2.0.0",
   "c1631460f9c1869b1b488a2ce0417ef3e9706934b68f341abca9784b80255279": "2.0.2",
   "e1b7c6b8fa7a0ed9a187726178294864566ff818abec3887b6decccc8bcca2e1": "2.0.4"
  },
+ "skills/harness-init/assets/harness/plan-check.sh": {
+  "50a243b9b1bb714756d765e6f71fd914abae7c99fef728cda409447a8a7b49c0": "2.0.4"
+ },
  "skills/harness-init/assets/harness/related-tests.sh": {
   "5fe1e4df715e3afde932a83a2671d11d6cda117949a69826b9327d6dc00f95a9": "2.0.4",
-  "b2ebee16334b248bf39b97fc1fcdcbc9c0cbddb3f83d4448fc1eaaa6f01baa5f": "2.0.3"
+  "b2ebee16334b248bf39b97fc1fcdcbc9c0cbddb3f83d4448fc1eaaa6f01baa5f": "2.0.3",
+  "f3dcece965c1899eaa20745a560794b700590217e411a8a95c03d3e18f521fa4": "2.0.4"
  },
  "skills/harness-init/assets/harness/sensor-proof.sh": {
   "295836d31c8d06a3ffa6c0cc3b522481e657c6f620a3dcb0c7c42cc4da9a4d09": "2.0.0",
@@ -58,12 +72,19 @@
   "2a71a344220dbf56fb32f3a4903375a00b8fd3413544b5047f163d6b56a10c60": "2.0.0",
   "3bbe7ca0e99d71b74c55896609adbc2c33234291360994fa0e82b19ad97e7e53": "2.0.4",
   "a8df3164aad24514ae45af2b6ac220b53cda0b80dc7c31bea172ffee07921d4c": "2.0.0",
+  "b14745e3f28aa4259066310dd924dc0ca9143bdbbdfe85469df5dfaa350bf17a": "2.0.4",
   "c2b07e65670fbf5ac2b928bf228ab727c082aaadadafb829d64a08ccfc62f86a": "1.0.0",
   "e1aafa90b55ff11920e9985187fdda181d1dabc28a73ef133b211eed82b6aab5": "2.0.2",
   "fc694da4f542b8e73fc349b3a86231ecb2b34cdf1912a64922c4f36d70456acf": "2.0.0"
  },
+ "skills/harness-workspace/assets/plans/TEMPLATE.md": {
+  "4ae6bed1228faf4fad53426208778babdd2b0f639043774aea7272ef24fa0ffd": "2.0.0",
+  "bb92a0db7ca5927c93f667eacf7379f3101f2bf8dc225bf34749f6829fb04ea0": "2.0.4",
+  "ee58462b3473d1b808cac47380d58c717845bc95cbd5f395381c77f9dbfc6cdd": "2.0.4-dev"
+ },
  "skills/harness-workspace/assets/ws.sh": {
   "0df712e6dd01d86ade5b8d03ec596d795d3b6e6a36b51c3b7da7dbcd1c55eeab": "2.0.2",
+  "6947588754388af8b77eb28d89c475adb3daced83539830f3853d779d25f0743": "2.0.4",
   "6bb988a6926a3492af085f077822306eeafc4f91936b0254466f89a41f1f4b8d": "2.0.4",
   "777d0276813b975203e43ad4541a5e7da8bad64109caf601ac6fc344876348da": "2.0.0",
   "8991e293bb6990d62bad8127380e856f58d059fedf6fc9f2a2f30504b3e95112": "2.0.0",
