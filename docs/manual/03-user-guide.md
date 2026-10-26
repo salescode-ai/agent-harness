@@ -21,6 +21,24 @@ The plugin brings:
 
 Requirements: `git`, `bash`, `python3` (3.8+ syntax; macOS system Python 3.9 works) and `make` unless you register another runner. The guard hooks fail open when `python3` is missing: they allow the action and stay quiet.
 
+### Headless and CI runs (`claude -p`)
+
+The skills read their own files through `${CLAUDE_PLUGIN_ROOT}` (`references/`, `assets/`, `scripts/scan.py`, `assets.py`, `level.py`), and that folder is outside the repo. Interactive sessions ask once; a non-interactive `claude -p` run cannot ask, so in the default mode init stops before writing anything ("outside the folders this session is allowed to touch"). Give the run the plugin folder and a mode that does not need prompts:
+
+```bash
+# installed plugin: its cache folder (holds every installed version)
+claude -p "/agent-harness:harness-init one-shot" \
+  --add-dir ~/.claude/plugins/cache/agent-harness \
+  --permission-mode auto
+# a local checkout instead of an installed plugin
+claude -p "/agent-harness:harness-init one-shot" \
+  --plugin-dir /path/to/agent-harness/plugins/agent-harness \
+  --add-dir /path/to/agent-harness/plugins/agent-harness \
+  --permission-mode auto
+```
+
+Instead of `--permission-mode auto`, you can keep the default mode and pre-approve only what the skills run: `--allowedTools "Read(~/.claude/plugins/cache/agent-harness/**)" "Bash(python3 *agent-harness*)" "Bash(bash *agent-harness*)" "Bash(make *)"`. The hooks (guards, stop gate) run the same way in headless sessions; `bypassPermissions` does not turn them off.
+
 ### Codex, Cursor, Copilot, Gemini
 
 ```bash
@@ -123,7 +141,7 @@ Then **run `make setup` yourself** if you chose "git hooks: on" without a hook m
 
 ### Updating the plugin and refreshing repo scripts
 
-`claude plugin update agent-harness@agent-harness` (or `claude plugin marketplace update agent-harness` first) updates the plugin, its hooks and skills. The scripts init **copied into the repo** (`scripts/harness/cmd.sh`, `lint.sh`, `setup.sh`, `setup-proof.sh`, `sensor-proof.sh`, `local-guard.sh`, `sensors/no-prod-data.sh`, `.githooks/*`, `harness.mk`; in a workspace `scripts/harness/cmd.sh` and `ws.sh`) do not change by themselves:
+`claude plugin update agent-harness@agent-harness` (or `claude plugin marketplace update agent-harness` first) updates the plugin, its hooks and skills. The scripts init **copied into the repo** (`scripts/harness/cmd.sh`, `lint.sh`, `related-tests.sh`, `setup.sh`, `setup-proof.sh`, `sensor-proof.sh`, `local-guard.sh`, `sensors/no-prod-data.sh`, `.githooks/*`, `harness.mk`; in a workspace `scripts/harness/cmd.sh` and `ws.sh`) do not change by themselves:
 
 1. The session hook says `[agent-harness] harness scripts are older than the plugin (<n> files) — run /agent-harness:harness-init to refresh`, and `harness-audit` lists them under observability.
 2. Run `/agent-harness:harness-init` (or `harness-workspace` in a workspace). Before anything else it runs `assets.py status`, then `assets.py refresh`: every **stale** copy (an unmodified older plugin copy) is replaced and listed under *Applied automatically*. A copy you **modified locally** is never overwritten; it is listed as `modified locally, review diff` with the `diff` command to compare it with the plugin copy. Repo-owned files (`Makefile`, `AGENTS.md`, `INVARIANTS.md`, `sensors/registry.json`, fixtures, your own sensors) are never touched.
@@ -219,7 +237,7 @@ Pick "register another" in the Tools section, or write `.agents/harness.json` yo
 | Git hooks: pre-commit runs `check-fast`, pre-push runs `check` | on | With husky, lefthook or pre-commit, the manager's config calls `.githooks/*`. Otherwise `core.hooksPath .githooks`, set by `make setup`. The session hook warns `git hooks not installed — run: make setup`. |
 | CI workflow | opt-in | Generated only on a yes. It is the only check nobody can skip, and it is required for Enterprise. |
 
-The stop gate runs `check-fast` only when source changed (uncommitted files outside `docs/`, `*.md` and `.harness/`, or commits ahead of the base) and the tree differs from the last green run. A passing run is silent.
+The stop gate runs `check-fast` only when source changed (uncommitted files outside `docs/`, `*.md` and `.harness/`, or commits ahead of the base) and the tree differs from the last green run. A passing run is silent. After a block, the next stop re-runs `check-fast` only if the code changed since that block, up to 3 blocks in a row; then the stop is allowed and you see `agent-harness: stop gate gave up (…); check-fast still failing in: <repo>`. Nothing is written into a repo without `AGENTS.md`.
 
 ## 3.10 Working alongside other skill packs
 
@@ -252,6 +270,8 @@ Scope: pin only `agent-harness` in project settings; keep other packs in user sc
 
 **The stop gate or a git hook says nothing during setup.** That's intended. While `.harness/init-state.json` exists without `"gate_wired": true`, the stop gate is silent and git hooks print `harness: setup in progress, skipping`. Finish or resume `/agent-harness:harness-init`.
 
+**`[agent-harness] gate not wired — <reason>; run /agent-harness:harness-init to finish wiring`.** Init finished every layer but `check-fast` never passed, so the stop gate and git hooks are off. Re-run `/agent-harness:harness-init`: a tool the environment can't run is wired as `@echo "<tool>: skipped (<why>, <date>)"` with a `not yet enforced` invariant, so the rest of the gate can wire.
+
 **`[agent-harness] git hooks not installed — run: make setup`.** `.githooks/` exists, `core.hooksPath` is unset, and there's no hook manager. Run `make setup` or `git config core.hooksPath .githooks` (the agent may run that exact command). Reading it (`git config core.hooksPath`, `git config --get core.hooksPath`) is allowed. The guard denies any other `core.hooksPath` value, `--unset`, `--global` and `-c core.hooksPath=` overrides.
 
 **A git hook prints `harness: check-fast not wired, skipping`.** `cmd.sh` couldn't resolve the target (`make -n check-fast` failed, or it's not in `.agents/harness.json`). Run `make -n check-fast` to see why.
@@ -272,7 +292,9 @@ Scope: pin only `agent-harness` in project settings; keep other packs in user sc
 
 **`CLAUDE.md` write blocked.** That's intended: `CLAUDE.md files are shims (@-references only). Put instructions in AGENTS.md — …`. Move the content to `AGENTS.md` → `## Agent skills` or Working Principles. A pack installer that insists on `CLAUDE.md` should be pointed at `AGENTS.md`.
 
-**Writing `.env` blocked.** `Writing to .env is blocked: secrets files are human-managed. Update .env.example instead.` Edit it yourself.
+**Writing `.env` blocked.** `Writing to .env is blocked: secrets files are human-managed. Update .env.example instead.` Applies to Edit/Write and to Bash writes (`>`, `>>`, `tee`, `cp`/`mv`, `curl -o`, `sed -i`) into `.env` or `.env.*`; `.env.example`, `.env.sample` and `.env.template` stay writable. Edit it yourself.
+
+**A Bash command was denied inside `bash -c`, `sh -c` or `eval`.** The guard checks those payloads like any other command, and an abbreviated git option (`--no-veri`, `--forc`) like the full one.
 
 **Edit to `INVARIANTS.md` or `harness-workspace.json` asks for confirmation.** These need human sign-off. Approve only if you asked for the change.
 

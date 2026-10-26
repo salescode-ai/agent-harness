@@ -141,7 +141,7 @@ Targets in `harness.mk`:
 |---|---|---|
 | `help` | Lists harness targets plus `##`-commented targets of your Makefile (default goal) | yes |
 | `check` | `lint typecheck test harness-lint`, then `check: OK` | yes |
-| `check-fast` | `lint typecheck` + `$(HARNESS_TEST_CHANGED) $(CHANGED)` if set; target < 60 s | yes |
+| `check-fast` | `lint typecheck` + `$(HARNESS_TEST_CHANGED) $(CHANGED)` if set, else `$(HARNESS_TEST_ALL)` when `HARNESS_TEST_SECS` ≤ 60; target < 60 s | yes |
 | `lint` / `typecheck` | `$(HARNESS_LINT)` / `$(HARNESS_TYPECHECK)` | yes |
 | `test` | `$(HARNESS_TEST_ALL)`, or `$(HARNESS_TEST_ONE) $(T)` with `T=<path>` | yes |
 | `smoke` | `$(HARNESS_SMOKE)` (default prints `smoke: no runnable surface`) | yes |
@@ -150,7 +150,7 @@ Targets in `harness.mk`:
 | `seed` / `reset` | `local-guard.sh`, then `$(HARNESS_SEED)` / `$(HARNESS_RESET)` | only when the variable is set **above** the include |
 | `dev` | `$(HARNESS_DEV)` | only when set above the include |
 
-Variables: `HARNESS_LINT`, `HARNESS_TYPECHECK`, `HARNESS_TEST_ALL`, `HARNESS_TEST_ONE`, `HARNESS_TEST_CHANGED`, `HARNESS_SMOKE`, `HARNESS_SETUP`, `HARNESS_SEED`, `HARNESS_RESET`, `HARNESS_DEV`, `HARNESS_BASE` (base for `CHANGED`, which also lists untracked new files; default `origin/HEAD`, else `origin/main`, else `origin/master`). To keep a target your Makefile already has, set `HARNESS_DEFINE_<NAME>=0` above the include (`HARNESS_DEFINE_HELP=0`, `HARNESS_DEFINE_CHECK_FAST=0`, …).
+Variables: `HARNESS_LINT`, `HARNESS_TYPECHECK`, `HARNESS_TEST_ALL`, `HARNESS_TEST_ONE`, `HARNESS_TEST_CHANGED` (usually `bash scripts/harness/related-tests.sh <stack> "<runner>"`), `HARNESS_TEST_SECS` (full-suite baseline seconds), `HARNESS_SMOKE`, `HARNESS_SETUP`, `HARNESS_SEED`, `HARNESS_RESET`, `HARNESS_DEV`, `HARNESS_BASE` (base for `CHANGED`, which also lists untracked new files; default `origin/HEAD`, else `origin/main`, else `origin/master`). To keep a target your Makefile already has, set `HARNESS_DEFINE_<NAME>=0` above the include (`HARNESS_DEFINE_HELP=0`, `HARNESS_DEFINE_CHECK_FAST=0`, …).
 
 Example root `Makefile` after init:
 
@@ -208,6 +208,7 @@ All are copied by init (or `install-local.sh`) and run from the repo root. Leave
 | `setup-proof.sh` | tools | Clones committed HEAD to a temp folder, resolves and runs `setup` there under its own compose project, tears down. Prints `setup-proof: OK`, `FAIL (<step>)` or `SKIPPED (docker not available)`. `HARNESS_PROOF_KEEP_ENV=1` copies `.env.local` in. | `setup-smith`, init step 5, `harness-audit full` |
 | `sensor-proof.sh` | sensors | `sensor-proof.sh <name>` (3-step proof) or `--recheck` (fixture fires, clean passes, for all sensors) | `sensor-smith`, `lint.sh`, `level.py`, audit |
 | `local-guard.sh` | tools | Refuses `seed`/`reset` unless every DB-like host is local. Checks env, `.env` and `.env.local` (`DATABASE_URL`, DB-scheme `*_URL`, `DB_HOST`, `*_DB_HOST`, `PGHOST`, `MYSQL_HOST`, `MONGO_URL`, `REDIS_URL`) and Spring `spring.datasource.url` in `src/main/resources/application.properties|yml` and the `application-local*`, `-dev*`, `-test*` profiles (prod and other profiles are never read). Oracle thin URLs (`jdbc:oracle:thin:@host:1521/X`, `@//host`) are parsed for their host. | `make seed`, `make reset` |
+| `related-tests.sh` | sensors | `HARNESS_TEST_CHANGED` helper: `related-tests.sh [-C <module>] <stack> "<runner>" <changed files>` runs the tests a change can break. jest/vitest: their related-tests lookup; go: each changed package; maven/gradle: `Foo` → `FooTest`/`FooTests`/`FooIT`/`TestFoo` plus tests naming `Foo`; pytest: `test_foo.py`/`foo_test.py`, tests naming `foo`, else tests naming its package; node: `foo.test.js` plus tests naming `foo`. Nothing related → `tests: no …`, exit 0 | `check-fast` (`HARNESS_TEST_CHANGED`) |
 | `assets.json` | tools | Manifest of the plugin-owned copies: `{"plugin": "<version>", "sha256": {"<path>": "<sha256>"}}` for `scripts/harness/*` (not `sensors/registry.json` or fixtures), `.githooks/*` and `harness.mk`. A copy whose hash matches is unmodified and may be refreshed; any other content is `modified` and left alone. No marker lines are added to the files themselves. Written by `assets.py install`/`refresh`; commit it. | `assets.py`, session hook, `harness-audit` |
 | `sensors/registry.json` | sensors | `{"sensors":[{"name","severity","invariant","run","mode","clean","fixture","dest"}]}`. `mode: paths` substitutes `{paths}`; `mode: copy` copies fixture files into `dest`, runs, then removes them. | `sensor-proof.sh`, `level.py` |
 | `sensors/no-prod-data.sh` | sensors | `no-prod-data.sh <path…>`: flags real-looking emails (except `@example.*`, `.test`, `.invalid`, `.local`), `prod`/`production` in host or URL contexts only (after `@` or `//`, or as a `host`/`*_HOST`/`url` value; prose and comments are ignored), `rds.amazonaws.com` hosts, real-looking phone numbers, and `.sql`/`.dump` files > 1 MB. Output `file:line: reason — use synthetic data (INVARIANTS.md Data Integrity)`. | `make check` once wired, `sensor-proof.sh` |
@@ -251,9 +252,10 @@ Layer tools. The dependency inventory: one row per external dependency (Dependen
 | Path | Purpose | Written by | Read by |
 |---|---|---|---|
 | `.harness/scan.json` | Scan result keyed to `head`: `stacks`, `modules`, `commands[{module,role,cmd,source,baseline}]`, `versions`, `services`, `env_vars`, `migrations`, `seeds`, `hook_manager`, `ci`, `harness_files`, `pasted_guidance`, `pack_folders`, `risk_paths`, `is_worktree` | `scan.py --write` (init, `repo-cartographer`); init adds `baseline` | init (resume), audit, garden, `sensor-smith`, `setup-smith` |
-| `.harness/init-state.json` | `{"layers_done":[…], "answers":{…}, "gate_wired":bool, "target":"…"}`. Written with `"gate_wired": false` **before** any harness file; set `true` only when `check-fast` resolved and passed. | `harness-init` | init (resume); stop gate and git hooks (silent until `gate_wired` is true); session hook ("setup in progress" while a layer in scope for `target` is missing: Experimental/Functional need `guides`, `sensors`; Robust/Enterprise or no target need all five; warns once if the file is unreadable) |
+| `.harness/init-state.json` | `{"layers_done":[…], "answers":{…}, "gate_wired":bool, "gate_reason":"…", "target":"…"}`. Written with `"gate_wired": false` **before** any harness file; set `true` only when `check-fast` resolved and passed. | `harness-init` | init (resume); stop gate and git hooks (silent until `gate_wired` is true); session hook ("setup in progress" while a layer in scope for `target` is missing: Experimental/Functional need `guides`, `sensors`; Robust/Enterprise or no target need all five; warns once if the file is unreadable; "gate not wired — <gate_reason>" once all layers are done but `gate_wired` is not true) |
 | `.harness/last-check` | `<fingerprint> pass <date>` after a green stop-gate run | `stop-gate.sh` | `level.py` without `--run-checks` |
 | `.harness/last-green-repo` | Fingerprint of the last green tree, so an unchanged tree isn't re-checked | `stop-gate.sh` | `stop-gate.sh` |
+| `.harness/last-fail-repo`, `.harness/stop-blocks` | Fingerprint of the last blocked tree and the count of blocks in a row (re-check bound, max 3) | `stop-gate.sh` | `stop-gate.sh` |
 | `.worktrees/` | Git worktrees (Work Artifacts) | you / skill packs | `lint.sh` fails if it exists but isn't ignored |
 
 Delete `.harness/` freely except mid-init (you'd lose resume state).

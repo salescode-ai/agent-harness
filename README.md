@@ -19,6 +19,8 @@ bash install-local.sh /path/to/repo
 
 This copies skills to `.agents/skills/`, agent checklists to `.agents/agents/`, the harness scripts to `scripts/harness/` and the git hooks to `.githooks/`. Existing files are skipped. It provides only scripts, skills, agent checklists and git hooks; run `harness-init` (or fill in the templates yourself) to reach Experimental. Agent hooks are Claude Code only.
 
+**Headless (`claude -p`, CI):** the skills read files in the plugin folder, outside the repo, and a non-interactive run cannot ask for that. Add `--add-dir ~/.claude/plugins/cache/agent-harness` (or, for a local checkout, `--plugin-dir <path>/plugins/agent-harness --add-dir <same path>`) and `--permission-mode auto`, e.g. `claude -p "/agent-harness:harness-init one-shot" --add-dir ~/.claude/plugins/cache/agent-harness --permission-mode auto`. Details: `docs/manual/03-user-guide.md` → Headless and CI runs.
+
 **Updating:** `claude plugin update agent-harness@agent-harness`, then re-run `/agent-harness:harness-init` in each repo: it refreshes the scripts it copied there (unmodified copies only; local edits are reported, never overwritten). The session hook says when a repo's copies are older than the plugin.
 
 ## Commands you run
