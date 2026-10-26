@@ -185,11 +185,18 @@ For a plain folder holding several repos. It writes workspace files only and nev
 
 | Skill | Use it | What it does |
 |---|---|---|
-| `harness-verify` | Before "done", "fixed", "tests pass", a commit or a PR | Frames request, criteria and scope; runs `check-fast`, `check`, `smoke` (if relevant) through `cmd.sh`; dispatches `verifier`, `invariants-reviewer`, `scope-guard` in parallel; decides; prints `Verified: … Gate: … Criteria: … Reviewers: … Open: …`. Max 3 fix rounds, then it hands back to you. |
-| `harness-session` | Session start, after `/clear` or compaction, before stopping | Orients from git and the active plan, checks health with `check-fast`, picks one step; on close appends a Progress log line and moves finished plans to `done/` |
+| `harness-verify` | Before "done", "fixed", "tests pass", a commit or a PR | Frames request, criteria and scope; runs `check-fast`, `check`, `smoke` (if relevant) through `cmd.sh`; dispatches `verifier`, `invariants-reviewer`, `scope-guard` in parallel; decides; prints `Verified: … Gate: … Criteria: … Reviewers: … Open: … Plan: …` and appends that block to the active plan's `## Verification` section. Max 3 fix rounds, then it hands back to you. |
+| `harness-session` | Session start, after `/clear` or compaction, before stopping | Orients from git and the active plan (matched by the branch's ticket key, e.g. `SHOP-12-pay-button`), shows the last verification entry, checks health with `check-fast`, picks one step; on close appends a Progress log line, drafts a tracker comment for your yes, and moves a finished plan to `done/` only after a PASS verification entry newer than the last code change |
 | `harness-learn` | After a repeated failure, a "don't do that again", or an incident | Picks the strongest fix: sensor → hook → check step → invariant → footgun → routing line → ADR → glossary. Changes to `INVARIANTS.md` or Authorization are proposed, not written. |
 | `harness-garden` | Weekly, after big refactors, or with an audit's fix list | Lint + `harness-auditor`; fixes safe drift (dead links, ADR index rows, finished plans, duplicated rules, renamed commands); proposes the rest; may open `chore(harness): garden <date>` if Authorization allows |
 | `harness-glossary` | New concept, two words for one thing, reviewer flags vocabulary | Adds a row after you choose the word and say what it means; checks a diff for "Avoid" words |
+
+### Tickets, plans and where to see verification evidence
+
+- **Tickets.** Every plan in `docs/plans/active/` carries `Ticket:` under its title: a Jira key (`SHOP-12`; a key outside the project named in `docs/agents/issue-tracker.md` only warns), `#123`, a `.scratch/...` issue file, or `none (<reason>)`. `harness-lint` fails on a missing or placeholder value; the workspace `make harness-lint` checks cross-repo plans the same way (default ticket: `issueKey` in `harness-workspace.json`). ADRs carry `Ticket:` too, and `docs/DECISIONS.md` has a Ticket column.
+- **Naming.** Branch `<KEY>-<n>-<slug>`, plan `docs/plans/active/YYYY-MM-DD-<KEY>-<n>-<slug>.md`. The session hook finds the plan by the key in the branch name, then by the plan's `Ticket:` line, then by slug.
+- **Verification evidence.** Each harness-verify run that reaches a verdict appends `### <date> · <commit | uncommitted> · <PASS | FAIL | NEEDS-HUMAN>` plus Gate, Criteria, Reviewers and Open lines to the plan's `## Verification` section (append-only; in a workspace, one block per repo in the cross-repo plan). Read it there, in the session hook's `last verification:` line, or in the PR description, which reuses the block. A plan is set to done only with a PASS entry newer than the last code change; `harness-lint` warns on a done plan without one, and `harness-audit` reports it under Context & State.
+- **Tracker updates.** At close, harness-session (and harness-verify on "done") drafts a comment: a progress line mid-work, or the evidence block plus the plan path and next step when a step or the plan is done, with a proposed transition. It posts only after you say yes, through a Jira/GitHub/GitLab connector or CLI in your session. It never stores tokens; without a connector it prints the text for you to paste.
 
 Skills resolve commands with `scripts/harness/cmd.sh` in the repo, falling back to the plugin's own `harness-cmd.sh` when a (v1) repo has no copy.
 
@@ -227,7 +234,7 @@ The label is `fresh clone` when `.env` was just created from `.env.example`, `fi
 
 ## 3.8 Using a runner other than make
 
-Pick "register another" in the Tools section, or write `.agents/harness.json` yourself (see [02-file-reference.md](02-file-reference.md#agentsharnessjson)). Hooks, the verifier, the audit, git hooks and the workspace gate all resolve commands through `cmd.sh`, which reads this file first and falls back to `make <target>`. Use `{T}` unquoted for the test path. `AGENTS.md` Verification must name the same runner commands, or `harness-lint` fails.
+Pick "register another" in the Tools section, or write `.agents/harness.json` yourself (see [02-file-reference.md](02-file-reference.md#agentsharnessjson)). Hooks, the verifier, the audit, git hooks and the workspace gate all resolve commands through `cmd.sh`, which reads this file first and falls back to `make <target>`. Use `{T}` unquoted for the test path. `AGENTS.md` Verification must name the same runner commands, or `harness-lint` fails. Keep it in the short form (done, fast loop, all commands) and name the runner's list command, recorded as optional `"help"` in the file (`just --list`, `npm run`, `task --list`).
 
 ## 3.9 Where checks run, and why
 

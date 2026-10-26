@@ -101,14 +101,14 @@ Special lines and sections:
 | File | Layer | Purpose | Written by | Read by | Humans edit? |
 |---|---|---|---|---|---|
 | `docs/ARCHITECTURE.md` | guides | Components, data flow, boundaries (Mermaid) | init (skeleton) | agents on design tasks; `harness-auditor` | Yes |
-| `docs/DECISIONS.md` | guides | Index, one row per ADR: ADR · Decision · Status · Date | init; `harness-garden` adds missing rows | `lint.sh` (every ADR listed, every link exists) | Yes |
+| `docs/DECISIONS.md` | guides | Index, one row per ADR: ADR · Decision · Status · Date · Ticket | init; `harness-garden` adds missing rows | `lint.sh` (every ADR listed, every link exists) | Yes |
 | `docs/adr/NNNN-slug.md` | guides | One decision per file (`TEMPLATE.md`, `0001-record-decisions.md` shipped) | human; `harness-learn`, `harness-session`, `harness-glossary` propose | `invariants-reviewer`; `lint.sh` | Yes |
 
 ### `docs/agents/*`
 
 | File | Purpose |
 |---|---|
-| `issue-tracker.md` | How agents use the tracker. One variant is copied: `github` or `gitlab` (detected from `git remote`), or `jira` / `local` (asked). |
+| `issue-tracker.md` | How agents use the tracker. One variant is copied: `github` or `gitlab` (detected from `git remote`), or `jira` / `local` (asked). The Jira/GitHub/GitLab variants describe approval-gated status updates: drafted progress or evidence comments, posted only after a yes. |
 | `triage-labels.md` | Label roles: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, … |
 | `domain.md` | What to read before exploring: glossary, `DECISIONS.md`, ADRs |
 
@@ -122,9 +122,9 @@ Repo-specific skills (`<name>/SKILL.md` with `name:` and `description:` front ma
 
 | File | Purpose | Written by | Read by | Humans edit? |
 |---|---|---|---|---|
-| `docs/plans/TEMPLATE.md` | Plan skeleton: Status · Goal · Acceptance criteria (each proved by a test/command) · Steps (`→ verify:`) · Progress log (append-only) · Decisions | init | `harness-session` | Yes |
-| `docs/plans/active/` | Plans in progress | humans and agents (`harness-session`) | `session-context.sh` (matches the branch name, else the newest with unchecked items, ≤ 14 days old); `verifier` (criteria) | Yes |
-| `docs/plans/done/` | Finished plans | `harness-session`, `harness-garden` | humans | Yes |
+| `docs/plans/TEMPLATE.md` | Plan skeleton: Status · `Ticket:` (Jira key, `#123`, `.scratch/...` or `none (<reason>)`; `lint.sh` fails on a placeholder in `active/`) · Goal · Acceptance criteria (each proved by a test/command) · Steps (`→ verify:`) · Progress log (append-only) · Decisions · `## Verification` (append-only evidence blocks from harness-verify: `### <date> · <commit> · <verdict>` + Gate, Criteria, Reviewers, Open) | init | `harness-session` | Yes |
+| `docs/plans/active/` | Plans in progress | humans and agents (`harness-session`) | `session-context.sh` (matches the ticket key in the branch name, then the `Ticket:` line, then the branch slug, else the newest with unchecked items, ≤ 14 days old; prints the last verification entry); `verifier` (criteria) | Yes |
+| `docs/plans/done/` | Finished plans (only with a PASS `## Verification` entry newer than the last code change) | `harness-session`, `harness-garden` | humans; `lint.sh` warns on a done plan without a Verification entry | Yes |
 | `docs/specs/` | Designs and specs (`YYYY-MM-DD-<topic>.md`) | humans / skill packs | agents | Yes |
 
 ## Tool & Permission files
@@ -206,7 +206,7 @@ All are copied by init (or `install-local.sh`) and run from the repo root. Leave
 | File | Layer | Purpose | Read/run by |
 |---|---|---|---|
 | `cmd.sh` | tools | Resolves a target to a command: `.agents/harness.json` first, else `make -s -C <dir> <target>` if `make -n <target>` succeeds. Usage `cmd.sh <dir> <target> [T]`. Exit 3 = not wired, 4 = make missing (both are **not** a pass). | git hooks, `setup.sh`, `setup-proof.sh`, skills, `verifier`, `harness-auditor` |
-| `lint.sh` | observability | `harness-lint`: core files exist; `CLAUDE.md` shim; size and token budgets; ADR index; skills layout; relative links; `make`/runner names in AGENTS.md exist; `INVARIANTS.md` format; TODO/`[verify]` warnings; sensor recheck; `.gitignore` covers `.harness/`. Prints `harness-lint: OK (≈N auto-loaded tokens)` or `FAIL` lines. | `make check`, `level.py`, init, garden, learn |
+| `lint.sh` | observability | `harness-lint`: core files exist; `CLAUDE.md` shim; size and token budgets; ADR index; skills layout; relative links; `make`/runner names in AGENTS.md exist; `INVARIANTS.md` format; TODO/`[verify]` warnings; plan `Ticket:` (fail) and done plans without Verification (warn); changed source files check-fast tests nothing for (warn); sensor recheck; `.gitignore` covers `.harness/`. Prints `harness-lint: OK (≈N auto-loaded tokens)` or `FAIL` lines. | `make check`, `level.py`, init, garden, learn |
 | `setup.sh` | tools | `make setup`: prereq versions (`.nvmrc`, `.python-version`, `.sdkmanrc`, `.tool-versions`), registry sign-in hints, `.env` from `.env.example` if missing, `.env.local` with worktree values, then `setup-deps`, services (`docker compose … up -d`), `setup-migrate`, `seed`, git hooks, `smoke`. Never `sudo`, never fetches secrets. | `make setup`, `setup-proof.sh`, workspace `ws.sh setup` |
 | `setup-proof.sh` | tools | Clones committed HEAD to a temp folder, resolves and runs `setup` there under its own compose project, tears down. Prints `setup-proof: OK`, `FAIL (<step>)` or `SKIPPED (docker not available)`. `HARNESS_PROOF_KEEP_ENV=1` copies `.env.local` in. | `setup-smith`, init step 5, `harness-audit full` |
 | `sensor-proof.sh` | sensors | `sensor-proof.sh <name>` (3-step proof) or `--recheck` (fixture fires, clean passes, for all sensors) | `sensor-smith`, `lint.sh`, `level.py`, audit |

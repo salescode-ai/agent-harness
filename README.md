@@ -63,7 +63,7 @@ The harness is organised in five layers. Each one acts at a different moment: be
 | Piece | What it does |
 |---|---|
 | Context loading table (in `AGENTS.md`) | Task type → files to read, so the agent loads the right detail and nothing more. |
-| `docs/plans/active/` | Long tasks as plans with steps and a progress log, so work survives `/clear`, compaction and new sessions. |
+| `docs/plans/active/` | Long tasks as plans with a `Ticket:`, steps, a progress log and a `## Verification` section where harness-verify appends its evidence, so work and proof survive `/clear`, compaction and new sessions. |
 | Size budgets | The auto-loaded guides stay small (≤ 3,000 tokens target) so they don't crowd out the task. |
 | `.harness/` | Local, gitignored state: scan results, setup progress, last green check. |
 
