@@ -1,0 +1,274 @@
+# 3. User guide
+
+## 3.1 Install
+
+### Claude Code (recommended)
+
+Push the `agent-harness` repository somewhere your team can read it, then in each repo:
+
+```bash
+claude plugin marketplace add <your-org>/agent-harness
+claude plugin install agent-harness@agent-harness --scope project
+```
+
+Project scope writes to the committed `.claude/settings.json`, so everyone on the repo gets the same hooks and guards. `harness-init` also writes this pin (`enabledPlugins: {"agent-harness@agent-harness": true}`) when you approve the settings.
+
+The plugin brings:
+
+- **Skills:** `harness-init`, `harness-audit` and `harness-workspace` (you invoke these); `harness-verify`, `harness-session`, `harness-learn`, `harness-garden` and `harness-glossary` (the agent uses these when they fit, or you ask for them).
+- **Agents:** `repo-cartographer`, `verifier`, `invariants-reviewer`, `scope-guard`, `cross-repo-reviewer`, `harness-auditor`, `sensor-smith`, `setup-smith`.
+- **Hooks:** SessionStart (`session-context.sh`), PreToolUse on Bash (`guard-bash.sh`), PreToolUse on Edit/Write/MultiEdit (`guard-files.sh`), Stop (`stop-gate.sh`).
+
+Requirements: `git`, `bash`, `python3` (3.8+ syntax; macOS system Python 3.9 works) and `make` unless you register another runner. The guard hooks fail open when `python3` is missing: they allow the action and stay quiet.
+
+### Codex, Cursor, Copilot, Gemini
+
+```bash
+bash install-local.sh /path/to/repo
+```
+
+This copies the skills to `.agents/skills/`, the agent checklists to `.agents/agents/`, the harness scripts to `scripts/harness/`, and the git hooks to `.githooks/`. Existing files are skipped. Agent hooks (stop gate, guards, session context) are **Claude Code only**. With other tools, the git hooks, `make check` and optional CI are what enforce the gate. In tools without subagents, `harness-verify` runs each reviewer's checklist itself in a separate pass, reading `.agents/agents/<name>.md`. After installing, run `harness-init` (or fill the templates yourself) to reach Experimental. `install-local.sh` also makes `scan.py` and `level.py` available to the copied skills.
+
+## 3.2 `/agent-harness:harness-init`
+
+Run it once per repo, again to resume an unfinished setup, or to upgrade a v1 harness. While it runs it is the process: it does not start planning, test-first or review skills from other plugins.
+
+```mermaid
+flowchart TD
+  A[Start] --> R{".harness/init-state.json?"}
+  R -- yes --> RES["Resume at the first layer in scope<br/>not in layers_done"]
+  R -- no --> S1
+  S1["1. Scan (no questions)<br/>scan.py → .harness/scan.json<br/>repo-cartographer report<br/>green baseline per command"] --> S2
+  S2["2. Decide auto vs ask"] --> S3
+  S3["3. Show layout tree → one yes<br/>write init-state gate_wired=false<br/>then write all files"] --> S4
+  S4["4. Interview, one layer at a time<br/>Guides → Tools → Sensors → Context → Observability<br/>(scope set by target level)"] --> S5
+  RES --> S4
+  S5["5. Verify<br/>lint.sh · check-fast & check · setup-proof · sensor recheck · probe"] --> S6
+  S6["6. Final report from level.py --run-checks --log"]
+```
+
+### Step 1: Scan
+
+No questions in this step. It runs `scan.py . --write` to produce `.harness/scan.json`, dispatches `repo-cartographer` (which checks the scan and adds module boundaries, risk areas and pack residue, with `file:line` for each claim), and runs a **green baseline**: every detected command except install/dev/watch modes, on the untouched repo, with a 5-minute timeout each, non-interactive (`CI=true` for Jest/react-scripts, `-B` for Maven, `--console=plain` for Gradle). Each gets `baseline: pass`, `fail: <n> errors` or `skipped: <why>`. On a fresh repo it also runs the before/after **probe** prompt (`references/probe.md`).
+
+### Step 2: Auto vs ask
+
+Applied automatically (evidence-backed): commands that pass the baseline; an existing compose file, seeds and git-hook manager; paths, dependency inventory and skeletons; `.gitignore` entries; moving pack guidance pasted into `CLAUDE.md` into `AGENTS.md`; catalog sensors that match evidence and pass their proof.
+
+Always asked: target level; Agent Authorization; new invariants and severity; footguns and incidents; glossary definitions; adding a dependency or tool; CI opt-in; `.claude/settings.json` permissions; generating a compose file or seeds; where to read unresolved dependencies; isolated or shared worktree services; stub / shared environment / none for external services.
+
+### Step 3: Layout tree, then write
+
+You see one tree with every file marked `auto-filled ✓`, `skeleton + TODO`, `needs your answer ?`, `~ extend` or `→ move`, tagged with its layer. Edits to your existing content are gathered into one diff. After your one yes:
+
+1. `.harness/init-state.json` is saved with `"gate_wired": false` first, so the stop gate and git hooks stay silent while the harness is half-built.
+2. Scripts are copied to `scripts/harness/`, hooks to `.githooks/`, templates to the repo. `harness.mk` is included after your default target, and `HARNESS_*` variables are set from commands that passed. `core.hooksPath` is **not** set at this point.
+3. A tool whose baseline failed is wired in changed-files mode with a `not yet enforced (<n> errors, <date>)` invariant. A tool the repo doesn't have is **declined**: `HARNESS_LINT = @echo "lint: none (declined <date>)"` plus a `not yet enforced (declined <date>)` invariant.
+4. `HARNESS_BASE` is written from `origin/HEAD`, else `origin/main`, else `origin/master`, else the upstream branch, and listed under *Assumed*.
+
+### Step 4: Interview, one layer per section
+
+Each section looks like this:
+
+```text
+## Sensors — checks that catch mistakes before a human does
+Found:    eslint passes (package.json:12) · pytest fails on main (56 errors) · husky present
+Will do:  pre-commit runs check-fast via husky · pytest wired in changed-files mode
+1. Severity of "no prod data in seeds"?   a) Critical ➡️  b) Important  c) Nice-to-have
+...
+Reply with numbers and letters ("1a 3b"), or "defaults" to accept every ➡️.
+Assumed — change any time: hook names · check-fast base origin/main · fixture folder
+```
+
+At most 5 questions per section, each with a `➡️` default. Low-stakes items are listed under *Assumed* and not asked.
+
+| Layer | Asks (defaults) |
+|---|---|
+| **Guides** | Target level (Functional / **Robust** / Enterprise, recommended from the scan) · Agent Authorization "May" and "Must stop and ask" · footguns (offered from fix/revert hotspots) · seed glossary terms (**later**) |
+| **Tools** | Runner (**make** / register another) · services per worktree (**isolated** / shared) · generate `compose.harness.yml` (**show first**; needs an explicit yes) · each external service (**stub** when a contract exists / shared dev URL / not needed) · `.claude/settings.json` rules (**apply** / show only) · then "Where can I read the details for X?" per unresolved dependency. `setup-smith` wires and proves `make setup`. |
+| **Sensors** | Severity per proposed invariant (**Important**) · catalog sensors (**build and prove**, via `sensor-smith`) · missing tool (**plain test or script** / add dependency); no linter at all (**declined** / add one) · git hooks (**on** / off) · CI workflow (**no** / yes, shown after the "where checks run" table) |
+| **Context & State** | Context loading rows (**proposed**) · plan/spec paths (**`docs/plans/`, `docs/specs/`**) · pack working notes folder (**`.scratch/`**, gitignored) |
+| **Observability** | Nothing by default; cadence and budgets are assumed. Enterprise with CI: add a CI audit job (**no**). |
+
+After each section, its files are written and `init-state.json` records the layer and the answers.
+
+### Step 5: Verify
+
+1. `bash scripts/harness/lint.sh`. FAILs are fixed; TODO warnings are listed.
+2. Resolve and run `check-fast`, then `check`. A target that doesn't resolve (exit 3/4) is **not** green. `gate_wired` becomes `true` only when `check-fast` resolved and exited 0.
+3. Setup proof in a fresh clone (when Tools is in scope). Commit the wiring first; the proof sees only committed files.
+4. `bash scripts/harness/sensor-proof.sh --recheck`.
+5. The probe again, and the difference is reported.
+
+### Step 6: Final report
+
+```text
+Level: <measured> · target: <target> · blocked by: <first blockers>
+Applied automatically: <n> — <one line each>
+Assumed — change any time: <list>
+Still open: <TODOs with file:line> · <invariants "not yet enforced">
+Next: /harness-audit in a month · /harness-garden weekly
+```
+
+It runs `level.py . --json --run-checks --log`, which also writes the first `AUDIT-LOG.md` row.
+
+Then **run `make setup` yourself** if you chose "git hooks: on" without a hook manager. It sets `core.hooksPath .githooks`. The agent may also run `git config core.hooksPath .githooks`: the guard allows exactly that value and denies any other.
+
+### One-shot, resume, upgrade
+
+- **`/agent-harness:harness-init one-shot`** skips step 4 and takes every default. New files start with `<!-- generated in one pass: verify before trusting -->`. Always-asked items with no safe default (Authorization, incidents, glossary meanings, CI, settings.json, new dependencies, compose/seed generation) are left as `TODO` under *Still open*.
+- **Resume.** Run the command again. It reads `init-state.json`, says `Resuming at <layer>`, and never re-asks a recorded answer. If `scan.json` is stale (different `head`) or lacks baselines, the scan is redone first. The session hook reminds you: `harness setup in progress — resume with /harness-init`.
+- **Upgrading a v1 repo** (`AGENTS.md`/`INVARIANTS.md` exist, no state file): same flow, but the tree lists only the differences, and questions already answered by your files are skipped.
+
+## 3.3 `/agent-harness:harness-audit`
+
+Read-only. The only write is one line in `docs/harness/AUDIT-LOG.md`. Fixes go to `harness-garden`.
+
+| Mode | When | Does |
+|---|---|---|
+| `quick` (default) | monthly | `level.py --json --run-checks --log`; the 10 health questions (Integrity, Constraint propagation, Sensors, Coverage gaps, Enforcement gaps, Footgun freshness, Token budget, File size discipline, Content accuracy, Claude Code integration); count of `TODO`/`[verify]` markers. Recommends `full` if more than 2 questions fail. |
+| `full` | quarterly, after an incident or major refactor | adds the 14-item completeness score (0–100), a content-quality pass, the simulated-task probe, `setup-proof.sh`, `sensor-proof.sh --recheck`, a comparison with the last log row; logs with `--health <score>` |
+
+Reading the report:
+
+```text
+## Layers
+guides        0.80  ✓ …
+tools         0.50  ✗ no deny rules in .claude/settings.json
+...
+Level: Functional · target: Robust · blocked by: no permission rules in .claude/settings.json; AGENTS.md has no Cadence section
+## Fixes (ranked: blockers to the target first, then Critical gaps, then cheapest)
+1. .claude/settings.json — add deny rules — closes blocker — layer tools
+Health: 8/10 questions pass
+Next: hand the fixes to /harness-garden
+```
+
+- **Layer scores** are the share of `level.py` criteria passing for that layer.
+- **blocked by** lists the failing criteria of the *next* level. Fix those to move up.
+- **Completeness bands:** 80–100 healthy · 60–79 gaps to schedule · below 60 address before the next major agent task · below 40 prioritise remediation.
+- `setup-proof: SKIPPED (docker not available)` is reported as skipped, not as a pass.
+
+## 3.4 `/agent-harness:harness-workspace`
+
+For a plain folder holding several repos. It writes workspace files only and never writes into a member repo unless you name that repo ("create harness for portal"), in which case it runs `harness-init` there. See [04-workspace.md](04-workspace.md).
+
+## 3.5 Everyday skills
+
+| Skill | Use it | What it does |
+|---|---|---|
+| `harness-verify` | Before "done", "fixed", "tests pass", a commit or a PR | Frames request, criteria and scope; runs `check-fast`, `check`, `smoke` (if relevant) through `cmd.sh`; dispatches `verifier`, `invariants-reviewer`, `scope-guard` in parallel; decides; prints `Verified: … Gate: … Criteria: … Reviewers: … Open: …`. Max 3 fix rounds, then it hands back to you. |
+| `harness-session` | Session start, after `/clear` or compaction, before stopping | Orients from git and the active plan, checks health with `check-fast`, picks one step; on close appends a Progress log line and moves finished plans to `done/` |
+| `harness-learn` | After a repeated failure, a "don't do that again", or an incident | Picks the strongest fix: sensor → hook → check step → invariant → footgun → routing line → ADR → glossary. Changes to `INVARIANTS.md` or Authorization are proposed, not written. |
+| `harness-garden` | Weekly, after big refactors, or with an audit's fix list | Lint + `harness-auditor`; fixes safe drift (dead links, ADR index rows, finished plans, duplicated rules, renamed commands); proposes the rest; may open `chore(harness): garden <date>` if Authorization allows |
+| `harness-glossary` | New concept, two words for one thing, reviewer flags vocabulary | Adds a row after you choose the word and say what it means; checks a diff for "Avoid" words |
+
+Skills resolve commands with `scripts/harness/cmd.sh` in the repo, falling back to the plugin's own `harness-cmd.sh` when a (v1) repo has no copy.
+
+## 3.6 Reviewer and builder agents
+
+| Agent | Role | Verdict / output |
+|---|---|---|
+| `verifier` | Runs the gate in a fresh context; checks each criterion has evidence; looks for verification theatre | `PASS \| FAIL` |
+| `invariants-reviewer` | Diff vs `INVARIANTS.md`, module footguns, ADRs, glossary | `CLEAN \| VIOLATIONS \| NEEDS-HUMAN` |
+| `scope-guard` | Every hunk traces to the request | `TIGHT \| TRIM \| SPLIT` |
+| `cross-repo-reviewer` | Ownership, contracts, compatibility, merge order across workspace repos | `ALIGNED \| MISMATCH \| NEEDS-HUMAN` |
+| `harness-auditor` | Drift and rot, layer by layer, using `level.py` | `HARNESS HEALTH: GREEN \| AMBER \| RED` |
+| `repo-cartographer` | Maps the repo for init; writes only `.harness/scan.json` | report by layer |
+| `sensor-smith` | Builds one sensor for one invariant, proves it with `sensor-proof.sh`; commits nothing | `SENSOR: … Proof: …` |
+| `setup-smith` | Wires `setup-deps`/`setup-services`/`setup-migrate`/`seed`/`smoke`, proves with `setup-proof.sh`; compose/seed files only after a yes | `SETUP: … OK \| FAIL (step) \| SKIPPED` |
+
+The reviewers are read-only and did not write the change, so they are not grading their own work.
+
+## 3.7 Dev environment: `make setup`, seed, reset, dev
+
+`make setup` is safe to re-run. It works on a fresh machine and in any worktree. The report looks like:
+
+```text
+setup: OK  (fresh clone · worktree feat-x · ports API=8123 DB=55432)
+steps: deps ✓ · services ✓
+data: migrate ✓ · seed ✓ · smoke ✓
+needs you: STRIPE_KEY, docker login ghcr.io
+```
+
+The label is `fresh clone` when `.env` was just created from `.env.example`, `first run` before the first successful setup (marker `.harness/setup-ran`), else `re-run`. It exits non-zero only when a resolved step failed. Items under "needs you" alone exit 0.
+
+**Worktree isolation (default).** In a linked worktree (`.git` is a file), setup derives `COMPOSE_PROJECT_NAME` from the repo and worktree folder names, picks free ports for every `*_PORT` in `.env.example`, suffixes `DB_NAME`, and writes them to `.env.local`. The main checkout keeps the ports from `.env.example`. Services start with `docker compose -f <file> --env-file .env --env-file .env.local -p <project> up -d` (Compose ≥ 2.17; with an older or unknown Compose version, `.env` and `.env.local` are merged into one temporary env file, later values winning). Set `HARNESS_SHARED_SERVICES=1` (env or `.env.local`) to share one set of services instead.
+
+**seed / reset / dev** exist only when you set `HARNESS_SEED`, `HARNESS_RESET` or `HARNESS_DEV` above `include harness.mk`. Unconfigured, `make seed` says "No rule" and `make setup` skips the step. Before running, `seed` and `reset` call `local-guard.sh`, which refuses any non-local database host.
+
+## 3.8 Using a runner other than make
+
+Pick "register another" in the Tools section, or write `.agents/harness.json` yourself (see [02-file-reference.md](02-file-reference.md#agentsharnessjson)). Hooks, the verifier, the audit, git hooks and the workspace gate all resolve commands through `cmd.sh`, which reads this file first and falls back to `make <target>`. Use `{T}` unquoted for the test path. `AGENTS.md` Verification must name the same runner commands, or `harness-lint` fails.
+
+## 3.9 Where checks run, and why
+
+| Place | Default | Notes |
+|---|---|---|
+| Agent hooks (stop gate, guards) | on | Agents only; Claude Code |
+| Git hooks: pre-commit runs `check-fast`, pre-push runs `check` | on | With husky, lefthook or pre-commit, the manager's config calls `.githooks/*`. Otherwise `core.hooksPath .githooks`, set by `make setup`. The session hook warns `git hooks not installed — run: make setup`. |
+| CI workflow | opt-in | Generated only on a yes. It is the only check nobody can skip, and it is required for Enterprise. |
+
+The stop gate runs `check-fast` only when source changed (uncommitted files outside `docs/`, `*.md` and `.harness/`, or commits ahead of the base) and the tree differs from the last green run. A passing run is silent.
+
+## 3.10 Working alongside other skill packs
+
+The harness holds the facts; packs bring process. Any pack works inside it if it follows `AGENTS.md` → `## Agent skills`:
+
+- `INVARIANTS.md` and `AGENTS.md` outrank any skill.
+- Specs, plans, ADRs and notes go where Work Artifacts says, not in a pack's default folder.
+- Proof comes from the resolved `check`; `harness-verify` runs last, whatever process ran before it.
+- Run one process skill per phase (not two planning or TDD flows over the same work).
+- Never write to `CLAUDE.md`. Setup blocks go under `## Agent skills`, guidelines under Working Principles. The guards enforce this.
+- Never loosen hooks, guards, permissions or checks.
+
+Scope: pin only `agent-harness` in project settings; keep other packs in user scope (`~/.claude/settings.json`) or local scope (`.claude/settings.local.json`). Before sharing a pack with the team, read its source, check its always-on token cost (`claude plugin details <name>`), list its hooks and MCP servers, and try it on one repo for a week. When a pack's default conflicts with the repo, add one line to `AGENTS.md`. Don't fork the pack.
+
+## 3.11 Settings and environment variables
+
+| Variable | Effect |
+|---|---|
+| `HARNESS_STOP_GATE=0` | Turns off the stop gate for the session |
+| `HARNESS_GUARD=0` | Turns off the Bash and file guards for the session (not recommended) |
+| `HARNESS_SHARED_SERVICES=1` | `make setup` shares local services instead of an isolated compose project and ports (env or `.env.local`) |
+| `HARNESS_ALLOW_SEED=1` | Lets `seed`/`reset` run when `local-guard.sh` is missing, and overrides its non-local refusal (with a warning) |
+| `HARNESS_BASE` | Base ref. As an env var it overrides the stop gate's base; as a Makefile variable it sets `check-fast`'s changed-files base. Default: `origin/HEAD`, else `origin/main`, else `origin/master`. |
+| `HARNESS_PROOF_KEEP_ENV=1` | `setup-proof.sh` copies your `.env.local` into the clone |
+| `HARNESS_DEFINE_<NAME>=0` | Makefile: don't define that `harness.mk` target (yours wins) |
+
+## 3.12 Troubleshooting and FAQ
+
+**"Stop blocked by agent-harness: a repo's check-fast failed on your changes."** The agent changed code and `check-fast` failed. Fix the failures shown. Don't disable checks. If you must stop anyway, set `HARNESS_STOP_GATE=0` for that session. In a workspace, the block also lists `Not gated (no complete harness), changed anyway:` members.
+
+**The stop gate or a git hook says nothing during setup.** That's intended. While `.harness/init-state.json` exists without `"gate_wired": true`, the stop gate is silent and git hooks print `harness: setup in progress, skipping`. Finish or resume `/agent-harness:harness-init`.
+
+**`[agent-harness] git hooks not installed — run: make setup`.** `.githooks/` exists, `core.hooksPath` is unset, and there's no hook manager. Run `make setup` or `git config core.hooksPath .githooks` (the agent may run that exact command). The guard denies any other `core.hooksPath` value, `--unset`, `--global` and `-c core.hooksPath=` overrides.
+
+**A git hook prints `harness: check-fast not wired, skipping`.** `cmd.sh` couldn't resolve the target (`make -n check-fast` failed, or it's not in `.agents/harness.json`). Run `make -n check-fast` to see why.
+
+**`harness-lint` failures.** Each line names the file and the fix. Common ones:
+- `CLAUDE.md has real content` → move it to `AGENTS.md`.
+- `AGENTS.md names 'make x' but the Makefile has no 'x' target` → fix the name or add the target.
+- `INVARIANTS.md bullet lacks '— Severity: … — Enforced by: …'` → add both.
+- `docs/adr/X.md is not listed in docs/DECISIONS.md` → add the row.
+- `sensor recheck failed` → a sensor no longer fires on its fixture, or now fails on clean code. Fix the sensor, never the fixture.
+- TODO/`[verify]` lines are warnings, not failures.
+
+**`lint: not configured` / `test: not configured` fails `check`.** The variable was never wired. Set it to the real command, or decline the tool: `HARNESS_LINT = @echo "lint: none (declined <date>)"` plus a `not yet enforced (declined <date>)` invariant.
+
+**Seed refused.** `seed: scripts/harness/local-guard.sh missing — refusing …` → reinstall the script, or set `HARNESS_ALLOW_SEED=1`. `local-guard: refusing, non-local target: DB_HOST=db.prod.example.com …` → point the variable at a local service; override with `HARNESS_ALLOW_SEED=1` only if you're sure. `make: *** No rule to make target 'seed'` → `HARNESS_SEED` isn't set above the include.
+
+**Level stuck.** Run `/agent-harness:harness-audit` and read `blocked by:`. Common causes: `check not passing (no .harness/last-check pass; run with --run-checks)`; `no automatic enforcement` (run `make setup`, or add check-fast to your hook manager); `no invariant is machine-enforced`; a Security/Data Integrity rule still `not yet enforced` (Robust); `AUDIT-LOG.md needs 2+ rows` (Enterprise needs history, so it can't be reached on day one). The level never exceeds what the criteria measure, whatever the target says.
+
+**`CLAUDE.md` write blocked.** That's intended: `CLAUDE.md files are shims (@-references only). Put instructions in AGENTS.md — …`. Move the content to `AGENTS.md` → `## Agent skills` or Working Principles. A pack installer that insists on `CLAUDE.md` should be pointed at `AGENTS.md`.
+
+**Writing `.env` blocked.** `Writing to .env is blocked: secrets files are human-managed. Update .env.example instead.` Edit it yourself.
+
+**Edit to `INVARIANTS.md` or `harness-workspace.json` asks for confirmation.** These need human sign-off. Approve only if you asked for the change.
+
+**Push to main asks.** `Pushing to <branch>. AGENTS.md Agent Authorization normally requires a human for this.` Force-push, `git reset --hard`, `git clean -f`, `git checkout .`, `git branch -D`, `git stash clear`, `--no-verify`, `HUSKY=0`/`SKIP=…` before git, and recursive `rm` of `/`, `~`, `.`, `..`, `*` are denied. `DROP/TRUNCATE TABLE|DATABASE|SCHEMA` asks.
+
+**`.claude/settings.json` write refused.** Claude Code may refuse it. The plugin shows the full JSON; add it yourself. It does not work around the refusal.
+
+**`setup-proof: FAIL (setup not wired …)`.** The clone has no resolvable `setup`. Commit the `Makefile`/`harness.mk` wiring first; the proof only sees committed files.
+
+**Session keeps saying `harness setup in progress`.** It shows until `init-state.json` records all five layer keys. With a Functional target only two layers are interviewed; run `/agent-harness:harness-init` again to finish the rest (or raise the target), or delete `.harness/init-state.json` once `gate_wired` is true and you're done. Deleting it before the gate is wired loses resume state.

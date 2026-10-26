@@ -1,12 +1,12 @@
 # agent-harness 2.0.0 — Design Spec
 
-Date: 2026-10-26 · Status: approved design (grilling session, 55 decisions) · Basis: [Adobe AI Repo Harness Guide v1.1.0](https://opensource.adobe.com/ai-repo-harness-guide/)
+Date: 2026-10-26 · Status: approved design (grilling session, 55 decisions)
 
 ## 1. Goal
 
 A Claude Code plugin that **sets up, reviews and audits** an engineering-time harness for any repository, or for a multi-repo working folder. It must work alongside any third-party skill pack without naming one. The harness holds the facts and rules; packs bring process.
 
-Out of scope, as in Adobe: runtime harness concerns, such as tool dispatch, retries, cost ceilings and runtime metrics.
+Out of scope: runtime harness concerns, such as tool dispatch, retries, cost ceilings and runtime metrics.
 
 ## 2. Principles
 
@@ -120,7 +120,7 @@ Behaviour that applies to the whole flow:
   | `harness-lint` | structural checks on the harness |
   | `help` | list targets |
 
-- `harness.mk` follows Adobe's form: the agent header line, `.DEFAULT_GOAL := help`, `##` help comments.
+- `harness.mk` follows the common harness form: the agent header line, `.DEFAULT_GOAL := help`, `##` help comments.
 - **Wiring rules:**
   - Each command is wired only after it passes the green baseline on the untouched repo.
   - A tool that already fails is wired in changed-files mode, and its debt is recorded as an invariant marked `not yet enforced (<n> errors, <date>)`.
@@ -192,7 +192,7 @@ needs you: STRIPE_KEY (dev env), docker login ghcr.io
 
 ## 6. Sensors layer
 
-- **Invariants** carry a severity (Adobe's tiers):
+- **Invariants** carry a severity (standard harness tiers):
   - **Critical**: fails `check` and blocks the stop gate.
   - **Important**: a warning, which `harness-verify` flags for a human.
   - **Nice-to-have**: appears in the audit only.
@@ -219,11 +219,11 @@ needs you: STRIPE_KEY (dev env), docker login ghcr.io
 ### 7.1 `harness-audit` (read-only)
 
 - **`quick`** (the default, monthly):
-  - Adobe's 10 health-check questions;
+  - the 10 harness health-check questions;
   - the script-measured level and per-layer scores;
   - if more than 2 fail, it recommends `full`.
 - **`full`** (quarterly, or after an incident or major refactor):
-  - adds Adobe's 14-item completeness score (0–100, with Adobe's bands);
+  - adds a 14-item completeness score (0–100, with fixed bands);
   - a content-quality pass;
   - the fixed simulated-task probe;
   - the fresh-clone setup proof;
@@ -319,7 +319,7 @@ needs you: STRIPE_KEY (dev env), docker login ghcr.io
 6. No sensor generation or proof. **Fixed in §6.**
 7. In a workspace, a member without a harness was a FAIL and the skill offered to write into it. **Now a warning and no writes.**
 8. Member invariants weren't loaded in a workspace. **Now imported.**
-9. Limits couldn't be overridden; the Makefile didn't follow Adobe's form. **Fixed.**
+9. Limits couldn't be overridden; the Makefile didn't follow the common harness form. **Fixed.**
 10. The shipped `__pycache__/` is deleted, and this folder gets `git init`.
 11. Shell writes to `CLAUDE.md` got past the guard. **Fixed.**
 12. No dev-environment setup or test data. **Fixed in §5.3–5.4.**
@@ -345,5 +345,5 @@ Version **2.0.0** (layouts and limits change). The plugin keeps the name `agent-
 ## 13. Open risks
 
 - Sensor and setup proofs run real repo tooling; they can be slow on large repos. `quick` audit excludes them.
-- The level criteria are this plugin's own definitions, not Adobe's; Adobe gives none. Revisit after the first few repos.
+- The level criteria are this plugin's own definitions; industry harness guidance gives none. Revisit after the first few repos.
 - Detecting dependencies from config is heuristic. Unresolved items fall back to a question, never a guess.
