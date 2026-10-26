@@ -291,6 +291,7 @@ Scope: pin only `agent-harness` in project settings; keep other packs in user sc
 | `HARNESS_STOP_GATE=0` | Turns off the stop gate for the session |
 | `HARNESS_GUARD=0` | Turns off the Bash and file guards for the session (not recommended) |
 | `HARNESS_SHARED_SERVICES=1` | `make setup` shares local services instead of an isolated compose project and ports (env or `.env.local`) |
+| `HARNESS_ALLOW_UNVERIFIED_DONE=1` | The pre-commit hook lets a plan close when this machine has no `.harness/evidence/` at all (with a notice); stale or failing evidence still blocks |
 | `HARNESS_ALLOW_SEED=1` | Lets `seed`/`reset` run when `local-guard.sh` is missing, and overrides its non-local refusal (with a warning) |
 | `HARNESS_BASE` | Base ref. As an env var it overrides the stop gate's base; as a Makefile variable it sets `check-fast`'s changed-files base. Default: `origin/HEAD`, else `origin/main`, else `origin/master`. |
 | `HARNESS_PROOF_KEEP_ENV=1` | `setup-proof.sh` copies your `.env.local` into the clone |
@@ -328,9 +329,11 @@ Scope: pin only `agent-harness` in project settings; keep other packs in user sc
 
 **A Bash command was denied inside `bash -c`, `sh -c` or `eval`.** The guard checks those payloads like any other command, and an abbreviated git option (`--no-veri`, `--forc`) like the full one.
 
-**Edit to `INVARIANTS.md` or `harness-workspace.json` asks for confirmation.** These need human sign-off. Approve only if you asked for the change.
+**Edit to `INVARIANTS.md` or `harness-workspace.json` asks for confirmation.** These need human sign-off. Approve only if you asked for the change. Bash writes into `INVARIANTS.md` (`>`, `>>`, `tee`, `cp`/`mv`, `sed -i`) ask the same way.
 
-**Push to main asks.** `Pushing to <branch>. AGENTS.md Agent Authorization normally requires a human for this.` Force-push, `git reset --hard`, `git clean -f`, `git checkout .`, `git branch -D`, `git stash clear`, `--no-verify`, `HUSKY=0`/`SKIP=…` before git, and recursive `rm` of `/`, `~`, `.`, `..`, `*` are denied. `DROP/TRUNCATE TABLE|DATABASE|SCHEMA` asks.
+**Commit refused: `<plan> is closed as done without a fresh PASS`.** The pre-commit hook checks every plan the commit closes (moved to `done/` or set to `Status: done`) with `plan-check.sh fresh`. Run harness-verify, commit the code, then close the plan in its own commit: plan-only commits keep the evidence fresh.
+
+**Push to main asks.** `Pushing to <branch>. AGENTS.md Agent Authorization normally requires a human for this.` Force-push, `git reset --hard`, `git clean -f`, `git checkout .`, `git branch -D`, `git stash clear`, `--no-verify`, `HUSKY=0`/`SKIP=…` before git, and recursive `rm` of `/`, `~`, `.`, `..`, `*` are denied. `DROP/TRUNCATE TABLE|DATABASE|SCHEMA`, `kubectl delete`, `terraform destroy`, `terraform apply -auto-approve` and `helm uninstall` ask.
 
 **`.claude/settings.json` write refused.** Claude Code may refuse it. The plugin shows the full JSON; add it yourself. It does not work around the refusal.
 

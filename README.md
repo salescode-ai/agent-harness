@@ -67,7 +67,7 @@ The harness is organised in five layers. Each one acts at a different moment: be
 | `make check-fast` | The same on changed files only (under ~60 s), including the tests related to changed source files. |
 | `scripts/harness/sensors/` | Project-specific checks (architecture rules, "no production data in seeds", contract checks). Each is wired only after a proof run: clean code passes, a planted violation fails, and the planted fixture is kept so the sensor is re-proved on every lint. |
 | `scripts/harness/lint.sh` | Structural checks on the harness itself: shim, budgets, broken links, rule format, commands that don't exist. |
-| `.githooks/` | pre-commit runs `check-fast`, pre-push runs `check` (or added to your existing husky / lefthook / pre-commit). |
+| `.githooks/` | pre-commit runs `check-fast`, pre-push runs `check` (or added to your existing husky / lefthook / pre-commit). pre-commit also refuses to close a plan (moved to `plans/done/` or `Status: done`) unless `scripts/harness/plan-check.sh fresh` passes on its local evidence. |
 
 ### 3. Context & State: what the agent remembers and loads
 
@@ -84,7 +84,7 @@ The harness is organised in five layers. Each one acts at a different moment: be
 |---|---|
 | `Makefile` + `harness.mk` (or `.agents/harness.json`) | The one command surface: `check`, `check-fast`, `test T=`, `setup`, `seed`, `reset`, `dev`, `smoke`. Every hook, skill and teammate uses the same commands. |
 | `make setup` | One command for a working dev environment on a fresh machine or any worktree: dependencies, services, migrations, synthetic test data, git hooks, then a smoke check. |
-| Guard hooks | Block force-push, `--no-verify`, `git reset --hard`, destructive deletes, and writes to `CLAUDE.md` and `.env`. |
+| Guard hooks | Block force-push, `--no-verify`, `git reset --hard`, destructive deletes, and writes to `CLAUDE.md` and `.env`. Ask before `kubectl delete`, `terraform destroy`, `terraform apply -auto-approve`, `helm uninstall`, destructive SQL and any write to `INVARIANTS.md`. |
 | Stop gate | Claude can't finish a turn while `check-fast` fails on its changes. |
 | `scripts/harness/local-guard.sh` | `seed` and `reset` refuse anything that isn't a local database. |
 | `.claude/settings.json` | Pins the plugin for the team and denies reading secret files. |
@@ -140,6 +140,7 @@ Register commands in `.agents/harness.json`. Hooks, the verifier, the audit and 
 - `HARNESS_STOP_GATE=0`: turn off the stop gate for a session.
 - `HARNESS_GUARD=0`: turn off the command and file guards for a session (not recommended).
 - `HARNESS_SHARED_SERVICES=1`: `make setup` shares local services instead of giving the checkout its own compose project (and each linked worktree its own free ports; the main checkout keeps the `.env.example` ports).
+- `HARNESS_ALLOW_UNVERIFIED_DONE=1`: let the pre-commit hook close a plan when this machine has no `.harness/evidence/` at all (it prints a notice). Stale or failing evidence still blocks.
 - `HARNESS_ALLOW_SEED=1`: let `seed` and `reset` run when `scripts/harness/local-guard.sh` is missing, **and** override its refusal of a non-local database target (it prints a warning). Use only when you are sure.
 
 ## Self-test
