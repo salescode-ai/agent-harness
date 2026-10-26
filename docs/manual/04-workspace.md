@@ -49,6 +49,8 @@ Run it in the workspace folder.
 
 **Never writes inside a member repo.** To give a member its own harness, run `/agent-harness:harness-init <member>` from the workspace folder (`<member> one-shot` skips the interview); it works inside that member only. Asked "create harness for portal", the agent answers with that command, since it cannot start `harness-init` itself.
 
+**After a plugin update** run `/agent-harness:harness-upgrade` in the workspace folder: it refreshes `ws.sh` and `scripts/harness/`, migrates the workspace files (plan template, cross-repo plans, `AGENTS.md`) and prints `/agent-harness:harness-upgrade <member>` for each member whose harness is behind; it never writes into a member itself. Verification evidence for cross-repo plans is local: `.harness/evidence/<plan file name>`, one block per repo.
+
 ## Workspace commands
 
 | Command | Does |

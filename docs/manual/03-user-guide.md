@@ -15,11 +15,20 @@ Project scope writes to the committed `.claude/settings.json`, so everyone on th
 
 The plugin brings:
 
-- **Skills:** `harness-init`, `harness-audit` and `harness-workspace` (you invoke these); `harness-verify`, `harness-session`, `harness-learn`, `harness-garden` and `harness-glossary` (the agent uses these when they fit, or you ask for them).
+- **Skills:** `harness-init`, `harness-audit`, `harness-upgrade` and `harness-workspace` (you invoke these); `harness-improve` (offered at the end of init and audit; you or the agent start it), `harness-verify`, `harness-session`, `harness-learn`, `harness-garden` and `harness-glossary` (the agent uses these when they fit, or you ask for them).
 - **Agents:** `repo-cartographer`, `verifier`, `invariants-reviewer`, `scope-guard`, `cross-repo-reviewer`, `harness-auditor`, `sensor-smith`, `setup-smith`.
 - **Hooks:** SessionStart (`session-context.sh`), PreToolUse on Bash (`guard-bash.sh`), PreToolUse on Edit/Write/MultiEdit (`guard-files.sh`), Stop (`stop-gate.sh`).
 
 Requirements: `git`, `bash`, `python3` (3.8+ syntax; macOS system Python 3.9 works) and `make` unless you register another runner. The guard hooks fail open when `python3` is missing: they allow the action and stay quiet.
+
+### Without the plugin installed
+
+A harness has two halves:
+
+1. **Committed repo files work for everyone, with any tool:** the guides (`AGENTS.md`, `INVARIANTS.md`, `CLAUDE.md`, `GLOSSARY.md`, `docs/`); `Makefile` + `harness.mk` + `scripts/harness/` (`make check`, `check-fast`, `test`, `setup`, `seed`/`reset` behind `local-guard.sh`, `harness-lint`, the sensor proofs); the `.githooks/` once `make setup` has run in that clone; CI if you opted in.
+2. **Plugin only (Claude Code):** the hooks (stop gate, Bash and file guards, session orientation), the skills and the reviewer agents. None of these are copied into the repo.
+
+**Team rollout.** Commit `.claude/settings.json` with `extraKnownMarketplaces` (`agent-harness` → `salescode-ai/agent-harness`) and `enabledPlugins: {"agent-harness@agent-harness": true}`, so every teammate's Claude Code offers the plugin when they trust the folder. `harness-init` asks before writing it; one-shot leaves it as a TODO; `harness-improve` reports "team rollout settings missing" as a gap until it is committed. For Codex, Cursor, Copilot or Gemini, `install-local.sh` copies the skills to `.agents/skills/`; those tools get no agent hooks, so the git hooks and CI do the enforcing.
 
 ### Headless and CI runs (`claude -p`)
 
@@ -137,15 +146,11 @@ Then **run `make setup` yourself** if you chose "git hooks: on" without a hook m
 - **`/agent-harness:harness-init one-shot`** skips step 4 and takes every default. New files start with `<!-- generated in one pass: verify before trusting -->`. Always-asked items with no safe default (Authorization, incidents, glossary meanings, CI, settings.json, new dependencies, compose/seed generation) are left as `TODO` under *Still open*.
 - **Resume.** Run the command again. It reads `init-state.json`, says `Resuming at <layer>`, and never re-asks a recorded answer. If `scan.json` is stale (different `head`) or lacks baselines, the scan is redone first. The session hook reminds you: `harness setup in progress — resume with /harness-init`.
 - **Workspace member.** From a workspace folder, `/agent-harness:harness-init <member>` (or `<member> one-shot`) runs the whole flow inside that member repo and touches nothing else. Without a member name in a workspace folder it stops, lists the members and prints that command. The agent cannot start `harness-init` itself, so a request like "create harness for portal" is answered with the command.
-- **Upgrading a v1 repo** (`AGENTS.md`/`INVARIANTS.md` exist, no state file): same flow, but the tree lists only the differences, and questions already answered by your files are skipped.
+- **Existing harness.** Re-running init on a finished harness hands over to `harness-upgrade` (3.3a). A v1 repo it cannot bring up to date (`AGENTS.md`/`INVARIANTS.md` exist, no state file) gets the init flow, but the tree lists only the differences, and questions already answered by your files are skipped.
 
 ### Updating the plugin and refreshing repo scripts
 
-`claude plugin update agent-harness@agent-harness` (or `claude plugin marketplace update agent-harness` first) updates the plugin, its hooks and skills. The scripts init **copied into the repo** (`scripts/harness/cmd.sh`, `lint.sh`, `related-tests.sh`, `setup.sh`, `setup-proof.sh`, `sensor-proof.sh`, `local-guard.sh`, `sensors/no-prod-data.sh`, `.githooks/*`, `harness.mk`; in a workspace `scripts/harness/cmd.sh` and `ws.sh`) do not change by themselves:
-
-1. The session hook says `[agent-harness] harness scripts are older than the plugin (<n> files) — run /agent-harness:harness-init to refresh`, and `harness-audit` lists them under observability.
-2. Run `/agent-harness:harness-init` (or `harness-workspace` in a workspace). Before anything else it runs `assets.py status`, then `assets.py refresh`: every **stale** copy (an unmodified older plugin copy) is replaced and listed under *Applied automatically*. A copy you **modified locally** is never overwritten; it is listed as `modified locally, review diff` with the `diff` command to compare it with the plugin copy. Repo-owned files (`Makefile`, `AGENTS.md`, `INVARIANTS.md`, `sensors/registry.json`, fixtures, your own sensors) are never touched.
-3. Commit the refreshed files and `scripts/harness/assets.json`.
+`claude plugin update agent-harness@agent-harness` (or `claude plugin marketplace update agent-harness` first) updates the plugin, its hooks and skills. The scripts init **copied into the repo** (`scripts/harness/cmd.sh`, `lint.sh`, `plan-check.sh`, `related-tests.sh`, `setup.sh`, `setup-proof.sh`, `sensor-proof.sh`, `local-guard.sh`, `sensors/no-prod-data.sh`, `.githooks/*`, `harness.mk`; in a workspace `scripts/harness/cmd.sh`, `plan-check.sh` and `ws.sh`) and the harness files themselves do not change by themselves. The session hook says `[agent-harness] harness scripts are older than the plugin (<n> files) — run /agent-harness:harness-upgrade`, and `harness-audit` lists them under observability. Run `/agent-harness:harness-upgrade` (3.3a), then commit the result and `scripts/harness/assets.json`.
 
 A copy counts as unmodified when its sha256 matches `scripts/harness/assets.json` (written at install and refresh) or a released plugin copy, so repos set up before 2.0.2 (no manifest yet) are recognised too. To check by hand: `python3 <plugin>/scripts/assets.py status .`.
 
@@ -177,6 +182,26 @@ Next: hand the fixes to /harness-garden
 - **Completeness bands:** 80–100 healthy · 60–79 gaps to schedule · below 60 address before the next major agent task · below 40 prioritise remediation.
 - `setup-proof: SKIPPED (docker not available)` is reported as skipped, not as a pass.
 
+## 3.3a `/agent-harness:harness-upgrade`
+
+Brings a harness made by an older plugin version up to the installed one. Nothing is committed; you review and commit.
+
+1. **Versions and scripts.** `migrate.py status` prints `plugin: recorded <x> · running <y>` (the recorded version is `"plugin"` in `scripts/harness/assets.json`). `assets.py install` replaces every **stale** (unmodified) plugin copy and adds new plugin scripts; a copy you **modified locally** is never overwritten and is listed with the `diff` command to compare it.
+2. **Migrations.** Versioned and idempotent (registry: `skills/harness-upgrade/references/migrations.md`). Each is `auto` (new files, unedited plugin templates, local `.harness/` state: applied and listed), `propose` (edits to your files: `Makefile`, `AGENTS.md`, plans, `DECISIONS.md`, `.claude/settings.json`, `.agents/harness.json`; shown as **one diff**, written only after a single yes; `skip <id>` leaves one out) or `manual` (needs your decision, e.g. timing the test suite for `check-fast`). Active plans without a ticket get the key from the file or branch name, else a proposed `none (…)` the agent asks you to replace.
+3. **Verify.** `harness-lint`, `check-fast` (sets `gate_wired` when it passes), `level.py --run-checks --log` (one audit row), and the version is recorded.
+4. **Report.** Before → after level, what was applied, what you accepted or declined, what still needs you, and the offer to run `harness-improve`.
+
+Running it again changes nothing. In a workspace folder it upgrades the workspace files only and prints `/agent-harness:harness-upgrade <member>` for each member that is behind; `/agent-harness:harness-upgrade <member>` upgrades inside that member.
+
+## 3.3b `/agent-harness:harness-improve`
+
+Turns a thin harness into a useful one, from evidence only. init and audit end with "Run /agent-harness:harness-improve to strengthen <top 3 gaps>?" and, in an interactive session, ask whether to start now.
+
+1. **Status.** Level and blockers, `TODO`/`[verify]` counts per file, invariants `not yet enforced`, skeletal sections (Agent Authorization, Footguns, Glossary, Context loading rows), risk paths without a module `AGENTS.md`, team rollout settings missing, stale scripts, last audit.
+2. **Evidence.** Fix/revert/hotfix clusters in `git log` → footguns and invariants; risk paths → module guides; direction changes ("migrate to", dependency swaps) → ADR drafts; domain nouns not in `GLOSSARY.md` → glossary candidates; modules without a Context loading row; matches in the sensor catalog → sensors. No evidence, no suggestion.
+3. **Interview.** One area per round: what it is for, `Found → Suggest` lines with their evidence, at most 5 numbered questions with options and a ➡️ default. "defaults" accepts the round.
+4. **Apply and re-measure.** Each accepted item goes to its one owner file; machine-checkable rules go to `sensor-smith`, which proves the sensor on a fixture first. Then `harness-lint`, `level.py --run-checks --log`, and a before → after report.
+
 ## 3.4 `/agent-harness:harness-workspace`
 
 For a plain folder holding several repos. It writes workspace files only and never writes into a member repo unless you name that repo ("create harness for portal"), in which case it runs `harness-init` there. See [04-workspace.md](04-workspace.md).
@@ -185,17 +210,17 @@ For a plain folder holding several repos. It writes workspace files only and nev
 
 | Skill | Use it | What it does |
 |---|---|---|
-| `harness-verify` | Before "done", "fixed", "tests pass", a commit or a PR | Frames request, criteria and scope; runs `check-fast`, `check`, `smoke` (if relevant) through `cmd.sh`; dispatches `verifier`, `invariants-reviewer`, `scope-guard` in parallel; decides; prints `Verified: … Gate: … Criteria: … Reviewers: … Open: … Plan: …` and appends that block to the active plan's `## Verification` section. Max 3 fix rounds, then it hands back to you. |
-| `harness-session` | Session start, after `/clear` or compaction, before stopping | Orients from git and the active plan (matched by the branch's ticket key, e.g. `SHOP-12-pay-button`), shows the last verification entry, checks health with `check-fast`, picks one step; on close appends a Progress log line, drafts a tracker comment for your yes, and moves a finished plan to `done/` only after a PASS verification entry newer than the last code change |
+| `harness-verify` | Before "done", "fixed", "tests pass", a commit or a PR | Frames request, criteria and scope; runs `check-fast`, `check`, `smoke` (if relevant) through `cmd.sh`; dispatches `verifier`, `invariants-reviewer`, `scope-guard` in parallel; decides; prints `Verified: … Gate: … Criteria: … Reviewers: … Open: … Plan: …` and appends that block to the local `.harness/evidence/<plan file name>` (never committed). Max 3 fix rounds, then it hands back to you. |
+| `harness-session` | Session start, after `/clear` or compaction, before stopping | Orients from git and the active plan (matched by the branch's ticket key, e.g. `SHOP-12-pay-button`), shows the last local verification entry, checks health with `check-fast`, picks one step; on close appends a Progress log line, drafts a tracker comment for your yes, and moves a finished plan to `done/` only when `plan-check.sh fresh` passes (latest local entry PASS, for the current code, nothing uncommitted) |
 | `harness-learn` | After a repeated failure, a "don't do that again", or an incident | Picks the strongest fix: sensor → hook → check step → invariant → footgun → routing line → ADR → glossary. Changes to `INVARIANTS.md` or Authorization are proposed, not written. |
 | `harness-garden` | Weekly, after big refactors, or with an audit's fix list | Lint + `harness-auditor`; fixes safe drift (dead links, ADR index rows, finished plans, duplicated rules, renamed commands); proposes the rest; may open `chore(harness): garden <date>` if Authorization allows |
 | `harness-glossary` | New concept, two words for one thing, reviewer flags vocabulary | Adds a row after you choose the word and say what it means; checks a diff for "Avoid" words |
 
 ### Tickets, plans and where to see verification evidence
 
-- **Tickets.** Every plan in `docs/plans/active/` carries `Ticket:` under its title: a Jira key (`SHOP-12`; a key outside the project named in `docs/agents/issue-tracker.md` only warns), `#123`, a `.scratch/...` issue file, or `none (<reason>)`. `harness-lint` fails on a missing or placeholder value; the workspace `make harness-lint` checks cross-repo plans the same way (default ticket: `issueKey` in `harness-workspace.json`). ADRs carry `Ticket:` too, and `docs/DECISIONS.md` has a Ticket column.
+- **Tickets.** Every plan in `docs/plans/active/` carries `Ticket:` under its title: a Jira key (`SHOP-12`, also as a link or a list such as `SHOP-12, SHOP-13`; a key outside the project named in `docs/agents/issue-tracker.md` only warns), `#123`, an issue or browse URL, a `.scratch/...` issue file, or `none (<reason>)`. `harness-lint` fails on a missing or placeholder value; the workspace `make harness-lint` checks cross-repo plans the same way (default ticket: `issueKey` in `harness-workspace.json`). ADRs carry `Ticket:` too, and `docs/DECISIONS.md` has a Ticket column.
 - **Naming.** Branch `<KEY>-<n>-<slug>`, plan `docs/plans/active/YYYY-MM-DD-<KEY>-<n>-<slug>.md`. The session hook finds the plan by the key in the branch name, then by the plan's `Ticket:` line, then by slug.
-- **Verification evidence.** Each harness-verify run that reaches a verdict appends `### <date> · <commit | uncommitted> · <PASS | FAIL | NEEDS-HUMAN>` plus Gate, Criteria, Reviewers and Open lines to the plan's `## Verification` section (append-only; in a workspace, one block per repo in the cross-repo plan). Read it there, in the session hook's `last verification:` line, or in the PR description, which reuses the block. A plan is set to done only with a PASS entry newer than the last code change; `harness-lint` warns on a done plan without one, and `harness-audit` reports it under Context & State.
+- **Where to see verification evidence.** Each harness-verify run that reaches a verdict appends `### <date> · <commit | uncommitted> · <PASS | FAIL | NEEDS-HUMAN>` plus Gate, Criteria, Reviewers and Open lines to the **local** file `.harness/evidence/<plan file name>` (no plan: `<branch slug>.md`; a workspace keeps one block per repo in `<workspace>/.harness/evidence/`). `.harness/` is gitignored, so evidence is never committed. Others see it in the PR description and the tracker comment, which carry the full block plus the local path; you see it in the session hook's `last verification:` line. A plan is set to done only when `bash scripts/harness/plan-check.sh fresh .harness/evidence/<plan>` passes: the latest entry is PASS, its commit has the same code as HEAD (plan edits don't count), and no code is uncommitted. Lint does not look for evidence (CI and other clones have none); `harness-audit` says "evidence not available on this machine" instead of reporting a gap.
 - **Tracker updates.** At close, harness-session (and harness-verify on "done") drafts a comment: a progress line mid-work, or the evidence block plus the plan path and next step when a step or the plan is done, with a proposed transition. It posts only after you say yes, through a Jira/GitHub/GitLab connector or CLI in your session. It never stores tokens; without a connector it prints the text for you to paste.
 
 Skills resolve commands with `scripts/harness/cmd.sh` in the repo, falling back to the plugin's own `harness-cmd.sh` when a (v1) repo has no copy.

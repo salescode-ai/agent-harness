@@ -21,7 +21,7 @@ This copies skills to `.agents/skills/`, agent checklists to `.agents/agents/`, 
 
 **Headless (`claude -p`, CI):** the skills read files in the plugin folder, outside the repo, and a non-interactive run cannot ask for that. Add `--add-dir ~/.claude/plugins/cache/agent-harness` (or, for a local checkout, `--plugin-dir <path>/plugins/agent-harness --add-dir <same path>`) and `--permission-mode auto`, e.g. `claude -p "/agent-harness:harness-init one-shot" --add-dir ~/.claude/plugins/cache/agent-harness --permission-mode auto`. Details: `docs/manual/03-user-guide.md` → Headless and CI runs.
 
-**Updating:** `claude plugin update agent-harness@agent-harness`, then re-run `/agent-harness:harness-init` in each repo: it refreshes the scripts it copied there (unmodified copies only; local edits are reported, never overwritten). The session hook says when a repo's copies are older than the plugin.
+**Updating:** `claude plugin update agent-harness@agent-harness`, then run `/agent-harness:harness-upgrade` in each repo: it refreshes the scripts it copied there (unmodified copies only; local edits are reported, never overwritten), applies the versioned migrations (safe ones automatically, edits to your files as one diff for a single yes) and records the version in `scripts/harness/assets.json`. The session hook says when a repo's copies are older than the plugin.
 
 ## Commands you run
 
@@ -29,7 +29,18 @@ This copies skills to `.agents/skills/`, agent checklists to `.agents/agents/`, 
 |---|---|
 | `/agent-harness:harness-init` | In a repo: scan, show the layout, then set up the harness one layer at a time |
 | `/agent-harness:harness-audit` | Read-only: measure the level, score each layer, list fixes |
+| `/agent-harness:harness-upgrade` | After a plugin update: refresh copied scripts, migrate harness files to the new version, verify, record the version |
+| `/agent-harness:harness-improve` | Strengthen a thin harness from evidence (git history, risk paths, unenforced rules): one area per round, you accept or skip each suggestion. init and audit offer it at the end |
 | `/agent-harness:harness-workspace` | In a folder of sibling repos: write workspace-level files only |
+
+## Without the plugin installed
+
+A harness has two halves:
+
+1. **Committed repo files: work for everyone and any tool.** The guides (`AGENTS.md`, `INVARIANTS.md`, `CLAUDE.md`, `GLOSSARY.md`, `docs/`), the `Makefile` + `harness.mk` + `scripts/harness/` targets (`make check`, `check-fast`, `test`, `setup`, `seed`/`reset` behind `local-guard.sh`, `harness-lint`, the sensor proofs), the `.githooks/` once `make setup` has run in that clone, and CI if you opted in. Anyone can run `make check` without Claude Code.
+2. **Plugin only (Claude Code).** The hooks (stop gate, Bash and file guards, session orientation), the skills and the reviewer agents. They are not copied into the repo.
+
+**Team rollout.** Commit `.claude/settings.json` with `extraKnownMarketplaces.agent-harness` and `enabledPlugins: {"agent-harness@agent-harness": true}`: every teammate's Claude Code then offers the plugin when they trust the folder. `harness-init` asks before writing it; one-shot leaves it as a TODO; `harness-improve` lists "team rollout settings missing" as a gap until it is there. For other tools, `install-local.sh` copies the skills to `.agents/skills/`; there are no agent hooks there, so enforcement comes from the git hooks and CI.
 
 ## What a harness is
 
@@ -63,7 +74,7 @@ The harness is organised in five layers. Each one acts at a different moment: be
 | Piece | What it does |
 |---|---|
 | Context loading table (in `AGENTS.md`) | Task type → files to read, so the agent loads the right detail and nothing more. |
-| `docs/plans/active/` | Long tasks as plans with a `Ticket:`, steps, a progress log and a `## Verification` section where harness-verify appends its evidence, so work and proof survive `/clear`, compaction and new sessions. |
+| `docs/plans/active/` | Long tasks as plans with a `Ticket:`, steps and a progress log, so work survives `/clear`, compaction and new sessions. harness-verify's evidence goes to the local `.harness/evidence/<plan file name>` (never committed) and is shared through the PR description and the tracker comment. |
 | Size budgets | The auto-loaded guides stay small (≤ 3,000 tokens target) so they don't crowd out the task. |
 | `.harness/` | Local, gitignored state: scan results, setup progress, last green check. |
 
