@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# agent-harness git hook: runs the repo's check-fast gate. Skips quietly when the gate isn't wired.
+[ -f scripts/harness/cmd.sh ] || { echo "harness: scripts/harness/cmd.sh missing, skipping"; exit 0; }
+cmd="$(bash scripts/harness/cmd.sh . check-fast)"; rc=$?
+case $rc in 0) ;; 3|4) echo "harness: check-fast not wired, skipping"; exit 0;; *) exit 0;; esac
+eval "$cmd"
