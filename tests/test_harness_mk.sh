@@ -83,3 +83,15 @@ lint: ## repo lint
   assert_eq "$(printf '%s\n' "$out" | grep -c '^  lint ')" "1" "exactly one lint line"
   assert_contains "$out" "repo lint" "repo lint described"
 }
+
+t_changed_includes_untracked() {
+  local d out rc=0; d="$(mk_dir 'HARNESS_LINT = @true
+HARNESS_TEST_CHANGED = @sh -c '"'"'for f in "$$@"; do case $$f in *Test.java) echo "FAILED $$f"; exit 1;; esac; done'"'"' t
+include harness.mk')"
+  ( cd "$d" && git init -q -b main && git config user.email t@e.com && git config user.name t && git add -A \
+    && git -c core.hooksPath=/dev/null commit -qm i && git update-ref refs/remotes/origin/main HEAD ) >/dev/null
+  echo 'class NewTest {}' > "$d/NewTest.java"
+  out="$(cd "$d" && make check-fast 2>&1)" || rc=$?
+  [ "$rc" != 0 ] || _fail "check-fast must fail on a new untracked failing test"
+  assert_contains "$out" "FAILED NewTest.java" "untracked file passed to HARNESS_TEST_CHANGED"
+}

@@ -21,9 +21,9 @@ HARNESS_RESET     ?=
 HARNESS_DEV       ?=
 # Tests for changed files only (receives the file list). Leave empty to skip tests in check-fast.
 HARNESS_TEST_CHANGED ?=
-# Files changed vs the base branch (used by check-fast): origin/HEAD, else origin/main, else origin/master
+# Files changed vs the base branch, plus untracked new files (used by check-fast): origin/HEAD, else origin/main, else origin/master
 HARNESS_BASE      ?= $(or $(shell git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null),$(if $(shell git rev-parse -q --verify origin/main 2>/dev/null),origin/main,origin/master))
-CHANGED            = $(shell git diff --name-only --diff-filter=ACMR $(HARNESS_BASE)...HEAD 2>/dev/null; git diff --name-only --diff-filter=ACMR HEAD 2>/dev/null)
+CHANGED            = $(shell git diff --name-only --diff-filter=ACMR $(HARNESS_BASE)...HEAD 2>/dev/null; git diff --name-only --diff-filter=ACMR HEAD 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null)
 
 # Changed files under a dir with given extensions, relative to that dir (for tools with legacy debt):
 #   UI_CHANGED = $(call harness_changed,ui/,ts tsx)
