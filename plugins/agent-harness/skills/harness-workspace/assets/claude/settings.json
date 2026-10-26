@@ -1,6 +1,6 @@
 {
   "extraKnownMarketplaces": {
-    "agent-harness": { "source": { "source": "github", "repo": "<your-org>/agent-harness" } }
+    "agent-harness": { "source": { "source": "github", "repo": "salescode-ai/agent-harness" } }
   },
   "enabledPlugins": {
     "agent-harness@agent-harness": true
