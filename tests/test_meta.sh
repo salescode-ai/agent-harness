@@ -20,3 +20,17 @@ t_runner_fails_on_nonfinal_assert() {
   assert_contains "$out" "FAIL test_x::bad" "runner reports FAIL"
   assert_eq "$rc" "1" "runner exits non-zero"
 }
+t_install_local() {
+  local d out
+  d="$(mktemp -d)/my repo"; mkdir -p "$d"
+  bash "$ROOT/install-local.sh" "$d" >/dev/null
+  [ -f "$d/.agents/skills/harness-audit/SKILL.md" ]
+  [ -f "$d/scripts/harness/cmd.sh" ]
+  [ -f "$d/scripts/harness/lint.sh" ]
+  [ -f "$d/scripts/harness/setup.sh" ]
+  [ -f "$d/scripts/harness/sensors/registry.json" ]
+  [ -x "$d/.githooks/pre-commit" ]
+  out="$(bash "$ROOT/install-local.sh" "$d")"
+  assert_contains "$out" "skip  scripts/harness/cmd.sh" "second run skips"
+  assert_not_contains "$out" "added" "second run adds nothing"
+}
