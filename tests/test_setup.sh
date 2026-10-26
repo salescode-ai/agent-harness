@@ -243,3 +243,17 @@ t_first_run_label() {
   assert_contains "$(_run "$d")" "setup: OK  (first run" "first"
   assert_contains "$(_run "$d")" "setup: OK  (re-run" "second"
 }
+t_local_guard_reads_active_profiles() {
+  local d g; d="$(mktemp -d)"; g="$S/local-guard.sh"; mkdir -p "$d/src/main/resources"
+  gr() { ( cd "$d" && env -i PATH="$PATH" "$@" bash "$g" ) >/dev/null 2>&1; }
+  printf 'spring.datasource.url=jdbc:postgresql://db.prod.example.com/x\n' > "$d/src/main/resources/application-prod.properties"
+  printf 'spring:\n  datasource:\n    url: jdbc:postgresql://localhost/x\n' > "$d/src/main/resources/application-qa.yml"
+  gr || _fail "inactive prod profile read"
+  gr SPRING_PROFILES_ACTIVE=prod && _fail "active prod profile (env) allowed"
+  gr SPRING_PROFILES_ACTIVE=qa || _fail "active local-host profile refused"
+  printf 'SPRING_PROFILES_ACTIVE="qa, prod"\n' > "$d/.env"
+  gr && _fail "active prod profile (.env list) allowed"
+  rm "$d/.env"; printf 'export SPRING_PROFILES_ACTIVE=prod\n' > "$d/.env.local"
+  gr && _fail "active prod profile (.env.local) allowed"
+  true
+}

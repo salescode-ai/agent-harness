@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # local-guard.sh -- refuse seed/reset unless every DB-ish host is local. Run from the repo root.
 # Reads env, .env, .env.local and Spring src/main/resources/application.properties|yml plus the
-# local/dev/test profiles (application-local*, -dev*, -test*); prod/other profiles are never read.
+# local/dev/test profiles (application-local*, -dev*, -test*), plus every profile named in SPRING_PROFILES_ACTIVE
+# (env, .env, .env.local): an active prod profile is read, so its non-local hosts are refused.
 # HARNESS_ALLOW_SEED=1 overrides with a warning.
 bad=""; why=""
 local_host() {
@@ -47,8 +48,13 @@ local-guard: $h is not a localhost name or a service in this repo's compose file
 envfile() { # KEY=VALUE lines from a dotenv file; tolerates "export", indentation and spaces around =
   sed -nE 's/^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$/\2=\3/p' "$1"
 }
-local_profile() { # default, local, dev and test profile files only (a prod profile always points at prod)
-  case "${1##*/}" in application.*|application-local*|application-dev*|application-test*) [ -f "$1" ];; *) return 1;; esac
+ACTIVE="$( { printf '%s\n' "${SPRING_PROFILES_ACTIVE:-}"; for f in .env .env.local; do [ -f "$f" ] && envfile "$f"; done | sed -n 's/^SPRING_PROFILES_ACTIVE=//p'; } \
+  | tr -d "\"' " | tr ',' '\n' | grep -v '^$')"
+local_profile() { # default, local, dev, test and active profile files (an inactive prod profile is not in use)
+  [ -f "$1" ] || return 1
+  case "${1##*/}" in application.*|application-local*|application-dev*|application-test*) return 0;; esac
+  local p="${1##*/application-}"; p="${p%.*}"
+  printf '%s\n' "$ACTIVE" | grep -qxF -- "$p"
 }
 spring() { # Spring datasource settings -> SPRING_DATASOURCE_URL / SPRING_DATASOURCE_HOST lines
   local f
