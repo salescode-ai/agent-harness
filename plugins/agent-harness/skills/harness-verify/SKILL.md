@@ -1,6 +1,6 @@
 ---
 name: harness-verify
-description: Verification gate before claiming work is done, fixed or passing, and before any commit or PR. Runs the repo's make gate, then independent verifier, invariants-reviewer and scope-guard agents in parallel, and reports evidence. Use whenever you are about to say "done", "fixed", "tests pass" or "ready for review".
+description: Verification gate before claiming work is done, fixed or passing, and before any commit or PR. Runs the repo's check gate, then independent verifier, invariants-reviewer and scope-guard agents in parallel, and reports evidence. Use whenever you are about to say "done", "fixed", "tests pass" or "ready for review".
 ---
 
 # Harness Verify
@@ -16,10 +16,12 @@ Write down, in three lines:
 
 ## 2. Computational gate (deterministic, cheap first)
 
+Commands are resolved, not assumed: `bash scripts/harness/cmd.sh . <target>` prints the repo's command (from `.agents/harness.json`, default `make <target>`); run it with `eval "$(bash scripts/harness/cmd.sh . <target>)"`. Exit 3 means the target is not wired: say so under Open.
+
 Run in order, stop at the first failure and fix it before going on:
-1. `make check-fast`
-2. `make check`
-3. `make smoke` — only if the change touches a runnable surface and the target exists
+1. `check-fast`
+2. `check`
+3. `smoke` — only if the change touches a runnable surface and the target is wired
 
 Read the real output. A command you did not run in this turn does not count.
 
@@ -39,7 +41,7 @@ No subagents in your tool (Codex, Cursor, others)? Run each agent's procedure yo
 
 If `harness-workspace.json` sits above the current folder and the current folder is not itself a repo, you are in a multi-repo workspace:
 
-1. `make changed` lists the repos with changes. Steps 2–3 run **per changed repo**: `make -C <repo> check-fast`, then `make -C <repo> check`, and the three reviewers get that repo's diff and read that repo's `INVARIANTS.md` and `AGENTS.md`.
+1. `make changed` lists the repos with changes. Steps 2–3 run **per changed repo**, from inside it: `check-fast`, then `check`, each resolved with that repo's `scripts/harness/cmd.sh`; and the three reviewers get that repo's diff and read that repo's `INVARIANTS.md` and `AGENTS.md`.
 2. When more than one repo changed, also dispatch `cross-repo-reviewer` (`agent-harness:cross-repo-reviewer`) with the workspace root, the request and the cross-repo plan. It checks ownership, contract consistency, backward compatibility and merge order.
 3. Report one block per repo plus the cross-repo verdict. The work is done only when every repo passes and the cross-repo verdict is ALIGNED.
 
@@ -49,7 +51,7 @@ If `harness-workspace.json` sits above the current folder and the current folder
 |---|---|
 | Gate green, verifier PASS, reviewers CLEAN/TIGHT | Report done with the evidence block below |
 | Any FAIL / VIOLATIONS / TRIM | Fix, then rerun from step 2. Max 3 rounds, then stop and report to the human |
-| NEEDS-HUMAN or an Authorization escalation | Stop. Report what needs a decision |
+| NEEDS-HUMAN, an Authorization escalation, or a hit on an invariant with `Severity: Important` | Stop. Report it as NEEDS-HUMAN with the rule and file:line |
 | SPLIT | Move the out-of-scope hunks to a separate branch or note; re-verify |
 
 If the same kind of failure appears twice, run the **harness-learn** skill after you finish so the harness catches it next time.
@@ -58,7 +60,7 @@ If the same kind of failure appears twice, run the **harness-learn** skill after
 
 ```
 Verified: <request>
-Gate: make check ✓ (<n> tests) · make smoke ✓|n/a
+Gate: check ✓ `<resolved command>` (<n> tests) · smoke ✓|n/a
 Criteria: <k>/<n> with evidence — <criterion → test/command>, …
 Reviewers: verifier PASS · invariants CLEAN · scope TIGHT
 Open: <anything not verified, and why>

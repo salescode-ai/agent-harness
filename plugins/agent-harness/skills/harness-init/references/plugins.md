@@ -2,15 +2,15 @@
 
 The harness holds the **facts** (rules, commands, paths, vocabulary). Skill packs and plugins bring **process** (how to plan,
 test, debug, review). Which packs a developer uses is their choice; the harness never names or requires one. What the harness
-does define is how any pack must behave inside the repo — that is the "Skills and plugins" section of `AGENTS.md`.
+does define is how any pack must behave inside the repo — that is the `## Agent skills` section of `AGENTS.md`.
 
 ## Rules every skill or plugin follows
 
 | Rule | Why | Where it is enforced |
 |---|---|---|
 | `INVARIANTS.md` and `AGENTS.md` outrank any skill | Packs ship generic defaults; the repo knows its own constraints | `AGENTS.md` precedence line; reviewer agents |
-| Save specs, plans and decisions where Work Artifacts says | One place to find work; ADR index stays complete | `AGENTS.md` Work Artifacts; `harness-garden` |
-| Prove work with the make targets | Every pack agrees on what "done" means | `AGENTS.md` Verification; stop-gate hook; `harness-verify` |
+| Save specs, plans, decisions and working notes where Work Artifacts says | One place to find work; ADR index stays complete | `AGENTS.md` Work Artifacts; `harness-garden` |
+| Prove work with the resolved commands (`bash scripts/harness/cmd.sh . check`) | Every pack agrees on what "done" means | `AGENTS.md` Verification; stop-gate hook; `harness-verify` |
 | `harness-verify` runs last before "done" | Independent reviewers, whatever process came first | `AGENTS.md`; skill description |
 | One process skill per phase | Two planning or TDD workflows over the same work waste tokens and conflict | `AGENTS.md` |
 | Never write to `CLAUDE.md`; never copy plugin text into the repo | `CLAUDE.md` is a pointer; copied text goes stale and duplicates rules | file-guard hook; `make harness-lint` |
@@ -30,9 +30,13 @@ does define is how any pack must behave inside the repo — that is the "Skills 
 4. Check its default paths and commands against `AGENTS.md`. Each conflict gets one line in Work Artifacts or Verification — never an edit to the plugin.
 5. Try it on one repo for a week before adding it to any shared settings.
 
+## Guidance a pack pasted into `CLAUDE.md`
+
+`CLAUDE.md` stays a shim. During init, pasted pack guidance (`scan.json` → `pasted_guidance`) moves to `AGENTS.md` → Working Principles, duplicates removed. Pack scratch folders (`pack_folders`) get `.gitignore` entries and a Work Artifacts line.
+
 ## When a pack's default conflicts with the repo
 
-Do not fork or edit the pack. Add or sharpen one line in `AGENTS.md` (Work Artifacts, Verification, or Skills and plugins).
+Do not fork or edit the pack. Add or sharpen one line in `AGENTS.md` (Work Artifacts, Verification, or Agent skills).
 Agents read `AGENTS.md` before any skill, and most packs explicitly defer to project instructions. If a pack ignores the
 repo's instructions after that, record it with `harness-learn` and stop using it in this repo.
 

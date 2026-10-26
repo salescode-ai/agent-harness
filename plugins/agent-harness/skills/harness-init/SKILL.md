@@ -1,43 +1,107 @@
 ---
 name: harness-init
-description: Set up or migrate the agent harness in a repository — AGENTS.md map, INVARIANTS.md, CLAUDE.md shim, GLOSSARY.md, docs/ system of record, Makefile verification targets, harness lint, CI, and rules for any skill packs developers use. Use once per repo, or to bring an older setup up to date.
+description: Set up, resume or upgrade the agent harness in a repository. Scans first, applies everything the code proves, shows the file tree, then interviews one layer at a time (Guides, Tools, Sensors, Context & State, Observability) and proves the result. Use once per repo, to continue an unfinished setup, or to bring a v1 harness up to date. Argument `one-shot` skips the interview.
 disable-model-invocation: true
 ---
 
 # Harness Init
 
-Build the harness in the order that keeps every fact sourced from the step that owns it. Work **section by section**: show the evidence (`file:line`), show what you will write, wait for a yes. Arguments: `one-shot` skips the pauses and stamps every new file with `<!-- generated in one pass: verify before trusting -->`.
+Scan first, ask last. Apply what the code proves; ask only what code can't answer. `${CLAUDE_PLUGIN_ROOT}` is this plugin's folder (two levels above this file). Per-layer detail: `references/layers.md`. File layout and owners: `references/layout.md`.
 
-**While this skill runs, it is the process.** Do not invoke planning, test-first, review or interview skills from other plugins.
+**While this skill runs, it is the process.** Do not start planning, test-first, review or interview skills from other plugins.
 
 ## Ground rules
 
-- **Evidence or a marker.** Every identifier written into a harness file (path, env var, target, route, class, table) needs a `file:line` you observed. Otherwise write `[verify]`. READMEs and wikis are claims, not evidence.
-- **Ask, don't invent.** Code cannot tell you: who may merge, what needs a human, why a decision was made, what broke in production, what a domain term means. Ask the developer; write `TODO` if they don't know.
-- **One owner per fact.** See the ownership table in `references/layout.md`. Everything else links.
-- **Ratchet, not wishlist.** A rule earns its place by tracing to a real failure, incident, or hard external constraint. No generic advice ("write clean code").
-- **Extend, don't clobber.** Existing files are read first and extended; content in the wrong place is moved, then the original deleted only after the developer confirms nothing is lost.
+- **Evidence or a marker.** Every identifier you write (path, env var, target, route, class) needs a `file:line` you observed, else `[verify]` or `TODO`. READMEs are claims, not evidence.
+- **Extend, don't clobber.** Read existing files first. Edits to the developer's content are gathered into one diff, approved once.
+- **Never** fix legacy errors, loosen a tool's config, `sudo`, fetch secrets or write `.env` during init.
+- **Ratchet.** A rule traces to a real failure, incident or hard constraint. No generic advice.
 
-## Steps
+## 0. Resume or upgrade
 
-1. **Probe (baseline).** Run the probe in `references/probe.md`. Keep the answer in the conversation.
-2. **Map the repo.** Dispatch the `repo-cartographer` agent (`agent-harness:repo-cartographer` when installed as a plugin) (or follow its procedure yourself if your tool has no subagents). Also run `bash <this skill>/scripts/scan.sh` for a quick artifact list.
-3. **Detect tools.** Ask once which agent tools the team uses (Claude Code / Codex / Cursor / Copilot). Don't ask which skill packs they use — that is each developer's choice; note any pack residue in the map (pasted guidelines in `CLAUDE.md`, plugin folders under `docs/`) so step 5.8 can route it.
-4. **Plan.** Present a table: file · create / extend / move · source of content · questions for the developer. Wait for approval.
-5. **Execute in this order** (templates in `assets/`, details in `references/layout.md`):
-   1. `Makefile` targets — copy `assets/harness.mk` to the repo root and `assets/lint.sh` to `scripts/harness/lint.sh`, include `harness.mk` and wire its `HARNESS_*` variables to the real commands from the map: `check`, `check-fast`, `test` (with `T=`), `smoke` if there is a runnable surface, `harness-lint`.
-      **Green baseline first:** run every candidate command on the untouched repo before wiring it. The harness must land with `make check-fast` green on today's code — otherwise the stop gate blocks every session on debt nobody caused. A tool that already fails (e.g. 56 legacy lint errors) is wired in **changed-files mode** (`$(call harness_changed,<dir>/,<ext…>)`, see `references/layout.md`) and recorded as an invariant `whole-repo <tool> clean — Enforced by: not yet enforced (<n> errors on main, <date>)`. Never fix legacy errors or loosen a tool's config as part of init. Tools the repo doesn't have, or that can't run here (Docker, a missing JDK), become `[not yet enforced]` invariants or are noted for the developer — never stubs that pretend to pass.
-   2. `INVARIANTS.md` — Harness Integrity block verbatim, then one category at a time from evidence and developer answers, each rule with `Enforced by:`.
-   3. Root `AGENTS.md` — map under 100 lines: overview, Verification, Working Principles, Skills and plugins, Work Artifacts, Agent Authorization (ask), Module map, Footguns (ask for incidents).
-   4. `CLAUDE.md` shim (Claude Code only) — `@AGENTS.md` and `@INVARIANTS.md`, nothing else. Migrate any real content out first, moving it by script rather than retyping, and check afterwards that every original line exists somewhere. An `@import` in the old file (e.g. a style or theme spec) moves to the module shim of the folder it governs, so it still auto-loads there.
-   5. Module `AGENTS.md` — only where a module is high-risk, has its own toolchain, or has ≥10 lines of genuinely local rules. For Claude Code, add `<module>/CLAUDE.md` containing `@AGENTS.md` (plus any `@import` moved from the root) — Claude Code loads a folder's `CLAUDE.md` when it opens files there, but does not read `AGENTS.md` on its own.
-   6. `docs/` — ARCHITECTURE.md (from the map), TESTING.md, DECISIONS.md index + `docs/adr/` (decisions come from developer dialogue only: mine `git log` for candidates, ask why, transcribe), `docs/plans/` with the plan template, `docs/agents/` (issue tracker + domain).
-   7. `GLOSSARY.md` — offer to seed 5–10 core terms through a short dialogue; definitions come from the developer, never from code alone. Otherwise create it with the header only.
-   8. Skills and plugins — fill the "Skills and plugins" section from the template and set Work Artifacts paths. If the repo already has a plugin's folders in use (e.g. specs or plans under a plugin-named directory), keep them and point Work Artifacts at them rather than moving history. Rules and vetting: `references/plugins.md`. Pin only `agent-harness` in `.claude/settings.json` (`assets/claude-settings.json`). Claude Code protects `.claude/settings.json`; if the write is refused, don't work around it — show the developer the file content to add themselves.
-   9. Mechanical sensors — copy `assets/harness.yml` → `.github/workflows/` (or translate it to the repo's CI); append `assets/gitignore.append` to `.gitignore`.
-6. **Validate.** Run `make harness-lint` and `make check`. Dispatch `harness-auditor`. Fix RED items.
-7. **Probe again.** Same prompt as step 1, fresh session if possible. Report the difference in the conversation — do not save it to a file (a model grading its own setup is not a measurement).
+- Read `.harness/init-state.json` if present: `{"layers_done":[…], "answers":{…}, "gate_wired":bool, "target":"Robust"}`. Layer keys: `guides`, `tools`, `sensors`, `context`, `observability`. Say "Resuming at <next layer>" and jump to step 4 for the first layer not in `layers_done`; never re-ask a recorded answer.
+- **v1 upgrade** (`AGENTS.md`/`INVARIANTS.md` exist, no state file): same flow, but the tree in step 3 lists only differences and questions already answered by existing files are skipped.
 
-## Done when
+## 1. Scan (no questions)
 
-`make harness-lint` and `make check` pass, `harness-auditor` is GREEN or AMBER with only accepted warnings, and the second probe reads `AGENTS.md` first, names the Verification command, and stops at the escalation triggers.
+0. Run the probe in `references/probe.md` (fresh repo only); keep the answer in the conversation for step 5.
+1. `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/scan.py" . --write` → `.harness/scan.json` (gitignored, keyed to `head`). If it exists with the current `git rev-parse HEAD`, reuse it.
+2. Dispatch `repo-cartographer` (`agent-harness:repo-cartographer`; no subagents → follow `${CLAUDE_PLUGIN_ROOT}/agents/repo-cartographer.md` yourself). Keep its report in the conversation.
+3. **Green baseline.** After the cartographer returns (it re-runs the scan), run every `commands[]` entry except `install`, `dev` and watch modes from its `module` folder on the untouched repo (timeout 5 min each). Add `"baseline": "pass"` · `"fail: <n> errors"` · `"skipped: <why>"` to that entry in `scan.json`. A failure caused by the environment (no Docker, no JDK) is `skipped`, not `fail`.
+
+## 2. Decide auto vs ask
+
+**Applied automatically (evidence-backed):** commands that pass the green-baseline run; an existing compose file, seeds and git-hook manager; paths found, the dependency inventory and skeleton files; `.gitignore` entries; moving pasted pack guidance into `AGENTS.md` (a move, not a rewrite); catalog sensors that match evidence and pass their proof.
+
+**Always asked:** target level; Agent Authorization; new invariants and their severity; footguns and incidents; glossary definitions; adding a dependency or tool; CI opt-in; `.claude/settings.json` permissions; generating a compose file or seeds; where to read unresolved dependencies; isolated or shared worktree services; stub, shared-environment or none for external services.
+
+A tool whose baseline is `fail` is wired in changed-files mode (`references/layout.md`) and recorded as an invariant `… — Enforced by: not yet enforced (<n> errors, <date>)`.
+
+## 3. Show the layout tree, then write
+
+Show one tree. Mark every file `auto-filled ✓` · `skeleton + TODO` · `needs your answer ?` · `~ extend` · `→ move`, and tag its layer:
+
+```text
+AGENTS.md                 skeleton + TODO     [guides]   Verification ✓ from scan, Authorization ?
+INVARIANTS.md             needs your answer ? [guides]   severity per rule
+CLAUDE.md                 → move              [guides]   18 pasted lines → AGENTS.md Working Principles
+Makefile                  ~ extend            [tools]    include harness.mk (keeps your help, build)
+scripts/harness/          auto-filled ✓       [tools]    cmd.sh, lint.sh, setup.sh, sensors/
+.githooks/                auto-filled ✓       [sensors]  pre-commit → check-fast, pre-push → check
+docs/SETUP.md             skeleton + TODO     [tools]    3 unresolved dependencies ?
+```
+
+After **one** yes, write everything. **Install step** (copy, then `chmod +x` the scripts):
+- `${CLAUDE_PLUGIN_ROOT}/scripts/harness-cmd.sh` → `scripts/harness/cmd.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/harness-init/assets/harness/*` → `scripts/harness/` (setup.sh, setup-proof.sh, sensor-proof.sh, local-guard.sh, sensors/)
+- `${CLAUDE_PLUGIN_ROOT}/skills/harness-init/assets/lint.sh` → `scripts/harness/lint.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/harness-init/assets/githooks/*` → `.githooks/` — only when `scan.json` `hook_manager` is `none`; otherwise add the two commands to that manager's config (layers.md → Sensors)
+- `${CLAUDE_PLUGIN_ROOT}/skills/harness-init/assets/harness.mk` → repo root. Add `include harness.mk` to the `Makefile` **after** the repo's own default target (create a `Makefile` with only the include if none exists). For each target the Makefile already defines (`help`, `check`, `test`, `setup`…), put `HARNESS_DEFINE_<NAME>=0` above the include (upper-case, `-` → `_`) and ask which one wins. Set `HARNESS_*` variables only to commands whose baseline is `pass`. Then `make -n help` must succeed.
+- Templates from `assets/` (AGENTS.md, INVARIANTS.md, CLAUDE.md, GLOSSARY.md, docs/); append `assets/gitignore.append` to `.gitignore`.
+
+New files carry `TODO` where an answer is pending. TODOs are lint **warnings** during setup.
+
+## 4. Interview: one section per layer
+
+Order: **Guides → Tools → Sensors → Context & State → Observability**. A `Functional` target covers Guides and Sensors only; `Robust` all five; `Enterprise` all five plus CI, CODEOWNERS and audit history. Questions per layer: `references/layers.md`.
+
+Every section has exactly this shape. Show one section, wait for the answer, apply it, then move on:
+
+```text
+## Sensors — checks that catch mistakes before a human does
+Found:    eslint passes (package.json:12) · pytest fails on main (56 errors) · husky present
+Will do:  pre-commit runs check-fast via husky · pytest wired in changed-files mode
+1. Severity of "no prod data in seeds"?   a) Critical ➡️  b) Important  c) Nice-to-have
+2. Wire the "controllers bypass service" sensor (ArchUnit)?   a) yes, prove it first ➡️  b) skip
+3. Add a CI workflow?   a) no, git hooks are enough ➡️  b) yes (shown below why)
+Reply with numbers and letters ("1a 3b"), or "defaults" to accept every ➡️.
+Assumed — change any time: hook names · check-fast base origin/main · fixture folder
+```
+
+- At most 5 numbered questions, each with 2–4 options and one `➡️` default. Never ask what the scan answered.
+- Low-stakes items (naming, cadence, limits) are not asked; list them under `Assumed — change any time`.
+- After each section: write its files, append the layer key to `layers_done`, store answers under `answers.<layer>`, save `.harness/init-state.json`. Target goes to `"target"` and to `INVARIANTS.md` as `Harness target: <level>`.
+
+## 5. Verify
+
+1. `bash scripts/harness/lint.sh` — FAILs fixed, TODO warnings listed.
+2. Check gate: `eval "$(bash scripts/harness/cmd.sh . check-fast)"`, then the same with `check`. When check-fast is wired and green, set `"gate_wired": true` (until then the stop gate stays silent).
+3. Setup proof: `setup-smith` runs `bash scripts/harness/setup-proof.sh` in a fresh clone (commit the wiring first, or tell the developer the proof sees only committed files).
+4. Sensors: `bash scripts/harness/sensor-proof.sh --recheck`.
+5. Probe again (fresh session if possible); report the difference in the conversation only.
+
+## 6. Final report
+
+Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/level.py" .` and report:
+
+```text
+Level: <measured> · target: <target> · blocked by: <first blockers>
+Applied automatically: <n> — <one line each>
+Assumed — change any time: <list>
+Still open: <TODOs with file:line> · <invariants "not yet enforced">
+Next: /harness-audit in a month · /harness-garden weekly
+```
+
+## one-shot mode
+
+Same flow without step 4: every ➡️ default is taken, nothing is asked, and every new file starts with `<!-- generated in one pass: verify before trusting -->`. Always-asked items with no safe default (Authorization, incidents, glossary meanings, CI, settings.json, new dependencies) are left as `TODO` and listed under Still open. Save `init-state.json` with all layer keys and `"answers": {"mode": "one-shot"}`.

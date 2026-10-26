@@ -2,37 +2,46 @@
 
 ## Files
 
+Layer tags: `[guides]` `[tools]` `[sensors]` `[context]` `[observability]`.
+
 ```text
 repo/
-├── AGENTS.md              # the map every tool loads; < 100 lines; points, doesn't explain
-├── INVARIANTS.md          # hard rules, each with "Enforced by:"
-├── CLAUDE.md              # @AGENTS.md  @INVARIANTS.md   — nothing else
-├── GLOSSARY.md            # domain vocabulary (multi-context: GLOSSARY-MAP.md → per-module GLOSSARY.md)
-├── Makefile               # the only commands agents run: check, check-fast, test T=, smoke, harness-lint
-├── .claude/settings.json  # agent-harness plugin + permissions (team-shared)
-├── .agents/skills/        # repo-specific skills only; .claude/skills/<name> are symlinks to these
+├── AGENTS.md              [guides]   the map every tool loads; ≤ 100 lines; Verification, Agent skills, Work Artifacts, Context loading, Cadence
+├── INVARIANTS.md          [guides]   hard rules: "<rule> — Severity: <tier> — Enforced by: <…>"; "Harness target: <level>"
+├── CLAUDE.md              [guides]   @AGENTS.md  @INVARIANTS.md   — nothing else
+├── GLOSSARY.md            [guides]   domain vocabulary (multi-context: GLOSSARY-MAP.md → per-module GLOSSARY.md)
+├── Makefile               [tools]    the repo's own targets + `include harness.mk`
+├── harness.mk             [tools]    check, check-fast, test T=, smoke, setup, seed, reset, dev, harness-lint, help
+├── .agents/harness.json   [tools]    only when the runner is not make: {"runner", "commands"}
+├── .claude/settings.json  [tools]    agent-harness plugin + permission rules (team-shared)
+├── .agents/skills/        [guides]   repo-specific skills only; .claude/skills/<name> are symlinks to these
+├── scripts/harness/       [tools]    cmd.sh (command resolver), lint.sh, setup.sh, setup-proof.sh, local-guard.sh
+│   └── sensors/           [sensors]  registry.json, project sensors, fixtures/ (planted violations), sensor-proof.sh runs them
+├── .githooks/             [sensors]  pre-commit → check-fast, pre-push → check (or the repo's hook manager)
 ├── docs/
-│   ├── ARCHITECTURE.md    # components, data flow, boundaries (Mermaid)
-│   ├── TESTING.md         # test layout, what must be tested, fixtures
-│   ├── DECISIONS.md       # index: one row per ADR
-│   ├── adr/NNNN-slug.md   # one decision per file
-│   ├── plans/             # execution plans (active/ and done/), plan template
-│   ├── specs/             # designs and specs
-│   └── agents/            # issue-tracker.md, domain.md (read by any skill that files tickets or names things)
-├── scripts/harness/lint.sh  # structural tests for the harness itself
-├── .github/workflows/harness.yml
-└── src/<module>/AGENTS.md   # only where it earns its place
+│   ├── SETUP.md           [tools]    dependency inventory: resolved (file:line) and unresolved (where to read)
+│   ├── ARCHITECTURE.md    [guides]   components, data flow, boundaries (Mermaid)
+│   ├── TESTING.md         [sensors]  test layout, what must be tested, fixtures
+│   ├── DECISIONS.md       [guides]   index: one row per ADR
+│   ├── adr/NNNN-slug.md   [guides]   one decision per file
+│   ├── plans/             [context]  execution plans (active/ and done/), plan template
+│   ├── specs/             [context]  designs and specs
+│   ├── agents/            [guides]   issue-tracker.md, domain.md, triage-labels.md
+│   └── harness/AUDIT-LOG.md [observability] one script-measured line per audit
+├── .github/workflows/harness.yml [sensors] only after a CI opt-in
+└── src/<module>/AGENTS.md [guides]   only where it earns its place
 ```
 
-Ignored: `.harness/` (hook state, session scratch), `.worktrees/`.
+Ignored: `.harness/` (`scan.json`, `init-state.json`, hook state), `.worktrees/`, pack scratch folders.
 
 ## Ownership — one owner per fact
 
 | Fact | Owner | Everyone else |
 |---|---|---|
 | Hard constraints | `INVARIANTS.md` | link |
-| What proves "done"; how to run tests | `AGENTS.md` Verification → `Makefile` | name the make target |
-| How skills and plugins must behave | `AGENTS.md` Skills and plugins | — |
+| What proves "done"; how to run tests | `AGENTS.md` Verification → `harness.mk` or `.agents/harness.json` | name the target |
+| How skills and plugins must behave | `AGENTS.md` Agent skills | — |
+| How to get a working dev setup | `docs/SETUP.md` → `make setup` | link |
 | Where specs, plans, ADRs, worktrees go | `AGENTS.md` Work Artifacts | link |
 | Who may commit/merge; what needs a human | `AGENTS.md` Agent Authorization | link |
 | Known traps | `AGENTS.md` Footguns (root) or module `AGENTS.md` | link to ADR |
@@ -51,7 +60,9 @@ Ignored: `.harness/` (hook state, session scratch), `.worktrees/`.
 | Module `AGENTS.md` | ≤ 80 lines | Local rules only |
 | `SKILL.md` | ≤ 120 lines; detail in `references/` | Progressive disclosure |
 
-## Makefile contract
+## Command contract
+
+Every caller (hooks, verifier, git hooks, audit) resolves a target with `bash scripts/harness/cmd.sh . <target>` and `eval`s the printed command: `.agents/harness.json` first, else `make <target>`.
 
 | Target | Must | Used by |
 |---|---|---|
@@ -59,6 +70,8 @@ Ignored: `.harness/` (hook state, session scratch), `.worktrees/`.
 | `check-fast` | lint + typecheck + tests touching changed files; < 60 s | stop-gate hook |
 | `test` | all tests; `T=<path>` runs one file/test | TDD loops in every pack |
 | `smoke` | start the app and hit one real path (if there is a runnable surface) | verifier, session start |
+| `setup` | `scripts/harness/setup.sh`: safe to re-run, isolated per worktree | developers, setup-proof |
+| `seed` / `reset` | reload / wipe and re-seed local data; refuse non-local targets | developers |
 | `harness-lint` | `bash scripts/harness/lint.sh` | CI, harness-garden |
 
 Output rule: success is quiet (one line), failure is loud (the error and the file). Agents read every byte.

@@ -5,11 +5,13 @@ description: Garbage-collect the harness — find and fix drift between the harn
 
 # Harness Garden
 
-Code changes every day; the harness rots unless someone weeds it. This skill audits, then fixes the safe things and proposes the rest.
+Code changes every day; the harness rots unless someone weeds it. This skill audits, then fixes the safe things and proposes the rest. It also applies the ranked fixes a `/harness-audit` report hands over.
+
+The check command is resolved, not assumed: `eval "$(bash scripts/harness/cmd.sh . check)"` (default `make check`).
 
 ## 1. Audit
 
-1. `make harness-lint` — note every FAIL and warn.
+1. `bash scripts/harness/lint.sh` — note every FAIL and warn. If a `/harness-audit` report is in the conversation, start from its Fixes list.
 2. Dispatch the `harness-auditor` agent (`agent-harness:harness-auditor` when installed as a plugin) (no subagents: follow its procedure yourself).
 3. Plans: list `docs/plans/active/*.md` whose Status is done or whose last Progress log line is older than 30 days.
 4. Glossary: grep the last 200 commits' diffs for nouns used in new type/function names that are not in `GLOSSARY.md` (`git log -p -n 200 --since=60.days`). List the top 10 candidates only.
@@ -21,7 +23,7 @@ Code changes every day; the harness rots unless someone weeds it. This skill aud
 - `docs/DECISIONS.md` rows missing for existing ADRs (status and date as `TODO` if unknown)
 - Finished plans → `docs/plans/done/`
 - Duplicated rules → keep the owner's copy, replace others with a link
-- Commands in docs that changed name in the Makefile
+- Commands in docs that changed name in `harness.mk` or `.agents/harness.json`
 
 ## 3. Propose — needs a human
 
@@ -32,7 +34,7 @@ Code changes every day; the harness rots unless someone weeds it. This skill aud
 
 ## 4. Close
 
-Run `make harness-lint` and `make check`. Report:
+Run `bash scripts/harness/lint.sh` and the check command. Report:
 
 ```
 Harness health: <before> → <after>

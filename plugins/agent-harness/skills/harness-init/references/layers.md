@@ -1,0 +1,127 @@
+# The five layers: what each interview section covers
+
+One section per layer, in this order. Each section of the interview uses the shape in `SKILL.md` step 4: one-line explanation → `Found:` → `Will do:` → ≤5 numbered questions with a `➡️` default → `Assumed — change any time`. Ask only the questions whose answer the scan could not give. `"defaults"` accepts every `➡️` in the section.
+
+Scope by target level: `Functional` → Guides and Sensors; `Robust` → all five; `Enterprise` → all five plus CI, CODEOWNERS and audit history.
+
+## Guides (`guides`)
+
+**What it is.** The instructions an agent reads before acting: the map (`AGENTS.md`), the hard rules (`INVARIANTS.md`), vocabulary and decisions. Guides steer before the work starts; sensors catch what slipped through.
+
+**scan.json keys.** `harness_files`, `pasted_guidance`, `pack_folders`, `modules`, `risk_paths`, `stacks`.
+
+**Applied automatically.**
+- `AGENTS.md` skeleton with Verification filled from commands whose baseline is `pass`, Module map from `modules`, Working Principles from the template.
+- `CLAUDE.md` becomes the shim (`@AGENTS.md`, `@INVARIANTS.md`). Lines listed in `pasted_guidance` **move** into `AGENTS.md → Working Principles`; a line that repeats an existing principle is dropped, not duplicated. Move by script, then check every original line exists somewhere. An `@import` in the old file moves to the module shim of the folder it governs.
+- `INVARIANTS.md` with the Harness Integrity block verbatim, and `Harness target: <level>`.
+- Module `AGENTS.md` (+ a `CLAUDE.md` containing `@AGENTS.md`) only for `risk_paths` modules or a module with its own toolchain.
+- `## Agent skills` block and Work Artifacts in `AGENTS.md` (rules: `references/plugins.md`).
+
+**Questions (defaults).**
+1. Target level? a) Functional b) Robust ➡️ c) Enterprise. Recommend from the scan: no tests or a failing baseline → Functional; CI plus CODEOWNERS already present → Enterprise; else Robust.
+2. Agent Authorization — "May without asking": a) edit, test, commit on a feature branch ➡️ b) edit and test only. "Must stop and ask": a) migrations, auth, payments, public API, deleting data, pushing to main ➡️ b) add your own.
+3. Footguns: "What has broken in production or surprised a new joiner?" Offer the cartographer's `fix`/`revert` hotspots as prompts. a) list them now b) none yet ➡️ (Footguns stays `TODO`).
+4. Seed 5–10 glossary terms? a) yes, I'll define them b) later ➡️ (header only). Definitions come from the developer, never from code.
+
+**Assumed — change any time.** Section names, the generic Working Principles, module map wording.
+
+**Writes.** `AGENTS.md`, `INVARIANTS.md`, `CLAUDE.md`, module `AGENTS.md`/`CLAUDE.md`, `GLOSSARY.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/adr/`, `docs/agents/`.
+
+## Tools (`tools`)
+
+**What it is.** Tool & Permission Boundaries: the commands an agent may run, how a fresh machine gets to a working dev setup, and what the agent may not touch.
+
+**scan.json keys.** `commands` (with `baseline`), `versions`, `services`, `env_vars` (`resolved` true/false), `migrations`, `seeds`, `is_worktree`.
+
+**Applied automatically.**
+- `harness.mk` included, `HARNESS_*` set to commands whose baseline is `pass`; failing tools in changed-files mode.
+- An existing compose file, migrations and seeds wired into `make setup`.
+- `docs/SETUP.md` with the dependency inventory: every resolved item with its `file:line`, every unresolved item as `TODO`.
+
+**Dispatch `setup-smith`** (`agent-harness:setup-smith`) with `scan.json` and this section's answers. It wires `setup-deps`, `setup-services`, `setup-migrate`, `seed`, `smoke`, proposes `compose.harness.yml` or a synthetic seed only after a yes, and runs `bash scripts/harness/setup-proof.sh`.
+
+**Questions (defaults).**
+1. Runner? a) `make` ➡️ b) register another (`.agents/harness.json` with `runner` and `commands`; `harness-lint` then checks `AGENTS.md` agrees).
+2. For each unresolved dependency, one at a time: "Where can I read the details for X?" a) wiki URL b) another repo c) a teammate d) not needed locally ➡️ only if nothing in code reads it. Record each answer in `docs/SETUP.md`.
+3. Local services: a) isolated per worktree (own compose project, free ports, own DB); with no compose file, propose a local-only `compose.harness.yml` (versions from config) ➡️ b) shared across worktrees c) I run them myself.
+4. Each external service that can't run locally: a) stub from OpenAPI or recorded responses ➡️ when a contract exists b) shared dev environment URL c) not needed (noted unavailable).
+5. Permission rules for `.claude/settings.json`: a) apply ➡️ b) show only. Proposed rules:
+   - deny `Read(./.env)`, `Read(./.env.*)`, `Read(./**/secrets/**)`, `Read(./**/*.pem)`, `Read(./**/*.key)`;
+   - deny the dangerous infrastructure and production commands found in the repo (e.g. `Bash(terraform apply:*)`, `Bash(kubectl delete:*)`, a deploy script), each with its `file:line`;
+   - allow the runner's commands, e.g. `Bash(make check:*)`, `Bash(make test:*)`.
+   Start from `assets/claude-settings.json`. Claude Code may refuse the write: then show the full JSON for the developer to add, and do not work around the refusal.
+
+**Assumed — change any time.** Port range, compose project naming, `.env.local` as the worktree file.
+
+**Writes.** `Makefile` include, `harness.mk`, `scripts/harness/*`, `.agents/harness.json` (other runner only), `docs/SETUP.md`, `.claude/settings.json`, `compose.harness.yml` and seed files (only after a yes).
+
+## Sensors (`sensors`)
+
+**What it is.** Checks that observe the work and fail loudly: the `check`/`check-fast` gate, project sensors for invariants, and where those checks run.
+
+**scan.json keys.** `commands` (`lint`, `typecheck`, `test` with `baseline`), `stacks`, `risk_paths`, `seeds`, `hook_manager`, `ci`.
+
+**Applied automatically.**
+- `check` = lint + typecheck + tests + harness-lint; `check-fast` = changed files, under 60 s.
+- Critical invariant, always: `- No real customer or production data in seeds or fixtures — Severity: Critical — Enforced by: scripts/harness/sensors/no-prod-data.sh`, kept only if its proof passes, else `not yet enforced`.
+- Git hooks: pre-commit runs `check-fast`, pre-push runs `check`.
+  - `hook_manager: none` → `.githooks/` from `assets/githooks/`; `make setup` sets `core.hooksPath .githooks`; run `git config core.hooksPath .githooks` now so this checkout is covered.
+  - `husky` → append to `.husky/pre-commit`: `eval "$(bash scripts/harness/cmd.sh . check-fast)"`, and to `.husky/pre-push` the same with `check`.
+  - `lefthook` → in `lefthook.yml`: `pre-commit: commands: harness-check-fast: run: eval "$(bash scripts/harness/cmd.sh . check-fast)"`, and a `pre-push` entry with `check`.
+  - `pre-commit` → a `repo: local` hook in `.pre-commit-config.yaml`: `id: harness-check-fast`, `entry: bash -c 'eval "$(bash scripts/harness/cmd.sh . check-fast)"'`, `language: system`, `pass_filenames: false`; and one for `check` with `stages: [pre-push]`.
+
+**Questions (defaults).**
+1. Proposed invariants, each with severity: a) Critical (fails `check`, blocks the stop gate) b) Important ➡️ (warning; `harness-verify` sends it to a human) c) Nice-to-have (audit only). Format: `- <rule> — Severity: <tier> — Enforced by: <target | hook | sensor | human review | not yet enforced>`.
+2. Candidate sensors from `references/sensor-catalog.md` that match evidence: a) build and prove ➡️ b) skip. For each accepted one, dispatch `sensor-smith` (`agent-harness:sensor-smith`) with the invariant line and `scan.json`; wire it into `check` only after `sensor-proof.sh <name>` passes.
+3. A tool is missing for a sensor: a) add it as a dev dependency (named, with the install line) b) use a plain test or script ➡️.
+4. Git hooks: a) on ➡️ b) off (the session hook will warn).
+5. CI workflow? Show the "Where checks run" table below first. a) no, hooks are enough ➡️ b) yes: copy `assets/harness.yml` to `.github/workflows/` or translate it to the repo's CI. Enterprise requires b.
+
+Where checks run (show before question 5):
+
+| Place | Default | Notes |
+|---|---|---|
+| Agent hooks (stop gate, guards) | on | Agents only; Claude Code |
+| Git hooks: pre-commit runs `check-fast`, pre-push runs `check` | on | If a hook manager exists (husky, lefthook, pre-commit), add to its config. Otherwise use `.githooks/` with `core.hooksPath`, set by `make setup`. The session hook warns when the hooks are off. |
+| CI workflow | opt-in | Generated only on a yes, after the explanation is shown. It is the only check nobody can skip; required for Enterprise. |
+
+**Assumed — change any time.** Fixture folder, `HARNESS_BASE` (`origin/main`), sensor names.
+
+**Writes.** `INVARIANTS.md` rules, `harness.mk` variables, `scripts/harness/sensors/` (registry, sensors, fixtures), hook config, CI workflow (only after a yes).
+
+## Context & State (`context`)
+
+**What it is.** What an agent loads for a task, and where work in progress lives so it survives a context reset.
+
+**scan.json keys.** `pack_folders`, `harness_files`, `modules`.
+
+**Applied automatically.**
+- `docs/plans/` (`active/`, `done/`, `TEMPLATE.md`); unverified claims in plans are marked `[verify]`.
+- `.gitignore` entries for pack scratch folders in `pack_folders`, plus `.harness/` and `.worktrees/`.
+- Existing pack folders in use are kept; Work Artifacts points at them instead of moving history.
+
+**Questions (defaults).**
+1. Context loading table (task type → files to read): a) the proposed rows from modules and docs ➡️ b) edit them.
+2. Plan and spec paths: a) `docs/plans/`, `docs/specs/` ➡️ b) keep the existing folders found.
+3. Where packs keep working notes: a) `.scratch/` (gitignored) ➡️ b) another folder.
+
+**Assumed — change any time.** Plan template sections, worktree folder `.worktrees/`.
+
+**Writes.** `AGENTS.md` Context loading and Work Artifacts, `docs/plans/`, `.gitignore`.
+
+## Observability (`observability`)
+
+**What it is.** Observability & Lifecycle: keeping the harness itself healthy over time: limits, cadence and the audit history.
+
+**scan.json keys.** `harness_files`, `ci`.
+
+**Applied automatically.**
+- `## Cadence` in `AGENTS.md`: quick audit monthly, full audit quarterly or after any incident, garden weekly.
+- Default limits (root `AGENTS.md` ≤ 100 lines, auto-loaded ≤ 3k tokens warn / 5k fail).
+- First history row: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/level.py" . --log` → `docs/harness/AUDIT-LOG.md`.
+
+**Questions.** None by default. Cadence and budget overrides are assumed; ask only if the developer raises them (overrides go in `INVARIANTS.md` `## Context Budget` / `## File Size Budget`). Enterprise target with CI present: a) add a CI audit job b) no ➡️.
+
+**Assumed — change any time.** Cadence, budgets, log location.
+
+**Writes.** `AGENTS.md` Cadence, `docs/harness/AUDIT-LOG.md`.
