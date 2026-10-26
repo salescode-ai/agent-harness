@@ -48,3 +48,6 @@ active_plan() { # active_plan <root> <branch>: plan matching the branch, else ne
     grep -qE '^[[:space:]]*- \[ \]' "$root/$f" && { echo "$f"; return; }
   done <<<"$(head -10 <<<"$cands")"
 }
+harness_cmd() { # harness_cmd <dir> <target> [T]: print the command for a harness target (see harness-cmd.sh)
+  "$(dirname "${BASH_SOURCE[0]}")/harness-cmd.sh" "$@"
+}
