@@ -50,7 +50,7 @@ Sections in the template:
 
 | Layer | Purpose | Written by | Read by | Humans edit? |
 |---|---|---|---|---|
-| guides | Local rules for a folder that handles auth, payments, PII, migrations or a public API, has its own toolchain, or has ~10+ lines of its own rules. Budget ≤ 80 lines (warn). Its `CLAUDE.md` contains only `@AGENTS.md`. | init (only for `risk_paths` modules or a separate toolchain) | agents working in that folder; `invariants-reviewer` (footguns); `lint.sh` (size, links) | Yes |
+| guides | Local rules for a folder that handles auth, payments, PII, migrations or a public API, has its own toolchain, or has ~10+ lines of its own rules. Budget ≤ 80 lines (warn). Its `CLAUDE.md` contains only `@AGENTS.md`. | init (only for `risk_paths` modules or a separate toolchain) | agents working in that folder; `invariants-reviewer` (footguns); `lint.sh` (size, links, TODOs; it skips gitignored copies and build dirs such as `target/`, `build/`, `dist/`, `out/`, `.gradle/`, `node_modules/`) | Yes |
 
 ### `INVARIANTS.md`
 

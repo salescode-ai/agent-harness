@@ -3,7 +3,7 @@
 import json, os, re, subprocess, sys
 from pathlib import Path
 
-SKIP = {"node_modules", ".git", "build", "dist", "target", ".venv", "vendor", ".harness"}
+SKIP = {"node_modules", ".git", "build", "dist", "target", "out", ".gradle", ".venv", "vendor", ".harness"}
 WALK_DEPTH, MANIFEST_DEPTH, MAX_FILES, MAX_READ = 10, 6, 20000, 1_000_000
 MANIFESTS = {"package.json": "node", "pom.xml": "java-maven", "build.gradle": "java-gradle",
              "build.gradle.kts": "java-gradle", "pyproject.toml": "python", "go.mod": "go"}

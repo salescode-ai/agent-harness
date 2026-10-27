@@ -183,3 +183,21 @@ t_plan_check_fresh_evidence() {
   ( cd "$d" && git -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -qam code )
   out="$(fr)" && _fail "new code commit counted as verified"; assert_contains "$out" "code changed since the PASS entry" "new commit"
 }
+_build_copy() { # _build_copy <repo> <dir>: an IDE/build copy of a module AGENTS.md whose relative link breaks there
+  mkdir -p "$1/$2/x"; printf '# Security\n\nSee [rules](../../../INVARIANTS.md). TODO\n' > "$1/$2/x/AGENTS.md"
+}
+t_build_dir_agents_copies_ignored() {
+  local d out; d="$(_lr)"
+  _build_copy "$d" target/classes; _build_copy "$d" build/resources; _build_copy "$d" out/production; _build_copy "$d" .gradle/tmp
+  _build_copy "$d" generated; echo 'generated/' > "$d/.gitignore"  # any gitignored dir is skipped too
+  out="$(_run "$d")"
+  assert_contains "$out" "harness-lint: OK" "build copies don't fail lint"; assert_not_contains "$out" "TODO" "nor warn"
+  rm -rf "$d/.git" "$d/generated"; out="$(_run "$d")"  # outside git only the build-dir list applies
+  assert_contains "$out" "harness-lint: OK" "outside git (find fallback) too"
+}
+t_module_agents_still_checked() {
+  local d out; d="$(_lr)"; mkdir -p "$d/src/auth"
+  printf '# Auth\n\nSee [rules](../missing.md).\n' > "$d/src/auth/AGENTS.md"
+  out="$(_run "$d")" && return 1
+  assert_contains "$out" "src/auth/AGENTS.md" "real module link still checked"
+}

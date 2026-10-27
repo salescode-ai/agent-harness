@@ -9,6 +9,15 @@ cd "$ROOT" || exit 1
 FAILS=(); WARNS=()
 fail() { FAILS+=("FAIL  $1"); }
 warn() { WARNS+=("warn  $1"); }
+# Files the harness checks: inside git, tracked + untracked-not-ignored (anything gitignored, e.g. an IDE copy of
+# a module AGENTS.md under target/classes, is skipped); outside git, a find. Build and tool dirs are dropped either way.
+SKIP_DIRS='(^|/)(node_modules|target|build|dist|out|\.gradle)/|^(\.git|\.worktrees|\.agents|\.claude|\.harness)/'
+repo_files() {
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git -c core.quotePath=false ls-files -co --exclude-standard
+  else find . \( -name node_modules -o -name target -o -name build -o -name dist -o -name out -o -name .gradle -o -name .git \) -prune -o -type f -print | sed 's|^\./||'
+  fi 2>/dev/null | grep -vE "$SKIP_DIRS"
+}
+module_agents() { repo_files | grep -E '(^|/)AGENTS\.md$' | grep -vx 'AGENTS.md'; }
 
 # 1. Core files exist
 for f in AGENTS.md INVARIANTS.md; do
@@ -48,7 +57,7 @@ while IFS= read -r m; do
   n=$(wc -l < "$m" | tr -d ' ')
   (( n > m_fail )) && fail "$m is $n lines (max $m_fail)"
   (( n > m_warn && n <= m_fail )) && warn "$m is $n lines (module target ≤ $m_warn)"
-done < <(find . -name AGENTS.md -not -path './AGENTS.md' -not -path '*/node_modules/*' -not -path './.git/*' -not -path './.worktrees/*' -not -path './.agents/*' -not -path './.claude/*' 2>/dev/null)
+done < <(module_agents)
 while IFS= read -r m; do
   n=$(wc -l < "$m" | tr -d ' ')
   (( n > s_fail )) && fail "$m is $n lines (max $s_fail)"
@@ -84,7 +93,7 @@ done < <(find .agents/skills -name SKILL.md 2>/dev/null)
 
 # 6. Relative links in harness docs resolve
 harness_docs=(AGENTS.md INVARIANTS.md GLOSSARY.md CONTRIBUTING.md)
-while IFS= read -r f; do harness_docs+=("$f"); done < <(find docs -maxdepth 2 -name '*.md' 2>/dev/null; find . -name AGENTS.md -not -path './AGENTS.md' -not -path '*/node_modules/*' -not -path './.git/*' -not -path './.worktrees/*' -not -path './.agents/*' -not -path './.claude/*' 2>/dev/null)
+while IFS= read -r f; do harness_docs+=("$f"); done < <(find docs -maxdepth 2 -name '*.md' 2>/dev/null; module_agents)
 for f in "${harness_docs[@]}"; do
   [[ -f "$f" ]] || continue
   dir=$(dirname "$f")
@@ -145,7 +154,7 @@ fi
 
 # 11. TODO / [verify] markers in harness files are warnings
 todo_files=(INVARIANTS.md GLOSSARY.md)
-while IFS= read -r f; do todo_files+=("$f"); done < <(find . \( -name AGENTS.md -o -path './docs/*.md' \) -not -path '*/node_modules/*' -not -path './.git/*' -not -path './.worktrees/*' -not -path './.agents/*' -not -path './.claude/*' 2>/dev/null | sed 's|^\./||')
+while IFS= read -r f; do todo_files+=("$f"); done < <(repo_files | grep -E '(^|/)AGENTS\.md$|^docs/.*\.md$')
 for f in "${todo_files[@]}"; do
   [[ -f "$f" ]] || continue
   c=$(grep -cE 'TODO|\[verify\]' "$f")
