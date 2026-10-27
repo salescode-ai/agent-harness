@@ -296,6 +296,26 @@ def m_agents_parallel(root, ws):
     return [act("propose", "AGENTS.md", "\n".join(lines), "Agent skills: rule for parallel or spec-driven flows")]
 
 
+RED_RULE = "- New or changed behaviour has a test that fails without the change — Severity: Important — Enforced by: harness-verify red proof (`scripts/harness/red-proof.sh`) + pre-commit plan close"
+
+
+def m_invariants_red_proof(root, ws):
+    """INVARIANTS.md Testing: the red-proof rule (harness-verify runs red-proof.sh; plan close needs its Red: line)."""
+    text = read(root, "INVARIANTS.md")
+    if ws or text is None or "red-proof" in text:
+        return []
+    lines = text.rstrip("\n").split("\n")
+    head = next((i for i, l in enumerate(lines) if re.match(r"^## Testing[ \t]*$", l)), None)
+    if head is None:
+        lines += ["", "## Testing", "", RED_RULE]
+    else:
+        at = head + 1
+        while at < len(lines) and lines[at].strip() == "":
+            at += 1
+        lines.insert(at, RED_RULE)
+    return [act("propose", "INVARIANTS.md", "\n".join(lines) + "\n", "Testing: new behaviour needs a test that fails without the change")]
+
+
 def m_harness_json_help(root, ws):
     """.agents/harness.json records the runner's help/list command as "help"."""
     text = read(root, ".agents/harness.json")
@@ -427,6 +447,7 @@ MIGRATIONS = [  # id, since, layer, function
     ("agents-verification", "2.0.4", "guides", m_agents_verification),
     ("agents-done-fresh", "2.0.5", "guides", m_agents_done_fresh),
     ("agents-parallel", "2.0.6", "guides", m_agents_parallel),
+    ("invariants-red-proof", "2.0.8", "sensors", m_invariants_red_proof),
     ("harness-json-help", "2.0.4", "tools", m_harness_json_help),
     ("env-deny", "2.0.1", "tools", m_env_deny),
     ("harness-base", "2.0.1", "tools", m_harness_base),

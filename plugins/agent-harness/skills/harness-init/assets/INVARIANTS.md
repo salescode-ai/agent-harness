@@ -30,6 +30,7 @@ Format: `<rule> — Severity: <Critical|Important|Nice-to-have> — Enforced by:
 
 ## Testing
 
+- New or changed behaviour has a test that fails without the change — Severity: Important — Enforced by: harness-verify red proof (`scripts/harness/red-proof.sh`) + pre-commit plan close
 - <rule, e.g. coverage floor> — Severity: Important — Enforced by: <…>
 
 ## Performance

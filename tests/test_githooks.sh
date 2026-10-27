@@ -51,7 +51,7 @@ t_precommit_blocks_unverified_done() {
   assert_contains "$out" "Run harness-verify, commit the code, then close" "fix"
   out="$(cd "$d" && HARNESS_ALLOW_UNVERIFIED_DONE=1 bash "$HOOKS/pre-commit" 2>&1)" || _fail "override with no evidence dir should pass"
   assert_contains "$out" "closing plan(s) unverified" "notice"
-  mkdir -p "$d/.harness/evidence"; printf '### 2026-01-01 · %s · PASS\n' "$(git -C "$d" rev-parse --short HEAD)" > "$d/.harness/evidence/2026-01-01-p.md"
+  mkdir -p "$d/.harness/evidence"; printf '### 2026-01-01 · %s · PASS\nRed: proven (tests/x)\n' "$(git -C "$d" rev-parse --short HEAD)" > "$d/.harness/evidence/2026-01-01-p.md"
   (cd "$d" && bash "$HOOKS/pre-commit") >/dev/null 2>&1 || _fail "fresh PASS should allow closing"
   echo 'x=1' > "$d/code.py"; git -C "$d" add code.py
   rc=0; out="$(cd "$d" && HARNESS_ALLOW_UNVERIFIED_DONE=1 bash "$HOOKS/pre-commit" 2>&1)" || rc=$?

@@ -20,7 +20,7 @@ t_upgrade_2_0_0_repo() {
   out="$(python3 "$MIG" status "$d")"
   assert_contains "$out" "plugin: recorded unknown (before 2.0.2)" "version line"
   for m in "auto     templates" "propose  plan-ticket" "propose  decisions-ticket" "propose  agents-verification" \
-           "propose  agents-done-fresh" "propose  agents-parallel" "propose  env-deny" "propose  harness-base" "auto     init-state-target" "manual   check-fast-tests" \
+           "propose  agents-done-fresh" "propose  agents-parallel" "propose  invariants-red-proof" "propose  env-deny" "propose  harness-base" "auto     init-state-target" "manual   check-fast-tests" \
            "manual   tool-wiring" "manual   gate-wired"; do assert_contains "$out" "$m" "2.0.0 needs $m"; done
   python3 "$ASSETS_PY" install "$d" >/dev/null
   assert_not_contains "$(python3 "$MIG" status "$d")" "harness-mk-test-plan" "refreshed harness.mk has the target"
@@ -31,7 +31,7 @@ t_upgrade_2_0_0_repo() {
   assert_eq "$(cat "$d/AGENTS.md")" "$before" "apply never touches repo-owned files"
   local s; s="$(_sum "$d")"; out="$(python3 "$MIG" diff "$d")"
   assert_eq "$(_sum "$d")" "$s" "diff writes nothing"
-  assert_eq "$(grep -c '^--- a/' <<<"$out")" 5 "one diff over five repo-owned files"
+  assert_eq "$(grep -c '^--- a/' <<<"$out")" 6 "one diff over six repo-owned files (INVARIANTS.md since 2.0.8)"
   assert_contains "$out" "+**Status**: active · **Owner**: dev · **Spec**: none · **Ticket**: none (no ticket recorded before 2.0.4)" "inline placeholder replaced"
   assert_contains "$out" "+HARNESS_BASE = origin/main" "derived base"
   assert_contains "$out" '"Read(./**/.env.local)"' "narrowed deny"
@@ -150,4 +150,13 @@ t_upgrade_agents_parallel_once() {
   grep -q "Parallel or spec-driven flows" "$d/AGENTS.md" || _fail "rule added"
   bash "$PLUGIN/skills/harness-init/assets/lint.sh" "$d" 2>&1 | grep -q "names 'make setup'" && _fail "no runner mismatch"
   assert_not_contains "$(python3 "$MIG" status "$d")" "agents-parallel" "idempotent"
+}
+
+t_upgrade_invariants_red_proof_once() {
+  local d; d="$(_fx harness-2.0.0)"
+  python3 "$MIG" apply "$d" >/dev/null; python3 "$MIG" accept "$d" >/dev/null
+  awk '/^## Testing/{f=1;next} /^## /{f=0} f' "$d/INVARIANTS.md" | grep -q "red-proof.sh" || _fail "rule under Testing"
+  assert_not_contains "$(python3 "$MIG" status "$d")" "invariants-red-proof" "idempotent"
+  ( cd "$d" && bash "$PLUGIN/skills/harness-init/assets/lint.sh" ) 2>&1 | grep -q "Red\|red-proof.*FAIL" && _fail "rule lints clean"
+  true
 }

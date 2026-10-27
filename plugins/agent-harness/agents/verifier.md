@@ -21,7 +21,11 @@ If acceptance criteria are missing, derive them from the request in one line eac
 3. Run the full gate: `c="$(bash "$R" . check)"`; exit 3/4 (not wired, make missing) is FAIL "check not wired", never a pass; otherwise `eval "$c"`. Capture the exit code and the last 60 lines on failure.
 4. For each acceptance criterion, find the evidence:
    - a test that exercises it (name the test and the file), and
-   - proof the test is meaningful: it asserts the behavior, it is not skipped, and it would fail without the change. When cheap, prove this by reverting the production hunk in a scratch worktree or by reading the assertion; say which.
+   - proof the test is meaningful: it asserts the behavior and it is not skipped.
+4a. **Red proof** (the test fails without the change): run `bash scripts/harness/red-proof.sh [<base>]` (no copy in the repo: `"${CLAUDE_PLUGIN_ROOT}/skills/harness-init/assets/harness/red-proof.sh"`), with the same base as the scope (uncommitted only: `HEAD`). It runs the changed tests in a scratch worktree with the change (must pass), then with the production files put back to the base (must fail). Quote its last line.
+   - `red: proven` or `red: n/a (no production code changed …)` → fine.
+   - `red: not proven` → FAIL ("write a test that fails without the change"), **except** a pure refactor or a config/build change with no new behaviour that the request asked for: then report `n/a (<that reason>)` and say why the existing tests already cover it.
+   - `red: inconclusive` (tests can't run in a scratch worktree, `test T=` not wired) → prove it by hand the same way (revert the production hunks in a scratch worktree, run the test) and report `proven (by hand: …)`; if you can't, put it under Not verified and report `inconclusive (<why>)`.
 5. If the change has a user-visible surface (HTTP route, CLI, UI), run the repo's smoke target if one exists (`make smoke`) and report what you observed.
 6. Check for verification theatre: tests deleted or weakened, `skip`/`only`/`xit` added, assertions loosened, snapshots blindly updated, lint rules disabled inline, `--no-verify`, coverage thresholds lowered. Any of these is a FAIL unless the request asked for it.
 
@@ -32,6 +36,7 @@ VERDICT: PASS | FAIL
 Gate: <resolved check command> → exit <code>
 Criteria:
 - [x|✗] <criterion> — evidence: <test name @ file:line> | <command + observed output>
+Red: proven (<failing tests>) | n/a (<reason>) | not proven (<why>) | inconclusive (<why>)
 Theatre check: none found | <finding @ file:line>
 Blocking issues:
 - <issue> — <file:line> — <what would fix it>
@@ -39,4 +44,4 @@ Not verified (and why):
 - <item>
 ```
 
-Rules: PASS only if the gate exits 0, every criterion has evidence, and the theatre check is clean. Quote real output; never write "should pass". Keep the report under 40 lines.
+Rules: PASS only if the gate exits 0, every criterion has evidence, Red is `proven` or `n/a (<reason>)`, and the theatre check is clean. Quote real output; never write "should pass". Keep the report under 40 lines.

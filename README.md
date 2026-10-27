@@ -67,6 +67,7 @@ The harness is organised in five layers. Each one acts at a different moment: be
 |---|---|
 | `make check` | The definition of done: lint + typecheck + all tests + harness lint. |
 | `make check-fast` | The same on changed files only (under ~60 s), including the tests related to changed source files. |
+| `scripts/harness/red-proof.sh` | Test-first, proven: harness-verify runs the change's tests in a scratch worktree with the change (green) and without it (must fail). A plan closes only when its evidence says `Red: proven` or `Red: n/a (<reason>)`. |
 | `scripts/harness/sensors/` | Project-specific checks (architecture rules, "no production data in seeds", contract checks). Each is wired only after a proof run: clean code passes, a planted violation fails, and the planted fixture is kept so the sensor is re-proved on every lint. |
 | `scripts/harness/lint.sh` | Structural checks on the harness itself: shim, budgets, broken links, rule format, commands that don't exist. |
 | `.githooks/` | pre-commit runs `check-fast`, pre-push runs `check` (or added to your existing husky / lefthook / pre-commit). pre-commit also refuses to close a plan (moved to `plans/done/` or `Status: done`) unless `scripts/harness/plan-check.sh fresh` passes on its local evidence. |

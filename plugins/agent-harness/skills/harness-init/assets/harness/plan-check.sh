@@ -10,6 +10,8 @@
 #                                  evidence file (.harness/evidence/<plan file name>, never committed) is PASS, its commit
 #                                  has the same code as HEAD (docs/plans and plans/ excluded) and nothing outside them is
 #                                  uncommitted. An "uncommitted" entry is never fresh: commit, then run harness-verify again.
+#                                  The PASS entry must also carry the red proof: a "Red: proven (…)" or "Red: n/a (<reason>)"
+#                                  line (scripts/harness/red-proof.sh, run by harness-verify).
 #                                  Workspace evidence ("### <date> · <repo> · <commit> · <verdict>", run from the workspace
 #                                  root): each repo's latest entry is checked in <repo path from harness-workspace.json>.
 set -uo pipefail
@@ -22,15 +24,20 @@ ticket_of() { # the "Ticket:" value (up to " · " or end of line)
 latest() { # the latest "### <date> · …" entry
   grep -E '^### [0-9]{4}-[0-9]{2}-[0-9]{2}' "$1" 2>/dev/null | tail -1
 }
+block_of() { # block_of <file> <entry>: the lines under the last occurrence of that entry, up to the next "### "
+  awk -v h="$2" '$0==h{b="";on=1;next} /^### /{on=0} on{b=b $0 "\n"} END{printf "%s", b}' "$1"
+}
 repo_path() { # a workspace member's path from harness-workspace.json (else its name)
   local p; p="$(python3 -c 'import json,sys
 for r in json.load(open("harness-workspace.json")).get("repos", []):
     if r.get("name") == sys.argv[1]: print(r.get("path", r["name"]))' "$1" 2>/dev/null)"
   echo "${p:-$1}"
 }
-fresh_one() { # fresh_one <entry> <repo dir> <label>: the entry is PASS and still covers that repo's code
-  local e="$1" g="$2" l="$3" c
+fresh_one() { # fresh_one <entry> <repo dir> <label> <entry body>: the entry is PASS, red-proven and still covers that repo's code
+  local e="$1" g="$2" l="$3" body="${4:-}" c
   [[ "$e" =~ ·\ PASS[[:space:]]*$ ]] || { echo "$l: latest entry is not PASS (${e:-none}) — run harness-verify"; return 1; }
+  grep -qE '^[Rr]ed: (proven|n/a \(.+\))' <<<"$body" \
+    || { echo "$l: the PASS entry has no red proof (a 'Red: proven' or 'Red: n/a (<reason>)' line) — run harness-verify again"; return 1; }
   c="$(awk -F' · ' '{print $(NF-1)}' <<<"$e" | tr -d ' ')"
   if [[ "$c" == uncommitted ]] || ! git -C "$g" rev-parse -q --verify "$c^{commit}" >/dev/null 2>&1; then
     echo "$l: the PASS entry is for '$c', not a commit — commit, then run harness-verify again"; return 1
@@ -64,12 +71,12 @@ case "$cmd" in
     [[ -f "$plan" ]] || { echo "no verification evidence on this machine ($plan) — run harness-verify"; exit 1; }
     e="$(latest "$plan")"
     [[ -n "$e" ]] || { echo "$plan: no entry yet — run harness-verify"; exit 1; }
-    if [[ "$(awk -F' · ' '{print NF}' <<<"$e")" -lt 4 ]]; then fresh_one "$e" . "$plan"; exit; fi
+    if [[ "$(awk -F' · ' '{print NF}' <<<"$e")" -lt 4 ]]; then fresh_one "$e" . "$plan" "$(block_of "$plan" "$e")"; exit; fi
     # workspace: "### <date> · <repo> · <commit> · <verdict>" — every repo's latest entry must be PASS and fresh
     rc=0
     for r in $(grep -E '^### [0-9]{4}-[0-9]{2}-[0-9]{2} · ' "$plan" | awk -F' · ' 'NF>=4{print $2}' | sort -u); do
       e="$(grep -E '^### [0-9]{4}-[0-9]{2}-[0-9]{2} · ' "$plan" | awk -F' · ' -v r="$r" '$2==r' | tail -1)"
-      fresh_one "$e" "$(repo_path "$r")" "$plan ($r)" || rc=1
+      fresh_one "$e" "$(repo_path "$r")" "$plan ($r)" "$(block_of "$plan" "$e")" || rc=1
     done
     exit $rc ;;
   *) echo "usage: plan-check.sh <ticket <plan.md>|fresh <evidence.md>>" >&2; exit 2 ;;

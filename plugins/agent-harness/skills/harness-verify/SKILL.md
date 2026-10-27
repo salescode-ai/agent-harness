@@ -33,7 +33,7 @@ Dispatch these agents **in parallel** (installed as a plugin they are named `age
 
 | Agent | Checks | Skip when |
 |---|---|---|
-| `verifier` | criteria have real evidence; tests are meaningful; no verification theatre | never |
+| `verifier` | criteria have real evidence; tests are meaningful and fail without the change (red proof); no verification theatre | never |
 | `invariants-reviewer` | INVARIANTS.md, module AGENTS.md footguns, ADRs, glossary terms | change is docs-only |
 | `scope-guard` | every hunk traces to the request; nothing speculative or destructive | change is < 20 lines and single-file |
 
@@ -54,6 +54,7 @@ If `harness-workspace.json` sits above the current folder and the current folder
 | Gate green, verifier PASS, reviewers CLEAN/TIGHT | Report done with the evidence block below |
 | Any FAIL / VIOLATIONS / TRIM | Fix, then rerun from step 2. Max 3 rounds, then stop and report to the human |
 | NEEDS-HUMAN, an Authorization escalation, or a hit on an invariant with `Severity: Important` | Stop. Report it as NEEDS-HUMAN with the rule and file:line |
+| Red `inconclusive` (the verifier could not show the tests fail without the change) | NEEDS-HUMAN: say why; the developer either fixes the environment and you re-verify, or accepts `Red: n/a (human-approved: <reason>)` |
 | SPLIT | Move the out-of-scope hunks to a separate branch or note; re-verify |
 
 If the same kind of failure appears twice, run the **harness-learn** skill after you finish so the harness catches it next time.
@@ -64,6 +65,7 @@ If the same kind of failure appears twice, run the **harness-learn** skill after
 Verified: <request>
 Gate: check ✓ `<resolved command>` (<n> tests) · smoke ✓|n/a
 Criteria: <k>/<n> with evidence — <criterion → test/command>, …
+Red: proven (<tests that fail without the change>) | n/a (<reason>)
 Reviewers: verifier PASS · invariants CLEAN · scope TIGHT
 Open: <anything not verified, and why>
 Plan: <docs/plans/active/<plan>.md> · Evidence: <.harness/evidence/<plan file name>> (local)
@@ -73,6 +75,6 @@ Never write "should work", "looks good" or "tests should pass". If you could not
 
 ## 6. Persist the evidence
 
-Every run that reaches a verdict **appends** this block to the local evidence file `.harness/evidence/<active plan file name>` (no active plan: `.harness/evidence/<branch slug>.md`; create the folder; never edit earlier entries): `### <YYYY-MM-DD> · <commit> · <PASS | FAIL | NEEDS-HUMAN>`, where `<commit>` is `uncommitted` only when `git status --porcelain -- . ':!docs/plans' ':!plans' ':!.harness'` lists files, else `git rev-parse --short HEAD`, then the Gate, Criteria, Reviewers and Open lines above. `.harness/` is gitignored: evidence is **never committed** and never written into the plan. No active plan → say so and suggest creating one from `docs/plans/TEMPLATE.md`; never invent a plan. Workspace mode: `<workspace>/.harness/evidence/<cross-repo plan file name>`, one block per repo (`### <date> · <repo> · <commit> · <verdict>`).
+Every run that reaches a verdict **appends** this block to the local evidence file `.harness/evidence/<active plan file name>` (no active plan: `.harness/evidence/<branch slug>.md`; create the folder; never edit earlier entries): `### <YYYY-MM-DD> · <commit> · <PASS | FAIL | NEEDS-HUMAN>`, where `<commit>` is `uncommitted` only when `git status --porcelain -- . ':!docs/plans' ':!plans' ':!.harness'` lists files, else `git rev-parse --short HEAD`, then the Gate, Criteria, Red, Reviewers and Open lines above. The `Red:` line is what lets the plan close: `scripts/harness/plan-check.sh fresh` (pre-commit) refuses a PASS entry without `Red: proven (…)` or `Red: n/a (<reason>)`. `.harness/` is gitignored: evidence is **never committed** and never written into the plan. No active plan → say so and suggest creating one from `docs/plans/TEMPLATE.md`; never invent a plan. Workspace mode: `<workspace>/.harness/evidence/<cross-repo plan file name>`, one block per repo (`### <date> · <repo> · <commit> · <verdict>`).
 
 The PR description and the tracker comment reuse this same block with the plan path and the local evidence path; they are where others see it. On "done" with a ticketed plan, offer the tracker comment exactly as harness-session Close step 4 says: show the draft (evidence block + plan path + next step, and a proposed transition when the plan is done), post only after the developer says yes via an available connector or CLI, never store tokens, else print it for copy-paste.

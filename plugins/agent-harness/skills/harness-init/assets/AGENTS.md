@@ -15,7 +15,7 @@
 1. **Think before coding** — state assumptions; if two readings exist, ask instead of picking one silently.
 2. **Simplicity first** — minimum code for the request; no speculative options, abstractions or error paths.
 3. **Surgical changes** — every changed line traces to the request; mention unrelated issues, don't fix them.
-4. **Goal-driven** — turn the task into a check (failing test, make target) and loop until it passes.
+4. **Goal-driven, test first** — turn the task into a check: write the test, see it fail, then make it pass. harness-verify proves the red (`scripts/harness/red-proof.sh`: the change's tests fail without it).
 5. **Speak the domain** — name things with the terms in [GLOSSARY.md](GLOSSARY.md); if a concept is missing, flag it instead of inventing a synonym.
 
 ## Agent skills
