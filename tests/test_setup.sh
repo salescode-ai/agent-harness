@@ -261,3 +261,58 @@ t_local_guard_reads_active_profiles() {
   gr || _fail "quoted profile with an inline comment refused"
   true
 }
+t_maven_hint_only_when_deps_not_ok() {
+  local d h out; h="$(mktemp -d)"
+  d="$(_su 'setup-deps:
+	@true')"; echo '<settings/>' > "$d/settings.xml"
+  out="$(cd "$d" && HOME="$h" make -s setup 2>&1)"
+  assert_not_contains "$out" "maven credentials" "deps passed with -s settings.xml: no hint"
+  d="$(_su 'setup-deps:
+	@false')"; echo '<settings/>' > "$d/settings.xml"
+  out="$(cd "$d" && HOME="$h" make -s setup 2>&1)" && return 1
+  assert_contains "$out" "maven credentials" "deps failed: hint"
+}
+_hold_port() { # _hold_port <file>: listens on a free port in the background, writes "<port> <pid>" to <file>
+  python3 -c 'import socket,time,sys
+s=socket.socket(); s.bind(("",0)); s.listen(1); print(s.getsockname()[1], flush=True); time.sleep(60)' > "$1.p" &
+  local i=0; while [ ! -s "$1.p" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i+1)); done
+  echo "$(cat "$1.p") $!" > "$1"
+}
+t_main_checkout_busy_port_gets_free_one() {
+  local d port pid p; d="$(_su)"; _hold_port "$d/.hold"; read -r port pid < "$d/.hold"
+  printf 'API_PORT=%s\nDB_PORT=5432\n' "$port" > "$d/.env.example"
+  _run "$d" >/dev/null
+  p="$(sed -n 's/^API_PORT=//p' "$d/.env.local")"
+  [ -n "$p" ] && [ "$p" != "$port" ] || { kill "$pid"; _fail "busy example port $port reused ($p)"; }
+  _run "$d" >/dev/null; kill "$pid"
+  assert_eq "$(sed -n 's/^API_PORT=//p' "$d/.env.local")" "$p" ".env.local value kept on re-run"
+}
+t_main_checkout_port_held_by_own_project_kept() {
+  local d bin port pid; d="$(_su)"; bin="$(mktemp -d)"; _hold_port "$d/.hold"; read -r port pid < "$d/.hold"
+  printf '#!/bin/sh\n[ "$1" = ps ] && case "$*" in *com.docker.compose.project=node-app*) echo "0.0.0.0:%s->3000/tcp";; esac\nexit 0\n' "$port" > "$bin/docker"; chmod +x "$bin/docker"
+  printf 'API_PORT=%s\n' "$port" > "$d/.env.example"
+  ( cd "$d" && PATH="$bin:$PATH" make -s setup ) >/dev/null 2>&1; kill "$pid"
+  assert_contains "$(cat "$d/.env.local")" "API_PORT=$port" "our own compose container holds it: kept"
+}
+t_smoke_default_reports_na() {
+  local d out A="$PLUGIN/skills/harness-init/assets"; d="$(_su)"
+  cp "$A/harness.mk" "$d/"; printf 'include harness.mk\n' > "$d/Makefile"; cp "$A/harness/local-guard.sh" "$d/scripts/harness/"
+  rm -f "$d/.nvmrc" "$d/.env.example"   # no "needs you" items, so smoke runs
+  out="$(_run "$d")" || _fail "setup failed: $out"
+  assert_contains "$out" "smoke n/a" "unset HARNESS_SMOKE is not a pass"
+  assert_not_contains "$out" "smoke ✓" "no false tick"
+}
+t_setup_smoke_opt_out() {
+  local d out A="$PLUGIN/skills/harness-init/assets"; d="$(_su)"
+  cp "$A/harness.mk" "$d/"; printf 'HARNESS_SMOKE = @echo booting-app && false\nHARNESS_SETUP_SMOKE = 0\ninclude harness.mk\n' > "$d/Makefile"
+  out="$(_run "$d")" || _fail "setup failed: $out"
+  assert_not_contains "$out" "booting-app" "smoke not run inside setup"
+  assert_contains "$out" "smoke skipped" "reported"
+}
+t_smoke_skipped_while_needs_you() {
+  local d out; d="$(_su 'smoke:
+	@echo booting-app')"; printf 'DB_PASSWORD=\n' > "$d/.env.example"
+  out="$(_run "$d")"
+  assert_not_contains "$out" "booting-app" "setup incomplete: smoke waits"
+  assert_contains "$out" "smoke skipped" "reported"
+}

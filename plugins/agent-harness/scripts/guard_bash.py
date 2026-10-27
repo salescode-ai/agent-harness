@@ -261,6 +261,40 @@ def infra_ask(prog, args):
     return None
 
 
+READERS = {"grep", "rg", "cat", "less", "head", "tail", "sed", "awk", "echo", "printf", "git", "ls", "find", "diff", "wc"}
+DEV_MSG = ("Agents don't leave the dev server running. Use `make dev-check` (starts it, waits for HARNESS_HEALTH, "
+           "runs RUN='<cmd>' if given, then stops it); `make dev-stop` stops a leftover one. "
+           "Ask the developer to run `make dev` themselves if they want it up.")
+
+
+def dev_rules(cwd):
+    """(repo offers dev-check, HARNESS_DEV_BLOCK words) from the nearest directory up holding harness.mk.
+    dev-check is offered once the Makefile sets HARNESS_HEALTH or defines its own dev-check target."""
+    d = os.path.abspath(cwd)
+    while not os.path.isfile(os.path.join(d, "harness.mk")):
+        if os.path.dirname(d) == d:
+            return False, []
+        d = os.path.dirname(d)
+    words, offered = [], False
+    for f in ("Makefile", "makefile", "GNUmakefile"):
+        try:
+            with open(os.path.join(d, f), errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        words += [w for m in re.finditer(r"^HARNESS_DEV_BLOCK\s*[:?]?=(.*)$", text, re.M) for w in m.group(1).split()]
+        offered = offered or bool(re.search(r"^(HARNESS_HEALTH\s*[:?]?=\s*\S|dev-check:)", text, re.M))
+    return offered, words
+
+
+def long_lived_dev(prog, argv, cwd):
+    """`make dev` (once harness.mk offers dev-check) or a HARNESS_DEV_BLOCK word run as the program or its argument."""
+    has_check, words = dev_rules(cwd)
+    if has_check and prog in ("make", "gmake") and "dev" in argv[1:]:
+        return True
+    return prog not in READERS and any(w == prog or w in argv[1:] for w in words)
+
+
 def payloads(argv):
     """Command strings a segment runs indirectly: `bash|sh|zsh -c '<cmd>'` and `eval <cmd>`."""
     prog = os.path.basename(argv[0])
@@ -296,6 +330,8 @@ def check(cmd, cwd, depth=0):
         a = infra_ask(prog, argv[1:])
         if a:
             asks.append(a)
+        if long_lived_dev(prog, argv, cwd):
+            decide("deny", DEV_MSG)
         if prog == "git":
             check_git(argv, env, cwd)
         elif prog == "rm":

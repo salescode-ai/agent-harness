@@ -153,6 +153,18 @@ t_tracker_comment_carries_verification_evidence() {
     grep -qF 'the harness-verify evidence block (Verified · Gate with test count' "$PLUGIN/skills/harness-init/assets/docs/agents/issue-tracker-$t.md" || _fail "issue-tracker-$t"
   done
 }
+t_learn_offered_at_close() {
+  local s="$PLUGIN/skills/harness-session/SKILL.md" v="$PLUGIN/skills/harness-verify/SKILL.md" f
+  grep -qF '5. **Learn (offer, approval-gated).**' "$s" || _fail "session Close: learn step"
+  grep -qF '6. Say in one line what the next session should do.' "$s" || _fail "session Close: renumbered last step"
+  grep -qF '**offer harness-learn** after the report' "$v" || _fail "verify: offers learn"
+  for f in "$s" "$v"; do
+    grep -qF 'Learn? <what happened> · seen <n>× · likely rung:' "$f" || _fail "$f: offer line"
+    grep -qF 'only after the developer says yes' "$f" || _fail "$f: approval gate"
+  done
+  if grep -qF 'run the **harness-learn** skill after you finish' "$v"; then _fail "verify: still runs learn unasked"; fi
+  grep -qF 'offer it at close and the developer says yes' "$PLUGIN/skills/harness-learn/SKILL.md" || _fail "learn: close trigger"
+}
 t_verify_writes_local_evidence() {
   local s="$PLUGIN/skills/harness-session/SKILL.md" v="$PLUGIN/skills/harness-verify/SKILL.md"
   grep -qF '**appends** this block to the local evidence file `.harness/evidence/<active plan file name>`' "$v" || _fail "append rule"

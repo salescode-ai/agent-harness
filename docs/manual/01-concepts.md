@@ -91,7 +91,7 @@ A sensor is wired in only after `sensor-smith` proves it. The proof checks that 
 | **Controls** | Which commands the agent runs (one command surface), how a fresh machine or worktree gets a working dev setup, and what the agent may never do. |
 | **Acts** | During: every Bash command and every file write passes a guard hook. |
 | **Prevents** | Raw tool commands that differ per developer, destructive git operations, bypassing hooks, writing secrets, overwriting `CLAUDE.md` from the shell, seeding a non-local database, and "works on my machine" setups. |
-| **Implemented by** | `Makefile` + `harness.mk` (or `.agents/harness.json` for another runner); `scripts/harness/cmd.sh` (command resolver); `guard-bash.sh`/`guard_bash.py` and `guard-files.sh` (PreToolUse hooks); `.claude/settings.json` deny rules; `scripts/harness/setup.sh`, `setup-proof.sh`, `local-guard.sh`; `docs/SETUP.md`; agent `setup-smith`. |
+| **Implemented by** | `Makefile` + `harness.mk` (or `.agents/harness.json` for another runner); `scripts/harness/cmd.sh` (command resolver); `guard-bash.sh`/`guard_bash.py` and `guard-files.sh` (PreToolUse hooks); `.claude/settings.json` deny rules; `scripts/harness/setup.sh`, `setup-proof.sh`, `local-guard.sh`, `dev-check.sh` (`make dev-check`: start, check, always stop); `docs/SETUP.md`; agent `setup-smith`. |
 | **Example** | The agent runs `git commit --no-verify -m "wip"`. The guard denies it: `Bypassing git hooks (--no-verify / -n) is blocked by INVARIANTS.md. Fix the failing check instead.` |
 
 ### Observability & Lifecycle (`observability`)

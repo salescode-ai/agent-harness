@@ -14,14 +14,27 @@ HARNESS_TEST_ALL  ?= @echo "test: not configured" && false
 HARNESS_TEST_ONE  ?= @echo "test T=: not configured" && false
 HARNESS_SMOKE     ?= @echo "smoke: no runnable surface"
 HARNESS_SETUP     ?= bash scripts/harness/setup.sh
+# 0 = `make setup` does not run smoke (a server app that cannot boot until its DB is configured). Setup also
+# skips smoke while it still lists "needs you" items.
+HARNESS_SETUP_SMOKE ?=
+export HARNESS_SETUP_SMOKE
 # seed, reset and dev exist only when set ABOVE the include: unconfigured, `make seed` says "No rule"
 # and `make setup` skips the step (a defined-but-failing default would break setup).
 HARNESS_SEED      ?=
 HARNESS_RESET     ?=
 HARNESS_DEV       ?=
+# "The app is up": a URL (2xx/3xx) or a command exiting 0. With HARNESS_DEV, enables `make dev-check`:
+# start dev in the background, wait up to HARNESS_HEALTH_SECS, run RUN='<cmd>' if given, always stop it.
+HARNESS_HEALTH      ?=
+HARNESS_HEALTH_SECS ?= 120
+# Commands the Bash guard refuses besides `make dev` (the long-lived run script under it), e.g.
+#   HARNESS_DEV_BLOCK = run-local.sh spring-boot:run
+HARNESS_DEV_BLOCK   ?=
 # Tests for changed files (receives the file list), usually scripts/harness/related-tests.sh:
 #   HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh maven "./mvnw -B -q test"
 HARNESS_TEST_CHANGED ?=
+# 1 = a custom HARNESS_TEST_CHANGED (not related-tests.sh) was reviewed: harness-lint stops warning about it
+HARNESS_TEST_CHANGED_CONFIRMED ?=
 # Seconds the full suite took at init (its green baseline). With HARNESS_TEST_CHANGED empty and this <= 60,
 # check-fast runs the full suite (HARNESS_TEST_ALL). Both empty: check-fast runs no tests.
 HARNESS_TEST_SECS ?=
@@ -76,7 +89,7 @@ endif
 .PHONY: harness-test-plan
 harness-test-plan:
 	$(info secs=$(strip $(HARNESS_TEST_SECS)))
-	$(info mode=$(if $(strip $(HARNESS_TEST_CHANGED)),$(if $(findstring related-tests.sh,$(HARNESS_TEST_CHANGED)),related,custom),none))
+	$(info mode=$(if $(strip $(HARNESS_TEST_CHANGED)),$(if $(findstring related-tests.sh,$(HARNESS_TEST_CHANGED)),related,$(if $(filter 1,$(strip $(HARNESS_TEST_CHANGED_CONFIRMED))),custom-confirmed,custom)),none))
 	$(foreach f,$(CHANGED),$(info file=$(f)))
 ifneq ($(findstring related-tests.sh,$(HARNESS_TEST_CHANGED)),)
 	@RELATED_TESTS_DRY=1; export RELATED_TESTS_DRY; $(patsubst @%,%,$(HARNESS_TEST_CHANGED)) $(CHANGED)
@@ -163,6 +176,30 @@ _HARNESS_TARGETS += dev
 _HELP_dev := Start the dev server
 dev: ## Start the dev server
 	$(HARNESS_DEV)
+endif
+endif
+
+ifneq ($(HARNESS_DEFINE_DEV_CHECK),0)
+ifneq ($(strip $(HARNESS_DEV)),)
+ifneq ($(strip $(HARNESS_HEALTH)),)
+.PHONY: dev-check
+_HARNESS_TARGETS += dev-check
+_HELP_dev-check := Start dev, wait for HARNESS_HEALTH, run RUN='<cmd>' if given, then always stop it
+dev-check: ## Start dev, wait for HARNESS_HEALTH, run RUN='<cmd>' if given, then always stop it
+	@HARNESS_MAKE='$(MAKE)' bash scripts/harness/dev-check.sh start '$(subst ','\'',$(HARNESS_HEALTH))' '$(HARNESS_HEALTH_SECS)' '$(subst ','\'',$(RUN))'
+endif
+endif
+endif
+
+ifneq ($(HARNESS_DEFINE_DEV_STOP),0)
+ifneq ($(strip $(HARNESS_DEV)),)
+ifneq ($(strip $(HARNESS_HEALTH)),)
+.PHONY: dev-stop
+_HARNESS_TARGETS += dev-stop
+_HELP_dev-stop := Stop a dev server dev-check left running from this checkout
+dev-stop: ## Stop a dev server dev-check left running from this checkout
+	@bash scripts/harness/dev-check.sh stop
+endif
 endif
 endif
 

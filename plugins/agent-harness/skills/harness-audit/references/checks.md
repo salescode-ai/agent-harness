@@ -10,7 +10,7 @@ Status per item: ✅ pass (1) · ⚠️ partial (0.5) · ❌ fail (0). Cite `fil
 4. **Coverage gaps.** Are there new modules with security-sensitive code, API boundaries or complex logic and no module `AGENTS.md` or footgun?
 5. **Enforcement gaps.** Can any invariant marked `not yet enforced` or `human review` now be automated (a sensor, lint rule or test)?
 6. **Footgun freshness.** Is each footgun still a live risk, traceable to a concrete pattern in source? Flag aspirational ones.
-7. **Token budget.** The auto-loaded set (`CLAUDE.md` + root `AGENTS.md` + `INVARIANTS.md`) is `tokens` in the `level.py` JSON: ≤ 3,000 pass, ≤ 5,000 partial, above fail.
+7. **Token budget.** The auto-loaded set (`CLAUDE.md` + root `AGENTS.md` + `INVARIANTS.md`) is `tokens` in the `level.py` JSON (UTF-8 bytes / 4, the same number `harness-lint` prints): ≤ 3,000 pass, ≤ 5,000 partial, above fail.
 8. **File size discipline.** Root `AGENTS.md` ≤ 100 lines, module `AGENTS.md` ≤ 80, `SKILL.md` ≤ 120. Flag a file only if it is over budget **and** does not point to detail elsewhere.
 9. **Content accuracy.** Versions, dependencies, commands, env var names, paths and endpoints in the harness files match their source files (`.harness/scan.json` is the evidence; refresh it if `head` differs).
 10. **Claude Code integration.** Every `.agents/skills/<name>` has a working `.claude/skills/<name>` symlink (a plain text file counts as rot); `CLAUDE.md` is a shim; no redundant `.claude/commands/` shims. N/A when there is no `CLAUDE.md` and no `.claude/`.

@@ -57,7 +57,7 @@ If `harness-workspace.json` sits above the current folder and the current folder
 | Red `inconclusive` (the verifier could not show the tests fail without the change) | NEEDS-HUMAN: say why; the developer either fixes the environment and you re-verify, or accepts `Red: n/a (human-approved: <reason>)` |
 | SPLIT | Move the out-of-scope hunks to a separate branch or note; re-verify |
 
-If the same kind of failure appears twice, run the **harness-learn** skill after you finish so the harness catches it next time.
+If the same kind of failure appeared twice in this run (two fix rounds for one cause, the same reviewer finding twice, or `Red: not proven`), **offer harness-learn** after the report: one line, `Learn? <what happened> · seen <n>× · likely rung: <sensor | hook | check step | invariant | footgun>`. Run it **only after the developer says yes**, so the harness catches it next time.
 
 ## 5. Report (paste into the reply or PR description)
 

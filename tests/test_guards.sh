@@ -101,3 +101,17 @@ t_merge_of_red_implementer_branch_denied() {
   rm "$d/.git/harness-red/KEY-2-fee"
   assert_eq "$(cd "$d" && guard 'git merge KEY-2-fee')" "" "allowed once cleared"
 }
+t_long_lived_dev_denied() {
+  local d c; d="$(mktemp -d)"; cp "$PLUGIN/skills/harness-init/assets/harness.mk" "$d/"
+  printf 'HARNESS_DEV = ./run-local.sh\nHARNESS_HEALTH = http://localhost:8080/health\nHARNESS_DEV_BLOCK = run-local.sh spring-boot:run\ninclude harness.mk\n' > "$d/Makefile"
+  for c in 'make dev' "make dev ARGS='-P 9090' &" 'nohup make dev > x.log 2>&1 &' 'cd . && make -s dev' 'FOO=1 make dev' \
+           "bash -c 'make dev'" './run-local.sh -d' 'bash run-local.sh' 'mvn -s settings.xml spring-boot:run'; do
+    assert_contains "$(cd "$d" && guard "$c")" 'dev-check' "deny: $c"
+  done
+  for c in "make dev-check RUN='curl x'" 'make dev-stop' 'make check' 'grep run-local.sh Makefile' 'echo make dev' 'git diff Makefile'; do
+    assert_eq "$(cd "$d" && guard "$c")" "" "allow: $c"
+  done
+  printf 'HARNESS_DEV = ./run-local.sh\ninclude harness.mk\n' > "$d/Makefile"
+  assert_eq "$(cd "$d" && guard 'make dev')" "" "no HARNESS_HEALTH, so no dev-check: allowed"
+  d="$(mktemp -d)"; assert_eq "$(cd "$d" && guard 'make dev')" "" "no harness: allowed"
+}

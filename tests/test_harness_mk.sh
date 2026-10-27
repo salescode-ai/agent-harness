@@ -103,3 +103,33 @@ include harness.mk')"
   assert_contains "$(make -s -C "$d" check-fast 2>&1)" "check-fast: OK" "skipped tools do not keep the gate red"
   assert_contains "$(make -s -C "$d" lint 2>&1)" "lint: skipped (no JDK 11" "skip stays visible"
 }
+# dev-check: HARNESS_DEV records its shell pid; health is a command
+_dev_dir() {
+  local d; d="$(mk_dir "HARNESS_DEV = @echo \$\$\$\$ > dev.pid; sleep 300
+HARNESS_HEALTH = ${1:-test -f dev.pid}
+HARNESS_HEALTH_SECS = 4
+include harness.mk")"
+  mkdir -p "$d/scripts/harness"; cp "$PLUGIN/skills/harness-init/assets/harness/dev-check.sh" "$d/scripts/harness/"; echo "$d"
+}
+t_dev_check_runs_and_always_stops() {
+  local d out pid; d="$(_dev_dir)"
+  out="$(cd "$d" && make -s dev-check RUN='echo ran-against-app' 2>&1)" || _fail "dev-check failed: $out"
+  assert_contains "$out" "ran-against-app" "RUN executed"
+  pid="$(cat "$d/dev.pid")"; sleep 1
+  kill -0 "$pid" 2>/dev/null && { kill "$pid"; _fail "dev server $pid left running"; }
+  out="$(cd "$d" && make -s dev-check RUN='false' 2>&1)" && return 1
+  pid="$(cat "$d/dev.pid")"; sleep 1; ! kill -0 "$pid" 2>/dev/null || _fail "left running after RUN failed"
+}
+t_dev_check_health_timeout_stops() {
+  local d out pid; d="$(_dev_dir false)"
+  out="$(cd "$d" && make -s dev-check 2>&1)" && return 1
+  assert_contains "$out" "not healthy" "timeout named"
+  pid="$(cat "$d/dev.pid")"; sleep 1; ! kill -0 "$pid" 2>/dev/null || { kill "$pid"; _fail "left running"; }
+}
+t_dev_check_needs_health() {
+  local d out; d="$(mk_dir 'HARNESS_DEV = @sleep 1
+include harness.mk')"
+  out="$(cd "$d" && make help 2>&1)"
+  assert_not_contains "$out" "  dev-check " "no HARNESS_HEALTH: no dev-check"
+  assert_not_contains "$out" "  dev-stop " "dev-stop only with dev-check (a repo's own dev-stop stays unclobbered)"
+}

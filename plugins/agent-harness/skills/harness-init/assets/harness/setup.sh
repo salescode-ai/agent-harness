@@ -45,7 +45,6 @@ fi
 for r in $(grep -hs 'registry *= *http' .npmrc | sed 's/.*= *//' | grep -v 'registry.npmjs.org'); do
   has npm && ! npm whoami --registry "$r" >/dev/null 2>&1 && need "npm login --registry $r"
 done
-if [ -f settings.xml ] && [ ! -f "$HOME/.m2/settings.xml" ]; then need "maven credentials: copy settings.xml to ~/.m2 and add your server login"; fi
 COMPOSE=""; for f in docker-compose.yml docker-compose.yaml compose.yml compose.yaml compose.harness.yml; do [ -f "$f" ] && { COMPOSE="$f"; break; }; done
 if [ -n "$COMPOSE" ]; then
   for h in $(sed -n 's/^ *image: *\([^/ ]*\.[^/ ]*\)\/.*/\1/p' "$COMPOSE" | sort -u); do
@@ -55,6 +54,15 @@ fi
 
 # --- 3. env: .env from example if missing; .env.local = worktree values (unmanaged lines kept)
 FRESH=""; PORTS=""
+port_free() { # free: nothing listens and it can be bound (no python3: assume free)
+  has python3 || return 0
+  python3 -c 'import socket,sys
+p=int(sys.argv[1]); s=socket.socket()
+try: s.bind(("",p))
+except OSError: sys.exit(1)
+s.close(); c=socket.socket(); c.settimeout(0.5); sys.exit(c.connect_ex(("127.0.0.1",p))==0)' "$1" 2>/dev/null
+}
+port_ours() { has docker && docker ps --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Ports}}' 2>/dev/null | grep -q ":$1->"; }
 ev() { sed -n "s/^\(export \)\{0,1\}$2=//p" "$1" 2>/dev/null | head -1 | sed "s/^[\"']//; s/[\"']\$//"; }
 if [ -f .env.example ]; then
   [ -f .env ] || { cp .env.example .env; FRESH=1; }
@@ -82,8 +90,10 @@ print(*[x.getsockname()[1] for x in s])' "$n" 2>/dev/null)"
       [ -z "$free" ] && need "python3 missing: set $(printf '%s ' $pk)in .env.local yourself"
       set -- $free
       for k in $pk; do
-        # main checkout keeps the example's ports; only linked worktrees (.git is a file) get free ones
-        p="$(ev .env.local "$k")"; [ -z "$p" ] && [ -z "$WT" ] && p="$(ev .env.example "$k")"
+        # main checkout keeps the example's port while it is free or held by this compose project; otherwise,
+        # and in linked worktrees (.git is a file), a free one. A value already in .env.local always wins.
+        p="$(ev .env.local "$k")"
+        if [ -z "$p" ] && [ -z "$WT" ]; then p="$(ev .env.example "$k")"; [ -n "$p" ] && ! port_free "$p" && ! port_ours "$p" && p=""; fi
         [ -z "$p" ] && p="${1:-}"; shift 2>/dev/null
         [ -n "$p" ] && { echo "$k=$p" >> "$new"; PORTS="$PORTS ${k%_PORT}=$p"; export "$k=$p"; }
       done
@@ -113,6 +123,8 @@ run_target() { # <var-suffix> <target> [fallback-cmd...]
   if ( eval "$cmd" ); then eval "ST_$v='✓'"; else eval "ST_$v='✗'"; FAILED="$v"; fi
 }
 run_target deps setup-deps
+# only when deps did not succeed: a repo passing `-s settings.xml` (or a registry extension) needs no ~/.m2 copy
+if [ "$ST_deps" != '✓' ] && [ -f settings.xml ] && [ ! -f "$HOME/.m2/settings.xml" ]; then need "maven credentials: copy settings.xml to ~/.m2 and add your server login"; fi
 dc=""
 if [ -n "$COMPOSE" ]; then
   if has docker; then
@@ -140,7 +152,15 @@ elif [ -f .pre-commit-config.yaml ]; then has pre-commit && pre-commit install >
 elif [ -d .githooks ]; then git config core.hooksPath .githooks
 fi
 
-run_target smoke smoke
+# smoke boots the app: only once setup is otherwise complete, and not at all with HARNESS_SETUP_SMOKE=0
+SMOKE_ON="${HARNESS_SETUP_SMOKE:-$(ev .env.local HARNESS_SETUP_SMOKE)}"
+if [ "$SMOKE_ON" = 0 ]; then ST_smoke="skipped (HARNESS_SETUP_SMOKE=0)"
+elif [ -n "$NEEDS" ]; then ST_smoke="skipped (needs you first)"
+else
+  SMOKE_LOG="$(mktemp)"; run_target smoke smoke > "$SMOKE_LOG" 2>&1; cat "$SMOKE_LOG"
+  # harness.mk's default when HARNESS_SMOKE is unset: nothing ran, so not a pass
+  grep -q '^smoke: no runnable surface' "$SMOKE_LOG" && ST_smoke="n/a"; rm -f "$SMOKE_LOG"
+fi
 
 # --- report
 ok=OK; [ -n "$FAILED" ] && ok=FAIL

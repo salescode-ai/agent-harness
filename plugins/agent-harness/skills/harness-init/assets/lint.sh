@@ -189,14 +189,22 @@ done
 if (( reg_ok )) && [[ "$runner" == make && -f harness.mk ]] && command -v make >/dev/null \
    && plan=$(make -s --no-print-directory harness-test-plan 2>/dev/null); then
   secs=$(sed -n 's/^secs=//p' <<<"$plan"); mode=$(sed -n 's/^mode=//p' <<<"$plan")
-  src_re='\.(java|kt|groovy|scala|py|go|[cm]?[jt]sx?|rb|cs|php|rs|swift)$'
+  # source = extensions of the stacks whose build files the repo has (any depth); none found: every known extension
+  ext=$(repo_files | awk -F/ '{print $NF}' | awk '
+    /^(pom\.xml|build\.gradle(\.kts)?|settings\.gradle(\.kts)?)$/ {s["java|kt|groovy|scala"]=1}
+    /^package\.json$/ {s["[cm]?[jt]sx?"]=1}  /^(pyproject\.toml|setup\.py|setup\.cfg|requirements.*\.txt|Pipfile)$/ {s["py"]=1}
+    /^go\.mod$/ {s["go"]=1}  /^Cargo\.toml$/ {s["rs"]=1}  /^Gemfile$/ {s["rb"]=1}  /^composer\.json$/ {s["php"]=1}
+    /^Package\.swift$/ {s["swift"]=1}  /\.(csproj|sln)$/ {s["cs"]=1}
+    END {for (k in s) printf "%s|", k}')
+  src_re="\\.(${ext:-java|kt|groovy|scala|py|go|[cm]?[jt]sx?|rb|cs|php|rs|swift|})\$"; src_re="${src_re/|)/)}"
   test_re='(^|/)(src/test[^/]*|tests?|__tests__|spec)/|\.(test|spec)\.|_test\.(go|py)$|(^|/)test_[^/]*\.py$|Tests?\.[a-z]+$|IT\.[a-z]+$'
-  srcs=$(sed -n 's/^file=//p' <<<"$plan" | grep -E "$src_re" | grep -vE "$test_re" | sort -u)
+  srcs=$(sed -n 's/^file=//p' <<<"$plan" | grep -E "$src_re" | grep -vE "$test_re|^scripts/harness/" | sort -u)
   if [[ "$secs" =~ ^[0-9]+$ ]] && (( secs <= 60 )) && [[ "$mode" == none ]]; then srcs=""; fi  # full suite runs
   if [[ -n "$srcs" ]] && git ls-files --cached --others --exclude-standard 2>/dev/null | grep -E "$test_re" >/dev/null; then  # not grep -q: under pipefail its early exit SIGPIPEs git (141) on big repos
     case "$mode" in
       related) untested=$(sed -n 's/^none: //p' <<<"$plan") ;;
-      custom)  untested=""; warn "check-fast: HARNESS_TEST_CHANGED does not use related-tests.sh, so changed source files ($(head -1 <<<"$srcs")…) may select no tests; wire scripts/harness/related-tests.sh (see layout.md)" ;;
+      custom)  untested=""; warn "check-fast: HARNESS_TEST_CHANGED does not use related-tests.sh, so changed source files ($(head -1 <<<"$srcs")…) may select no tests; wire scripts/harness/related-tests.sh (see layout.md), or set HARNESS_TEST_CHANGED_CONFIRMED = 1 once you have checked the custom selector" ;;
+      custom-confirmed) untested="" ;;
       *)       untested="$srcs" ;;
     esac
     n=0

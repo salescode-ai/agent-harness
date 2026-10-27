@@ -204,3 +204,13 @@ t_module_agents_still_checked() {
   out="$(_run "$d")" && return 1
   assert_contains "$out" "src/auth/AGENTS.md" "real module link still checked"
 }
+t_check_fast_custom_limited_to_stack() {
+  local d out; d="$(_tp 'HARNESS_TEST_CHANGED = ./mvnw test $(TEST_FILES)')"
+  rm "$d/src/main/java/a/Foo.java" "$d/src/main/java/a/Bar.java"; : > "$d/pom.xml"
+  mkdir -p "$d/scripts/harness/sensors"; : > "$d/scripts/harness/sensors/no-x.py"; : > "$d/tools/gen.py" 2>/dev/null || { mkdir "$d/tools"; : > "$d/tools/gen.py"; }
+  out="$(_run "$d")"
+  assert_not_contains "$out" "check-fast" "Maven repo: .py helper files are not source"
+  d="$(_tp 'HARNESS_TEST_CHANGED = ./mvnw test $(TEST_FILES)\nHARNESS_TEST_CHANGED_CONFIRMED = 1')"
+  out="$(_run "$d")"
+  assert_not_contains "$out" "does not use related-tests.sh" "confirmed custom selector: quiet"
+}

@@ -123,3 +123,16 @@ t_ci_checkstyle_is_not_the_gate() {
   printf 'run: just verify\n' > "$d/.github/workflows/ci.yml"
   assert_eq "$(_lv "$d" --json | _field "d['level']")" Functional "registered check command counts"
 }
+t_tokens_match_lint() {
+  local d lt; d="$(_lvrepo)"; mkdir -p "$d/scripts/harness"; cp "$PLUGIN/skills/harness-init/assets/lint.sh" "$d/scripts/harness/"
+  python3 -c 'print(("# a — ≤ é ✓ " * 20 + "\n") * 20)' > "$d/AGENTS.md"
+  lt="$(cd "$d" && bash scripts/harness/lint.sh 2>&1 | grep -oE '≈ ?[0-9]+' | tr -dc 0-9)"
+  assert_eq "$(_lv "$d" --json | _field "d['tokens']")" "$lt" "level.py tokens = lint.sh tokens"
+}
+t_log_skips_identical_row() {
+  local d; d="$(_lvrepo)"
+  _lv "$d" --log >/dev/null; _lv "$d" --log >/dev/null
+  assert_eq "$(grep -c '^| 2' "$d/docs/harness/AUDIT-LOG.md")" 1 "same day, same result: one row"
+  _lv "$d" --log --health 3 >/dev/null
+  assert_eq "$(grep -c '^| 2' "$d/docs/harness/AUDIT-LOG.md")" 2 "different result appended"
+}

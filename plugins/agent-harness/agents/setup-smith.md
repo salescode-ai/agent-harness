@@ -17,6 +17,7 @@ You make `make setup` work on a fresh machine and in any git worktree. The gener
    - `setup-deps` (install), `setup-services`, `setup-migrate`, `seed`, `smoke`.
    - Define them in the root `Makefile` (or register them in `.agents/harness.json`). Never define a target named `setup` that calls itself.
    - Skip a step rather than invent a stub. A missing step is reported as skipped.
+   - A server app: set `HARNESS_HEALTH` (health URL or command) so agents use `make dev-check`, and list the run script under `make dev` in `HARNESS_DEV_BLOCK`. If its smoke boots the app, set `HARNESS_SETUP_SMOKE = 0` so setup does not start it before the database is configured.
 3. Services:
    - Reuse the repo's compose file. With no `setup-services`, `setup.sh` runs `docker compose -p "$COMPOSE_PROJECT_NAME" up -d` by itself.
    - With no compose file, propose a local-only `compose.harness.yml` (image versions from config, or confirmed by the developer). Show it and write it only after a yes.

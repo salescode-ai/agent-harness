@@ -405,6 +405,16 @@ def m_tool_wiring(root, ws):
     return out
 
 
+def m_dev_health(root, ws):
+    """HARNESS_DEV without HARNESS_HEALTH: agents have no self-stopping `make dev-check` and nothing stops `make dev` (2.0.9)."""
+    if ws or not os.path.isfile(os.path.join(root, "harness.mk")) or not make_runner(root):
+        return []
+    have, text = make_vars(root)
+    if "HARNESS_DEV" not in have or "HARNESS_HEALTH" in have or re.search(r"^dev-check[ \t]*:", text, re.M):
+        return []
+    return [act("manual", "Makefile", None, "HARNESS_DEV is set but HARNESS_HEALTH is not: set HARNESS_HEALTH = <url or command meaning \"the app is up\"> to enable make dev-check / dev-stop (the Bash guard then refuses `make dev`; add the run script under it to HARNESS_DEV_BLOCK). A server app whose smoke boots it: HARNESS_SETUP_SMOKE = 0")]
+
+
 def m_harness_mk_test_plan(root, ws):
     """harness.mk carries harness-test-plan (lint check 13 reads it); a locally modified copy is not refreshed."""
     text = read(root, "harness.mk")
@@ -456,6 +466,7 @@ MIGRATIONS = [  # id, since, layer, function
     ("tool-wiring", "2.0.3", "tools", m_tool_wiring),
     ("gate-wired", "2.0.3", "sensors", m_gate_wired),
     ("harness-mk-test-plan", "2.0.4", "sensors", m_harness_mk_test_plan),
+    ("dev-health", "2.0.9", "tools", m_dev_health),
 ]
 
 

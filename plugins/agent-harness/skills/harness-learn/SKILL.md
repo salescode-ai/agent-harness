@@ -1,6 +1,6 @@
 ---
 name: harness-learn
-description: Turn an agent mistake, a review comment, an incident or a human correction into a durable harness change, choosing the strongest enforcement that fits — lint rule or test, then hook, then INVARIANTS.md, then a footgun, ADR or glossary entry. Use after a repeated failure, a "don't do that again" from a human, or a post-incident review.
+description: Turn an agent mistake, a review comment, an incident or a human correction into a durable harness change, choosing the strongest enforcement that fits — lint rule or test, then hook, then INVARIANTS.md, then a footgun, ADR or glossary entry. Use after a repeated failure, a "don't do that again" from a human, a post-incident review, or when harness-session or harness-verify offer it at close and the developer says yes.
 ---
 
 # Harness Learn
@@ -9,7 +9,7 @@ Every time an agent struggles, the harness is missing something. Fix the harness
 
 ## 1. Capture
 
-Write in four lines:
+Offered at close by harness-session or harness-verify? Start from the offer's evidence (what happened, how often). Write in four lines:
 - **What happened:** the wrong action, with file:line or command.
 - **What should have happened:**
 - **Why the agent did it:** missing information · ambiguous instruction · wrong default from a skill · no check caught it.

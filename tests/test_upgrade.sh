@@ -152,6 +152,14 @@ t_upgrade_agents_parallel_once() {
   assert_not_contains "$(python3 "$MIG" status "$d")" "agents-parallel" "idempotent"
 }
 
+t_upgrade_dev_health_manual() {
+  local d; d="$(_upgraded harness-2.0.0)"
+  assert_not_contains "$(python3 "$MIG" status "$d")" "dev-health" "no HARNESS_DEV: nothing to do"
+  printf 'HARNESS_DEV = ./run-local.sh\n%s' "$(cat "$d/Makefile")" > "$d/Makefile"
+  assert_contains "$(python3 "$MIG" status "$d")" "manual   dev-health" "HARNESS_DEV without HARNESS_HEALTH"
+  printf 'HARNESS_HEALTH = http://localhost:8080/health\n%s' "$(cat "$d/Makefile")" > "$d/Makefile"
+  assert_not_contains "$(python3 "$MIG" status "$d")" "dev-health" "set: done"
+}
 t_upgrade_invariants_red_proof_once() {
   local d; d="$(_fx harness-2.0.0)"
   python3 "$MIG" apply "$d" >/dev/null; python3 "$MIG" accept "$d" >/dev/null

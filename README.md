@@ -85,9 +85,10 @@ The harness is organised in five layers. Each one acts at a different moment: be
 
 | Piece | What it does |
 |---|---|
-| `Makefile` + `harness.mk` (or `.agents/harness.json`) | The one command surface: `check`, `check-fast`, `test T=`, `setup`, `seed`, `reset`, `dev`, `smoke`. Every hook, skill and teammate uses the same commands. |
-| `make setup` | One command for a working dev environment on a fresh machine or any worktree: dependencies, services, migrations, synthetic test data, git hooks, then a smoke check. |
-| Guard hooks | Block force-push, `--no-verify`, `git reset --hard`, destructive deletes, and writes to `CLAUDE.md` and `.env`. Ask before `kubectl delete`, `terraform destroy`, `terraform apply -auto-approve`, `helm uninstall`, destructive SQL and any write to `INVARIANTS.md`. |
+| `Makefile` + `harness.mk` (or `.agents/harness.json`) | The one command surface: `check`, `check-fast`, `test T=`, `setup`, `seed`, `reset`, `dev`, `dev-check`, `smoke`. Every hook, skill and teammate uses the same commands. |
+| `make setup` | One command for a working dev environment on a fresh machine or any worktree: dependencies, services, migrations, synthetic test data, git hooks, then a smoke check once nothing is left for you to do (`HARNESS_SETUP_SMOKE = 0` keeps a server app's smoke out of setup; unset smoke reports `n/a`, not ✓). |
+| `make dev-check` | With `HARNESS_HEALTH` set (a URL or command meaning "the app is up"): starts `make dev` in the background, waits until healthy, runs `RUN='<cmd>'` against it, and always stops it. `make dev-stop` stops a leftover one. |
+| Guard hooks | Block force-push, `--no-verify`, `git reset --hard`, destructive deletes, and writes to `CLAUDE.md` and `.env`. Ask before `kubectl delete`, `terraform destroy`, `terraform apply -auto-approve`, `helm uninstall`, destructive SQL and any write to `INVARIANTS.md`. Once `dev-check` is wired, refuse a long-lived `make dev` (also behind `nohup`, `bash -c`, `VAR=`) and the run scripts listed in `HARNESS_DEV_BLOCK`. |
 | Stop gate | Claude can't finish a turn while `check-fast` fails on its changes. When a subagent working in its own git worktree (a parallel implementer) stops with `check-fast` failing there, its branch is marked red and the Bash guard refuses to merge or cherry-pick it until a later stop there passes. Reviewers and explorers in the main checkout are never checked. |
 | `scripts/harness/local-guard.sh` | `seed` and `reset` refuse anything that isn't a local database. |
 | `.claude/settings.json` | Pins the plugin for the team and denies reading secret files. |

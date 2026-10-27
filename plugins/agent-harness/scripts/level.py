@@ -71,7 +71,8 @@ def ci_runs_check(repo, ci):
 
 
 def tokens(repo):
-    return sum(len(read(repo / f)) for f in ("CLAUDE.md", "AGENTS.md", "INVARIANTS.md")) // 4
+    """Same estimate as lint.sh (`wc -c` / 4): UTF-8 bytes, not characters, so audit and lint agree."""
+    return sum(len(read(repo / f).encode()) for f in ("CLAUDE.md", "AGENTS.md", "INVARIANTS.md")) // 4
 
 
 def check_passes(repo, run_checks, extra=None):
@@ -239,8 +240,10 @@ def main(argv):
             log.write_text(LOG_HEADER)
         ls = res["layers"]
         sc = " ".join(f"{k[0]}={ls[k]['score']:.2f}" for k in LAYERS)
-        with log.open("a") as f:
-            f.write(f"| {datetime.date.today()} | {res['level']} | {sc} | health={health or '-'} | tokens={res['tokens']} |\n")
+        row = f"| {datetime.date.today()} | {res['level']} | {sc} | health={health or '-'} | tokens={res['tokens']} |"
+        if row not in read(log).splitlines()[-1:]:  # same day, same result: nothing new to record
+            with log.open("a") as f:
+                f.write(row + "\n")
     if "--json" in argv:
         print(json.dumps(res, indent=2))
     else:

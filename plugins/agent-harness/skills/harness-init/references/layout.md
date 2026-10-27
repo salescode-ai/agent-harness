@@ -11,11 +11,11 @@ repo/
 ├── CLAUDE.md              [guides]   @AGENTS.md  @INVARIANTS.md   — nothing else
 ├── GLOSSARY.md            [guides]   domain vocabulary (multi-context: GLOSSARY-MAP.md → per-module GLOSSARY.md)
 ├── Makefile               [tools]    the repo's own targets + `include harness.mk`
-├── harness.mk             [tools]    check, check-fast, test T=, smoke, setup, seed, reset, dev, harness-lint, help
+├── harness.mk             [tools]    check, check-fast, test T=, smoke, setup, seed, reset, dev, dev-check, dev-stop, harness-lint, help
 ├── .agents/harness.json   [tools]    only when the runner is not make: {"runner", "commands", "help"?}
 ├── .claude/settings.json  [tools]    agent-harness plugin + permission rules (team-shared)
 ├── .agents/skills/        [guides]   repo-specific skills only; .claude/skills/<name> are symlinks to these
-├── scripts/harness/       [tools]    cmd.sh (command resolver), lint.sh, related-tests.sh, setup.sh, setup-proof.sh, local-guard.sh
+├── scripts/harness/       [tools]    cmd.sh (command resolver), lint.sh, related-tests.sh, setup.sh, setup-proof.sh, local-guard.sh, dev-check.sh
 │   ├── assets.json        [tools]    sha256 of each plugin-owned copy (scripts, .githooks/, harness.mk): lets upgrades refresh unmodified copies
 │   └── sensors/           [sensors]  registry.json, project sensors, fixtures/ (planted violations), sensor-proof.sh runs them
 ├── .githooks/             [sensors]  pre-commit → check-fast, pre-push → check (or the repo's hook manager)
@@ -72,6 +72,7 @@ Every caller (hooks, verifier, git hooks, audit) resolves a target with `bash sc
 | `test` | all tests; `T=<path>` runs one file/test | TDD loops in every pack |
 | `smoke` | start the app and hit one real path (if there is a runnable surface) | verifier, session start |
 | `setup` | `scripts/harness/setup.sh`: safe to re-run, isolated per worktree | developers, setup-proof |
+| `dev-check` | with `HARNESS_HEALTH`: start dev, wait until healthy, run `RUN='<cmd>'`, always stop | agents checking a running app (the guard refuses a long-lived `make dev`) |
 | `seed` / `reset` | reload / wipe and re-seed local data; refuse non-local targets | developers |
 | `harness-lint` | `bash scripts/harness/lint.sh` | CI, harness-garden |
 
@@ -112,9 +113,9 @@ HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh jest "CI=true npx j
 HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh -C backend maven "mvn -B -q test"  # monorepo module: runs inside backend/
 ```
 
-A failing suite (legacy debt) still uses the helper: only the tests of what you touched run. `HARNESS_TEST_CHANGED` wins over `HARNESS_TEST_SECS`; with both empty check-fast runs no tests. `harness-lint` warns `check-fast tests nothing for <file>` for each changed source file no test selects (it asks `make harness-test-plan`, which runs no tests), and once when a custom `HARNESS_TEST_CHANGED` bypasses `related-tests.sh`.
+A failing suite (legacy debt) still uses the helper: only the tests of what you touched run. `HARNESS_TEST_CHANGED` wins over `HARNESS_TEST_SECS`; with both empty check-fast runs no tests. `harness-lint` warns `check-fast tests nothing for <file>` for each changed source file no test selects (it asks `make harness-test-plan`, which runs no tests), and once when a custom `HARNESS_TEST_CHANGED` bypasses `related-tests.sh` (`HARNESS_TEST_CHANGED_CONFIRMED = 1` once the developer has checked that selector). Source files are the extensions of the stacks whose build files the repo has; `scripts/harness/` is never source.
 
-`HARNESS_SEED`, `HARNESS_RESET` and `HARNESS_DEV` must be set **above** `include harness.mk`: their targets are defined only when set, so an unconfigured repo has no `seed` target and `make setup` skips that step.
+`HARNESS_SEED`, `HARNESS_RESET` and `HARNESS_DEV` must be set **above** `include harness.mk`: their targets are defined only when set, so an unconfigured repo has no `seed` target and `make setup` skips that step. The same holds for `HARNESS_HEALTH`, which (with `HARNESS_DEV`) defines `dev-check` and `dev-stop`. A server app whose smoke boots it: `HARNESS_SETUP_SMOKE = 0`.
 
 ## Module AGENTS.md — create only if one is true
 
