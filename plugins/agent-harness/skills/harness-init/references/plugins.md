@@ -15,6 +15,7 @@ does define is how any pack must behave inside the repo — that is the `## Agen
 | One process skill per phase | Two planning or TDD workflows over the same work waste tokens and conflict | `AGENTS.md` |
 | Never write to `CLAUDE.md`; never copy plugin text into the repo | `CLAUDE.md` is a pointer; copied text goes stale and duplicates rules | file-guard hook; `make harness-lint` |
 | Never loosen hooks, guards, permissions or checks | The harness's guarantees must hold for every pack | guard hooks; `INVARIANTS.md` Harness Integrity |
+| Parallel implementers work in their own worktrees under `.worktrees/`; a branch whose implementer stopped red is not merged | Each slice proves itself before it joins the integration branch; harness-verify then runs on the integration branch | `AGENTS.md` Agent skills rule 8; SubagentStop marks the red branch, the Bash guard refuses to merge it |
 
 ## Choosing scope
 
