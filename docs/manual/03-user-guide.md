@@ -141,6 +141,24 @@ It runs `level.py . --json --run-checks --log`, which also writes the first `AUD
 
 Then **run `make setup` yourself** if you chose "git hooks: on" without a hook manager. A one-shot init never runs `make setup` (it changes git config and starts services): its report lists hooks as `pending make setup` and `make setup` as the first Next step. It sets `core.hooksPath .githooks`. The agent may also run `git config core.hooksPath .githooks`: the guard allows exactly that value and denies any other.
 
+### Check your setup after init
+
+Commit the init first: the setup proof uses committed code only. The commands below use `make`; with another runner, use the matching commands from `.agents/harness.json`.
+
+1. **Measured level.** Run `/agent-harness:harness-audit` (read-only). ✅ `Level: <X> · target: <Y>`, a score per layer, and "blocked by" naming what is missing. Fix what it lists first.
+2. **The commands work.** `make help`, `make check`, `make check-fast`, `make harness-lint`. ✅ All exit 0. A tool reported as `skipped` or `declined` is not enforced yet; `INVARIANTS.md` records it as `not yet enforced`.
+3. **Git hooks are on.** `git config core.hooksPath` prints `.githooks` (or your husky / lefthook / pre-commit setup), and `.harness/init-state.json` has `"gate_wired": true`. If not, run `make setup`.
+4. **The gates actually block** (two minutes, then revert):
+   - Ask Claude to break one test and finish. ✅ The stop is blocked with `Stop blocked by agent-harness: … check-fast failed`.
+   - `git commit` that broken change. ✅ pre-commit refuses it.
+   - Ask Claude to run `git commit --no-verify` or `git push --force`. ✅ The guard denies both.
+   - Revert with `git checkout -- <file>` (`git reset --hard` is blocked on purpose).
+5. **Sensors and setup are proven.** `bash scripts/harness/sensor-proof.sh --recheck` (every sensor still catches its planted violation) and `bash scripts/harness/setup-proof.sh` (`make setup` works in a fresh clone). ✅ Every sensor proved; setup verdict OK.
+6. **Session orientation.** Start a new Claude session in the repo. ✅ No warning about the gate not being wired, git hooks off, or scripts older than the plugin.
+7. **Team knowledge.** `grep -n "TODO\|<" AGENTS.md INVARIANTS.md GLOSSARY.md docs/agents/issue-tracker.md` lists what init left for you (Agent Authorization, footguns, glossary terms, tracker site). Fill them, then run `/agent-harness:harness-improve`.
+
+Steps 1–4 passing means the harness is configured and enforcing; 5–7 take it from working to solid.
+
 ### One-shot, resume, upgrade
 
 - **`/agent-harness:harness-init one-shot`** skips step 4 and takes every default. New files start with `<!-- generated in one pass: verify before trusting -->`. Always-asked items with no safe default (Authorization, incidents, glossary meanings, CI, settings.json, new dependencies, compose/seed generation) are left as `TODO` under *Still open*.

@@ -33,6 +33,8 @@ This copies skills to `.agents/skills/`, agent checklists to `.agents/agents/`, 
 | `/agent-harness:harness-improve` | Strengthen a thin harness from evidence (git history, risk paths, unenforced rules): one area per round, you accept or skip each suggestion. init and audit offer it at the end |
 | `/agent-harness:harness-workspace` | In a folder of sibling repos: write workspace-level files only |
 
+After init, check the setup step by step (audit, commands, git hooks, a deliberate red test, sensor and setup proofs): `docs/manual/03-user-guide.md` → Check your setup after init.
+
 ## Without the plugin installed
 
 A harness has two halves:
