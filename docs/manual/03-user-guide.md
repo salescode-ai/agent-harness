@@ -17,7 +17,7 @@ The plugin brings:
 
 - **Skills:** `harness-init`, `harness-audit`, `harness-upgrade` and `harness-workspace` (you invoke these); `harness-improve` (offered at the end of init and audit; you or the agent start it), `harness-verify`, `harness-session`, `harness-learn`, `harness-garden` and `harness-glossary` (the agent uses these when they fit, or you ask for them).
 - **Agents:** `repo-cartographer`, `verifier`, `invariants-reviewer`, `scope-guard`, `cross-repo-reviewer`, `harness-auditor`, `sensor-smith`, `setup-smith`.
-- **Hooks:** SessionStart (`session-context.sh`), PreToolUse on Bash (`guard-bash.sh`), PreToolUse on Edit/Write/MultiEdit (`guard-files.sh`), Stop (`stop-gate.sh`).
+- **Hooks:** SessionStart (`session-context.sh`), PreToolUse on Bash (`guard-bash.sh`), PreToolUse on Edit/Write/MultiEdit (`guard-files.sh`), Stop (`stop-gate.sh`), SubagentStop (`stop-gate.sh --subagent`).
 
 Requirements: `git`, `bash`, `python3` (3.8+ syntax; macOS system Python 3.9 works) and `make` unless you register another runner. The guard hooks fail open when `python3` is missing: they allow the action and stay quiet.
 
@@ -271,6 +271,8 @@ Pick "register another" in the Tools section, or write `.agents/harness.json` yo
 
 The stop gate runs `check-fast` only when source changed (uncommitted files outside `docs/`, `*.md` and `.harness/`, or commits ahead of the base) and the tree differs from the last green run. A passing run is silent. After a block, the next stop re-runs `check-fast` only if the code changed since that block, up to 3 blocks in a row; then the stop is allowed and you see `agent-harness: stop gate gave up (…); check-fast still failing in: <repo>`. Nothing is written into a repo without `AGENTS.md`.
 
+**Parallel implementers.** The same gate runs when a subagent finishes, but only for a subagent working in its own linked git worktree (for example, implementers a spec-driven flow starts one per ticket). Claude Code (2.1.x) records a block on a subagent's stop but doesn't keep the subagent working, so the gate enforces at the merge instead: when `check-fast` fails in that worktree, the branch is recorded as red in `.git/harness-red/<branch>` (shared by all worktrees), the subagent's transcript gets the failures and a hint to run the `setup` target if dependencies are missing, and the Bash guard denies `git merge`, `git cherry-pick` or `git pull .` of that branch. The marker clears when a later stop in that worktree passes (for example, after the orchestrator sends the failures back to the implementer); after fixing it some other way, run `check-fast` there and delete the marker as the deny message says. Git hooks still refuse red commits in every worktree. Reviewers and explorers working in the main checkout are never blocked by the main session's unfinished work. `AGENTS.md` → Agent skills rule 8 covers the rest of such a flow: one plan for the spec with every ticket key in `Ticket:`, worktrees under `.worktrees/`, harness-verify on the integration branch after the final review, and ticket transitions only after a yes. Existing repos get rule 8 from `harness-upgrade` (migration `agents-parallel`).
+
 ## 3.10 Working alongside other skill packs
 
 The harness holds the facts; packs bring process. Any pack works inside it if it follows `AGENTS.md` → `## Agent skills`:
@@ -288,7 +290,7 @@ Scope: pin only `agent-harness` in project settings; keep other packs in user sc
 
 | Variable | Effect |
 |---|---|
-| `HARNESS_STOP_GATE=0` | Turns off the stop gate for the session |
+| `HARNESS_STOP_GATE=0` | Turns off the stop gate (and the red-branch check for worktree subagents) for the session |
 | `HARNESS_GUARD=0` | Turns off the Bash and file guards for the session (not recommended) |
 | `HARNESS_SHARED_SERVICES=1` | `make setup` shares local services instead of an isolated compose project and ports (env or `.env.local`) |
 | `HARNESS_ALLOW_UNVERIFIED_DONE=1` | The pre-commit hook lets a plan close when this machine has no `.harness/evidence/` at all (with a notice); stale or failing evidence still blocks |

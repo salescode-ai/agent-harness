@@ -29,6 +29,7 @@ Developers choose their own skill packs and plugins. Whatever is installed works
 5. **Instructions** live in `AGENTS.md`. Setup or installer skills never write to `CLAUDE.md` and never copy plugin text into the repo.
 6. **Pointers:** issue tracker: `docs/agents/issue-tracker.md` · triage labels: `docs/agents/triage-labels.md` · domain docs: `docs/agents/domain.md`.
 7. **Team settings:** only the harness plugin is pinned in `.claude/settings.json`. Other plugins are personal (user scope); a plugin that adds hooks, MCP servers or permissions needs review before it is shared, and may never loosen the harness hooks or guards.
+8. **Parallel or spec-driven flows** (implementer subagents in worktrees): one plan for the spec whose `Ticket:` lists its ticket keys; worktrees under `.worktrees/`, each runs the `setup` target before its first test; an implementer reports done only with `check-fast` green; after the final review, **harness-verify** runs on the integration branch; closing or transitioning tickets needs the developer's yes.
 
 ## Work Artifacts
 

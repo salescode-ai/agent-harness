@@ -15,6 +15,8 @@ Agents lose memory between sessions; the repo must not. Work state lives in `doc
 3. **Is the repo healthy.** Run the check command in two steps: `c="$(bash "$R" . check-fast)" || { echo "check-fast not wired (exit $?)"; exit 1; }; eval "$c"` (default `make check-fast`); `smoke` the same way if it is wired. Not wired is not healthy: report it. If it fails on work you did not start, stop and fix that first, or report it — never build on a broken base.
 4. **Pick exactly one step.** The first unchecked step whose dependencies are done. State it and its `verify:` command in one line, then work.
 
+**A spec split into tickets** (implemented by parallel subagents): one plan for the whole spec, `Ticket:` listing the spec key first, then each ticket key (`Ticket: KEY-10, KEY-11, KEY-12`); the branch is the integration branch `<KEY>-<n>-<slug>` of the spec. Steps = tickets; tick one when its implementer's work is merged and `check-fast` is green on the integration branch. Implementer worktrees go under `.worktrees/` and run the `setup` target first. The plan closes only after harness-verify on the integration branch (step 3 of Close).
+
 In a multi-repo workspace (a `harness-workspace.json` above you): run `make status` instead of the git commands, read the cross-repo plan in `plans/active/`, check health with the workspace `make check-fast` (it runs each changed repo's resolved gate), and pick one step in one repo.
 
 ## During

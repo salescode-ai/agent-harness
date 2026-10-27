@@ -2,8 +2,20 @@
 # Stop: if code changed (uncommitted, or committed ahead of the base branch) since the last green run,
 # run the repo's check-fast and block the stop on failure. In a workspace, does this for every member repo
 # that changed, using that repo's own gate. Success is silent. Disable with HARNESS_STOP_GATE=0.
+# --subagent (SubagentStop): gates only a subagent working in a linked git worktree (an isolated implementer);
+# reviewers and explorers in the main checkout are never blocked by the main session's unfinished work.
 source "$(dirname "$0")/_lib.sh"
 [[ "${HARNESS_STOP_GATE:-1}" == "0" ]] && exit 0
+SUB=0
+if [[ "${1:-}" == "--subagent" ]]; then
+  SUB=1
+  t="$(json_get "d.get('agent_transcript_path','')")"; c=""
+  [[ -f "$t" ]] && c="$(grep -oE '"cwd":"[^"]*"' "$t" | tail -1 | cut -d'"' -f4)"
+  [[ -n "$c" && -d "$c" ]] && HOOK_CWD="$c"
+  gd="$(cd "$HOOK_CWD" 2>/dev/null && cd "$(git rev-parse --git-dir 2>/dev/null)" 2>/dev/null && pwd -P)"
+  cd_="$(cd "$HOOK_CWD" 2>/dev/null && cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P)"
+  [[ -n "$gd" && "$gd" != "$cd_" ]] || exit 0
+fi
 # Loop guard: after a block (stop_hook_active, read with grep so a missing python3 can't loop), re-check only
 # repos whose code changed since that block, and give up after MAX_BLOCKS consecutive blocks.
 ACTIVE=0; grep -qE '"stop_hook_active"[[:space:]]*:[[:space:]]*true' <<<"$HOOK_INPUT" && ACTIVE=1
@@ -43,7 +55,7 @@ gate_repo() { # gate_repo <repo dir> <base> <label>
 }
 
 ws="$(workspace_root)"
-if [[ -n "$ws" && -z "$(git -C "$HOOK_CWD" rev-parse --show-toplevel 2>/dev/null)" ]]; then
+if (( ! SUB )) && [[ -n "$ws" && -z "$(git -C "$HOOK_CWD" rev-parse --show-toplevel 2>/dev/null)" ]]; then
   STATE="$ws/.harness"
   while IFS=$'\t' read -r name path base; do
     [[ -n "$name" && -d "$ws/$path" ]] || continue
@@ -57,6 +69,14 @@ else
   root="$(repo_root)"; [[ -n "$root" ]] || exit 0
   STATE="$root/.harness"
   gate_repo "$root" "${HARNESS_BASE:-$(default_base "$root")}" "repo"
+fi
+if (( SUB )); then  # remember a red implementer branch: the Bash guard refuses to merge it (subagents can't be held open)
+  red="$(cd "$HOOK_CWD" && cd "$(git rev-parse --git-common-dir)" && pwd -P)/harness-red"
+  br="$(git -C "$HOOK_CWD" branch --show-current 2>/dev/null)"
+  if [[ -n "$br" ]]; then
+    if (( FAILED )); then mkdir -p "$red" && printf '%s\t%s\t%s\n' "$br" "$root" "$(date +%Y-%m-%d)" > "$red/${br//[^A-Za-z0-9_.-]/_}"
+    else rm -f "$red/${br//[^A-Za-z0-9_.-]/_}"; fi
+  fi
 fi
 BLOCKS="$STATE/stop-blocks"
 (( ACTIVE )) || rm -f "$BLOCKS" 2>/dev/null  # a new stop chain
@@ -74,8 +94,14 @@ if (( ACTIVE )) && { (( RERAN == 0 || n >= MAX_BLOCKS )) || ! echo $((n + 1)) > 
 fi
 (( ACTIVE )) || { mkdir -p "$STATE" 2>/dev/null; echo 1 > "$BLOCKS" 2>/dev/null; }
 {
-  echo "Stop blocked by agent-harness: a repo's check-fast failed on your changes."
-  echo "Fix the failures below in the repo named (do not disable or skip checks), then finish."
+  if (( SUB )); then
+    echo "Subagent stop blocked by agent-harness: check-fast failed in this worktree ($HOOK_CWD)."
+    echo "Fix the failures below before reporting done (do not disable or skip checks). Until it passes here, merging this branch is refused."
+    echo "If dependencies or services are missing in this new worktree, run \`$(harness_cmd "$HOOK_CWD" setup 2>/dev/null || echo make setup)\` first."
+  else
+    echo "Stop blocked by agent-harness: a repo's check-fast failed on your changes."
+    echo "Fix the failures below in the repo named (do not disable or skip checks), then finish."
+  fi
   echo "$REPORT"
   [[ -n "$SKIPPED" ]] && echo "Not gated (no complete harness or gate not wired), changed anyway:$SKIPPED"
 } >&2

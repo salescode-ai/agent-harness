@@ -90,3 +90,14 @@ t_invariants_writes_via_bash_ask() {
     assert_eq "$(guard "$c")" "" "allow: $c"
   done
 }
+
+t_merge_of_red_implementer_branch_denied() {
+  local d out; d="$(mktemp -d)"; ( cd "$d" && git init -q -b main ) >/dev/null
+  mkdir -p "$d/.git/harness-red"; printf 'KEY-2-fee\t/wt/KEY-2\t2026-10-27\n' > "$d/.git/harness-red/KEY-2-fee"
+  out="$(cd "$d" && guard 'git merge --no-ff KEY-2-fee -m "merge KEY-2"')"
+  assert_contains "$out" '"deny"' "red branch merge denied"; assert_contains "$out" "/wt/KEY-2" "names worktree"
+  assert_contains "$(cd "$d" && guard 'git cherry-pick main..KEY-2-fee')" '"deny"' "cherry-pick range denied"
+  assert_eq "$(cd "$d" && guard 'git merge KEY-3-other')" "" "green branch allowed"
+  rm "$d/.git/harness-red/KEY-2-fee"
+  assert_eq "$(cd "$d" && guard 'git merge KEY-2-fee')" "" "allowed once cleared"
+}

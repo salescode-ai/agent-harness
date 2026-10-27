@@ -85,7 +85,7 @@ The harness is organised in five layers. Each one acts at a different moment: be
 | `Makefile` + `harness.mk` (or `.agents/harness.json`) | The one command surface: `check`, `check-fast`, `test T=`, `setup`, `seed`, `reset`, `dev`, `smoke`. Every hook, skill and teammate uses the same commands. |
 | `make setup` | One command for a working dev environment on a fresh machine or any worktree: dependencies, services, migrations, synthetic test data, git hooks, then a smoke check. |
 | Guard hooks | Block force-push, `--no-verify`, `git reset --hard`, destructive deletes, and writes to `CLAUDE.md` and `.env`. Ask before `kubectl delete`, `terraform destroy`, `terraform apply -auto-approve`, `helm uninstall`, destructive SQL and any write to `INVARIANTS.md`. |
-| Stop gate | Claude can't finish a turn while `check-fast` fails on its changes. |
+| Stop gate | Claude can't finish a turn while `check-fast` fails on its changes. When a subagent working in its own git worktree (a parallel implementer) stops with `check-fast` failing there, its branch is marked red and the Bash guard refuses to merge or cherry-pick it until a later stop there passes. Reviewers and explorers in the main checkout are never checked. |
 | `scripts/harness/local-guard.sh` | `seed` and `reset` refuse anything that isn't a local database. |
 | `.claude/settings.json` | Pins the plugin for the team and denies reading secret files. |
 
@@ -137,7 +137,7 @@ Register commands in `.agents/harness.json`. Hooks, the verifier, the audit and 
 
 ## Settings
 
-- `HARNESS_STOP_GATE=0`: turn off the stop gate for a session.
+- `HARNESS_STOP_GATE=0`: turn off the stop gate (and the red-branch check for worktree subagents) for a session.
 - `HARNESS_GUARD=0`: turn off the command and file guards for a session (not recommended).
 - `HARNESS_SHARED_SERVICES=1`: `make setup` shares local services instead of giving the checkout its own compose project (and each linked worktree its own free ports; the main checkout keeps the `.env.example` ports).
 - `HARNESS_ALLOW_UNVERIFIED_DONE=1`: let the pre-commit hook close a plan when this machine has no `.harness/evidence/` at all (it prints a notice). Stale or failing evidence still blocks.

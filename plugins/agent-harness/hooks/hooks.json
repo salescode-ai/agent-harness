@@ -12,6 +12,9 @@
     ],
     "Stop": [
       { "hooks": [ { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/stop-gate.sh\"", "timeout": 240 } ] }
+    ],
+    "SubagentStop": [
+      { "hooks": [ { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/stop-gate.sh\" --subagent", "timeout": 240 } ] }
     ]
   }
 }

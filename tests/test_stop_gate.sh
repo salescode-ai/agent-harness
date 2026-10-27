@@ -177,3 +177,45 @@ t_workspace_names_unwired_member() {
   assert_contains "$out" "good: main · 1 uncommitted · harness present
 " "wired member plain"
 }
+
+# _sub_wt <check-fast body>: gate repo plus a linked worktree with one changed source file; sets D and WT
+_sub_wt() {
+  D="$(_gate_repo "$1")"; WT="$D/.worktrees/t1"
+  git -C "$D" worktree add -q -b t1 "$WT" >/dev/null 2>&1; echo 'y=2' > "$WT/impl.py"
+}
+_run_sub() { # _run_sub <cwd> [extra json]: SubagentStop; sets RC and ERR
+  RC=0; ERR="$(printf '{"cwd":"%s"%s}' "$1" "${2:-}" | "$GATE" --subagent 2>&1 >/dev/null)" || RC=$?
+}
+t_subagent_in_main_checkout_never_blocked() {
+  local d; d="$(_gate_repo false)"
+  _run_sub "$d"
+  assert_eq "$RC" 0 "reviewer/explorer in main checkout"; assert_eq "$ERR" "" "silent"
+}
+t_subagent_in_worktree_blocks_with_setup_hint() {
+  _sub_wt false
+  _run_sub "$WT"
+  assert_eq "$RC" 2 "red worktree blocks"
+  assert_contains "$ERR" "Subagent stop blocked" "subagent wording"; assert_contains "$ERR" "make setup" "setup hint"
+}
+t_subagent_in_green_worktree_silent() {
+  _sub_wt true
+  _run_sub "$WT"
+  assert_eq "$RC" 0 "green"; assert_eq "$ERR" "" "silent"
+}
+t_subagent_cwd_from_agent_transcript() {
+  local tr; _sub_wt false; tr="$(mktemp)"
+  printf '{"type":"user","cwd":"%s"}\n' "$WT" > "$tr"
+  _run_sub "$D" ",\"agent_transcript_path\":\"$tr\""
+  assert_eq "$RC" 2 "worktree read from the agent transcript"
+}
+t_subagent_gate_registered() {
+  python3 -c "import json,sys; h=json.load(open(sys.argv[1]))['hooks']['SubagentStop'][0]['hooks'][0]['command']; assert 'stop-gate.sh\" --subagent' in h" "$PLUGIN/hooks/hooks.json" || _fail "SubagentStop hook"
+}
+t_subagent_red_branch_marked_then_cleared() {
+  local m; _sub_wt false; m="$D/.git/harness-red/t1"
+  _run_sub "$WT"
+  [ -f "$m" ] || _fail "red marker written"; assert_contains "$(cat "$m")" "$WT" "marker names worktree"
+  printf 'check-fast:\n\t@true\ncheck:\n\t@true\n' > "$WT/Makefile"
+  _run_sub "$WT"
+  [ ! -f "$m" ] || _fail "green stop clears the marker"
+}

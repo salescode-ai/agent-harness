@@ -20,7 +20,7 @@ t_upgrade_2_0_0_repo() {
   out="$(python3 "$MIG" status "$d")"
   assert_contains "$out" "plugin: recorded unknown (before 2.0.2)" "version line"
   for m in "auto     templates" "propose  plan-ticket" "propose  decisions-ticket" "propose  agents-verification" \
-           "propose  agents-done-fresh" "propose  env-deny" "propose  harness-base" "auto     init-state-target" "manual   check-fast-tests" \
+           "propose  agents-done-fresh" "propose  agents-parallel" "propose  env-deny" "propose  harness-base" "auto     init-state-target" "manual   check-fast-tests" \
            "manual   tool-wiring" "manual   gate-wired"; do assert_contains "$out" "$m" "2.0.0 needs $m"; done
   python3 "$ASSETS_PY" install "$d" >/dev/null
   assert_not_contains "$(python3 "$MIG" status "$d")" "harness-mk-test-plan" "refreshed harness.mk has the target"
@@ -139,4 +139,15 @@ t_upgrade_one_shot_banner_template_is_unedited() {
   local d; d="$(_fx harness-2.0.0)"
   { echo '<!-- generated in one pass: verify before trusting -->'; cat "$d/docs/plans/TEMPLATE.md"; } > "$d/t" && mv "$d/t" "$d/docs/plans/TEMPLATE.md"
   assert_contains "$(python3 "$MIG" status "$d")" "auto     templates (2.0.4, context) docs/plans/TEMPLATE.md" "banner ignored when hashing"
+}
+
+t_upgrade_agents_parallel_once() {
+  local d out; d="$(_fx harness-2.0.0)"; mkdir -p "$d/.agents"
+  echo '{"runner":"just","commands":{"check":"just check","check-fast":"just quick","test":"just test {T}","setup":"just bootstrap"}}' > "$d/.agents/harness.json"
+  out="$(python3 "$MIG" status "$d")"
+  assert_contains "$out" "agents-parallel" "proposed"
+  python3 "$MIG" apply "$d" >/dev/null; python3 "$MIG" accept "$d" >/dev/null
+  grep -q "Parallel or spec-driven flows" "$d/AGENTS.md" || _fail "rule added"
+  bash "$PLUGIN/skills/harness-init/assets/lint.sh" "$d" 2>&1 | grep -q "names 'make setup'" && _fail "no runner mismatch"
+  assert_not_contains "$(python3 "$MIG" status "$d")" "agents-parallel" "idempotent"
 }

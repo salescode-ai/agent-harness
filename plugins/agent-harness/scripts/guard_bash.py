@@ -135,6 +135,10 @@ def check_git(argv, env, cwd):
             decide("ask", f"Pushing to {target}. AGENTS.md Agent Authorization normally requires a human for this.")
         if has_long(longs, "--force-with-lease"):
             decide("ask", "Force-with-lease push rewrites remote history. Confirm this is your own branch.")
+    if sub in ("merge", "cherry-pick") or (sub == "pull" and args[:1] == ["."]):
+        red = red_branch(cwd, [r for a in args if not a.startswith("-") for r in a.split("..") if r])
+        if red:
+            decide("deny", red)
     if sub == "reset" and has_long(longs, "--hard"):
         decide("deny", "git reset --hard is blocked: it destroys uncommitted work. Use git stash, or ask a human.")
     if sub == "clean" and ("f" in flags or has_long(longs, "--force")):
@@ -148,6 +152,24 @@ def check_git(argv, env, cwd):
         decide("deny", "Force-deleting a branch can drop unmerged work. Use git branch -d, or ask a human.")
     if sub == "stash" and args[:1] == ["clear"]:
         decide("deny", "git stash clear deletes every stash permanently. Drop specific stashes, or ask a human.")
+
+
+def red_branch(cwd, refs):
+    """Deny reason when a ref is a branch whose implementer subagent last stopped with check-fast failing in its worktree."""
+    try:
+        common = subprocess.run(["git", "rev-parse", "--git-common-dir"], capture_output=True, text=True, cwd=cwd, timeout=5).stdout.strip()
+    except Exception:
+        return None
+    red = os.path.join(cwd, common, "harness-red")
+    for r in refs:
+        f = os.path.join(red, re.sub(r"[^A-Za-z0-9_.-]", "_", r[len("refs/heads/"):] if r.startswith("refs/heads/") else r))
+        if os.path.isfile(f):
+            line = (open(f).read().split("\n") or [""])[0].split("\t")
+            wt = line[1] if len(line) > 1 else "its worktree"
+            return ("Branch %s is red: its implementer stopped with check-fast failing in %s. Don't merge it yet: send the failures back to "
+                    "that implementer (it is re-checked when it stops again) or fix them there, then run check-fast in that worktree; "
+                    "once it passes, remove %s." % (r, wt, f))
+    return None
 
 
 DANGEROUS_RM_TARGETS = {"/", "/*", "~", "~/", "~/*", "$HOME", "$HOME/", "${HOME}", ".", "./", "./*", "..", "../", "*", ".*"}

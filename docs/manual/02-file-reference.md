@@ -260,6 +260,7 @@ Layer tools. The dependency inventory: one row per external dependency (Dependen
 | `.harness/last-check` | `<fingerprint> pass <date>` after a green stop-gate run | `stop-gate.sh` | `level.py` without `--run-checks` |
 | `.harness/last-green-repo` | Fingerprint of the last green tree, so an unchanged tree isn't re-checked | `stop-gate.sh` | `stop-gate.sh` |
 | `.harness/last-fail-repo`, `.harness/stop-blocks` | Fingerprint of the last blocked tree and the count of blocks in a row (re-check bound, max 3) | `stop-gate.sh` | `stop-gate.sh` |
+| `.git/harness-red/<branch>` | `<branch>\t<worktree>\t<date>`: a worktree subagent stopped with `check-fast` failing on this branch (in the shared git dir, so every worktree sees it) | `stop-gate.sh --subagent` (written on red, removed on green) | `guard_bash.py` (denies merge / cherry-pick / `pull .` of that branch) |
 | `.worktrees/` | Git worktrees (Work Artifacts) | you / skill packs | `lint.sh` fails if it exists but isn't ignored |
 
 Delete `.harness/` freely except mid-init (you'd lose resume state).

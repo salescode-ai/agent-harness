@@ -276,6 +276,26 @@ def m_agents_done_fresh(root, ws):
     return [act("propose", "AGENTS.md", "\n".join(lines), "Verification: a plan is done only after a fresh PASS")]
 
 
+PARALLEL = ("8. **Parallel or spec-driven flows** (implementer subagents in worktrees): one plan for the spec whose `Ticket:` lists its ticket keys; "
+            "worktrees under `.worktrees/`, each runs the `setup` target before its first test; an implementer reports done only with `check-fast` green; "
+            "after the final review, **harness-verify** runs on the integration branch; closing or transitioning tickets needs the developer's yes.")
+
+
+def m_agents_parallel(root, ws):
+    """AGENTS.md Agent skills: rule 8 for parallel or spec-driven flows (the 2.0.6 SubagentStop gate enforces the check-fast part)."""
+    text = read(root, "AGENTS.md")
+    if ws or text is None or "Parallel or spec-driven" in text or not re.search(r"^## Agent skills[ \t]*$", text, re.M):
+        return []
+    lines = text.split("\n")
+    at = lines.index(next(l for l in lines if re.match(r"^## Agent skills[ \t]*$", l))) + 1
+    while at < len(lines) and not lines[at].startswith("## "):
+        at += 1
+    while lines[at - 1].strip() == "":
+        at -= 1
+    lines.insert(at, PARALLEL)
+    return [act("propose", "AGENTS.md", "\n".join(lines), "Agent skills: rule for parallel or spec-driven flows")]
+
+
 def m_harness_json_help(root, ws):
     """.agents/harness.json records the runner's help/list command as "help"."""
     text = read(root, ".agents/harness.json")
@@ -406,6 +426,7 @@ MIGRATIONS = [  # id, since, layer, function
     ("decisions-ticket", "2.0.4", "context", m_decisions_ticket),
     ("agents-verification", "2.0.4", "guides", m_agents_verification),
     ("agents-done-fresh", "2.0.5", "guides", m_agents_done_fresh),
+    ("agents-parallel", "2.0.6", "guides", m_agents_parallel),
     ("harness-json-help", "2.0.4", "tools", m_harness_json_help),
     ("env-deny", "2.0.1", "tools", m_env_deny),
     ("harness-base", "2.0.1", "tools", m_harness_base),
