@@ -24,6 +24,7 @@
  },
  "skills/harness-init/assets/harness.mk": {
   "1b0c4000f91e79875d2d8734722783c7a996fe619faf55e4b07d650469cf3ded": "1.0.0",
+  "2a2a59af2f98e0acfb433b033dbff3af497ec06b77a999059753aeed28050575": "2.0.10",
   "548010f32145ad63e0ecfee93ecc7be923cfccdf5535b98ee9ec3c401a6cf8b6": "2.0.0",
   "668cfdd9b40965e8b1ae7e644ab652d5828b7383b2a8d8b8e65db459cc6d9d6a": "2.0.0",
   "69648245076d2a9b7fb41c9dd449fc44635d38cd57b4b8f03405415c9a96a4cc": "2.0.0",
@@ -36,6 +37,9 @@
  },
  "skills/harness-init/assets/harness/dev-check.sh": {
   "46d7de30133cba7a39a42b86b615247a85e11f15f1df5dd0264d61cb29baee27": "2.0.9"
+ },
+ "skills/harness-init/assets/harness/gate-proof.sh": {
+  "d409cb62347e57e1f7f1cc229687c30f331657f2bcf4bc03efbeb4993b45c352": "2.0.10"
  },
  "skills/harness-init/assets/harness/local-guard.sh": {
   "26fc8efc7c0c0a722ae4b6137e4d935bfb752603ce4044cbf6a255512c66eb1d": "2.0.0",
@@ -61,7 +65,11 @@
  },
  "skills/harness-init/assets/harness/sensor-proof.sh": {
   "295836d31c8d06a3ffa6c0cc3b522481e657c6f620a3dcb0c7c42cc4da9a4d09": "2.0.0",
-  "521071679e922dceb2a2ffc256ff8f1d4205f6c9cab0a0d125c1c351ed4074cc": "2.0.2"
+  "521071679e922dceb2a2ffc256ff8f1d4205f6c9cab0a0d125c1c351ed4074cc": "2.0.2",
+  "f55b39678ec7ddb983ec000a0c5dacdc6c8a09b2320b11f517a12dce549b5c96": "2.0.10"
+ },
+ "skills/harness-init/assets/harness/sensors/lib/diffscan.py": {
+  "46a0a13634b7d4a185f6eeb472686fc0dca0c04ddeba8e3bb8d40fa7395d8519": "2.0.10"
  },
  "skills/harness-init/assets/harness/sensors/no-prod-data.sh": {
   "e3030f4d507fcc97171e4f63c839b0a6ed5f0b9aa7a6fb9b8df35cb0614e2a12": "2.0.2",
@@ -74,6 +82,7 @@
   "f6146f70ac058fdf3538704b6e17c115fb08be879d4edc443a1646021bb76535": "2.0.0"
  },
  "skills/harness-init/assets/harness/setup.sh": {
+  "17d7443ca344cf7fcc42b91088ecb982b77ed50d57237505ce270c3d34e38fef": "2.0.10",
   "384960236a32ff1183c98e2cb58a9a6547f1f15b6921404d7ea4ea107c06bd20": "2.0.9",
   "68c68d48c983eccafe50396b2853647d1bf3c6e92a336e646db73768c164bda4": "2.0.0",
   "6b846d74236899bd91832ffcf3b3c43a397a1435162dca053ab3c3e3fdaecf81": "2.0.0",
@@ -87,6 +96,7 @@
   "7f163db2912001ee3c45fda40ef9012e6b6031cf4c763271a994c03930d90917": "2.0.9",
   "a8df3164aad24514ae45af2b6ac220b53cda0b80dc7c31bea172ffee07921d4c": "2.0.0",
   "b14745e3f28aa4259066310dd924dc0ca9143bdbbdfe85469df5dfaa350bf17a": "2.0.4",
+  "b7e0639d286b6573b50c707c9079ceaeedbe4da76f7c8553697b522d6120233f": "2.0.10",
   "c2b07e65670fbf5ac2b928bf228ab727c082aaadadafb829d64a08ccfc62f86a": "1.0.0",
   "e1aafa90b55ff11920e9985187fdda181d1dabc28a73ef133b211eed82b6aab5": "2.0.2",
   "ec3fb93ed88eade315ffdae9a1c3201f6857a88046b92996e78a3c5e9513f32c": "2.0.5",
