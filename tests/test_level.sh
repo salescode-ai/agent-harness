@@ -136,3 +136,12 @@ t_log_skips_identical_row() {
   _lv "$d" --log --health 3 >/dev/null
   assert_eq "$(grep -c '^| 2' "$d/docs/harness/AUDIT-LOG.md")" 2 "different result appended"
 }
+t_gate_never_proven_red_is_sensors_gap() {
+  local d m; d="$(_lvrepo)"
+  m="$(_lv "$d" --json | _field "d['layers']['sensors']['missing']")"
+  assert_contains "$m" "gate never proven red" "no init-state: gap"
+  mkdir -p "$d/.harness"; echo '{"gate_red_proven": false, "gate_red_reason": "NOT proven (pytest; test exits 0)"}' > "$d/.harness/init-state.json"
+  assert_contains "$(_lv "$d" --json | _field "d['layers']['sensors']['missing']")" "test exits 0" "reason shown"
+  echo '{"gate_red_proven": true}' > "$d/.harness/init-state.json"
+  assert_not_contains "$(_lv "$d" --json | _field "d['layers']['sensors']['missing']")" "gate never proven red" "proven: no gap"
+}

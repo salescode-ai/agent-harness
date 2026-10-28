@@ -43,10 +43,12 @@ for p in sys.argv[1:]:
   assert_eq "$(sed -n 's/^API_PORT=//p' "$d/.env.local")" "$a" "port kept"
 }
 t_main_checkout_keeps_example_ports() {
-  local d; d="$(_su)"; printf 'API_PORT=3000\nDB_PORT=5432\n' > "$d/.env.example"
+  local d a b; d="$(_su)"  # free ports: since 2.0.9 a busy example port (a local 5432) is replaced
+  read -r a b <<<"$(python3 -c 'import socket; s=[socket.socket() for _ in range(2)]; [x.bind(("127.0.0.1",0)) for x in s]; print(*[x.getsockname()[1] for x in s])')"
+  printf 'API_PORT=%s\nDB_PORT=%s\n' "$a" "$b" > "$d/.env.example"
   _run "$d" >/dev/null
-  assert_contains "$(cat "$d/.env.local")" "API_PORT=3000" "api"
-  assert_contains "$(cat "$d/.env.local")" "DB_PORT=5432" "db"
+  assert_contains "$(cat "$d/.env.local")" "API_PORT=$a" "api"
+  assert_contains "$(cat "$d/.env.local")" "DB_PORT=$b" "db"
 }
 t_needs_you_listed() {
   local d out; d="$(_su)"; printf 'STRIPE_KEY=\nTOKEN=changeme\nFINE=1\n' > "$d/.env.example"
@@ -315,4 +317,15 @@ t_smoke_skipped_while_needs_you() {
   out="$(_run "$d")"
   assert_not_contains "$out" "booting-app" "setup incomplete: smoke waits"
   assert_contains "$out" "smoke skipped" "reported"
+}
+t_custom_services_not_given_exported_ports() {
+  # compose prefers shell vars over --env-file: a repo's own services step must not inherit the ports setup.sh picked,
+  # and migrate/seed must see the port that step wrote to .env.local
+  local d; d="$(_su 'setup-services:
+	@echo "svc=[$$API_PORT]" > seen; sed -i.bak "s/^API_PORT=.*/API_PORT=17777/" .env.local
+setup-migrate:
+	@echo "mig=[$$API_PORT]" >> seen')"
+  printf 'API_PORT=3000\n' > "$d/.env.example"
+  _run "$d" >/dev/null
+  assert_eq "$(cat "$d/seen" | tr '\n' ' ')" "svc=[] mig=[17777] " "services clean, migrate re-reads .env.local"
 }

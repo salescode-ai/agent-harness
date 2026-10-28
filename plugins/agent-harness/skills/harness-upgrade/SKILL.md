@@ -28,14 +28,14 @@ Run `… migrate.py status .` again (after the refresh). Each line is `<kind> <i
 1. **auto** — `… migrate.py apply .`: new files, unedited plugin templates, local `.harness/` state. List each under Applied automatically.
 2. **propose** — `… migrate.py diff .` prints ONE unified diff for every repo-owned edit. Show it whole, then ask once: "Apply these edits? yes / no / skip <id,…>". Only on yes: `… migrate.py accept .` (with `--skip <ids>` if asked). On no, nothing is written; list them under Still open.
    - `plan-ticket` lines that propose `none (no ticket recorded before 2.0.4)` need a real answer: lint accepts any `none (<reason>)`, so it will **not** flag this fallback later. Ask for the key (or a true reason) per plan before the diff is accepted; a kept fallback goes under Still open.
-3. **manual** — each needs a decision or a run; do them with the developer, one short question each (options + ➡️ default), following `references/migrations.md`. `gate-wired` is done by step 3.
+3. **manual** — each needs a decision or a run; do them with the developer, one short question each (options + ➡️ default), following `references/migrations.md`. `gate-wired` and `gate-red` are done by step 3.
 
 Re-run `… migrate.py status .`: a second run must show nothing but manual items the developer declined. That is the idempotence check; report anything else as a bug.
 
 ## 3. Verify
 
 1. `bash scripts/harness/lint.sh` — FAILs are fixed or listed with the file and the fix.
-2. Gate in two steps: `R=scripts/harness/cmd.sh; [ -f "$R" ] || R="${CLAUDE_PLUGIN_ROOT}/scripts/harness-cmd.sh"`; `c="$(bash "$R" . check-fast)" || { echo "check-fast not wired (exit $?)"; exit 1; }; eval "$c"`. When it resolved **and** passed, set `"gate_wired": true` in `.harness/init-state.json` (keep every other key); otherwise save `"gate_reason": "<one line>"`.
+2. Gate in two steps: `R=scripts/harness/cmd.sh; [ -f "$R" ] || R="${CLAUDE_PLUGIN_ROOT}/scripts/harness-cmd.sh"`; `c="$(bash "$R" . check-fast)" || { echo "check-fast not wired (exit $?)"; exit 1; }; eval "$c"`. When it resolved **and** passed, set `"gate_wired": true` in `.harness/init-state.json` (keep every other key); otherwise save `"gate_reason": "<one line>"`. Then prove the gate can fail: `bash scripts/harness/gate-proof.sh` plants one failing test in a scratch worktree; `make test T=<it>`, `make test T=<no such test>` and check-fast must each exit non-zero. It records `"gate_red_proven"` (and `"gate_red_reason"`) in `.harness/init-state.json`. `NOT proven` means a test command swallows its exit code (`; :`) or passes on 0 tests: fix the wiring (layout.md, **Test commands keep their exit code**) and rerun; list a remaining failure under Still open.
 3. `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/level.py" . --json --run-checks --log` — measures the level and logs one audit row (workspace: measures each member too).
 4. `… assets.py refresh .` once more, so `scripts/harness/assets.json` records `"plugin": "<running version>"`. Commit nothing; the developer reviews and commits.
 

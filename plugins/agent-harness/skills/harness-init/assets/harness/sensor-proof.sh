@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Usage: sensor-proof.sh <name> | --recheck   (run from the repo root)
 # Proof: clean passes -> planted fixture fails with output -> clean passes. --recheck runs steps 2+3 for all.
+# A sensor with "scope": "diff" (checks only new code; mode copy) must also fail when each fixture file starts with an
+# added "++ " line (git shows it as "+++ ", a naive parser's file header) and when HARNESS_BASE can't be resolved.
 REG=scripts/harness/sensors/registry.json
 command -v python3 >/dev/null 2>&1 || { echo "sensor-proof: python3 is required to read $REG" >&2; exit 2; }
 [ -f "$REG" ] || { echo "sensor-proof: $REG not found (run from the repo root)" >&2; exit 2; }
@@ -17,11 +19,12 @@ import json,sys
 for s in json.load(open(sys.argv[1])).get("sensors",[]): print(s["name"])' "$REG"; }
 
 OUT=""
-# exec_sensor <name> clean|fixture: sets OUT, returns the sensor's exit code
+# exec_sensor <name> clean|fixture|edge: sets OUT, returns the sensor's exit code
 exec_sensor() {
   local name="$1" which="$2" run mode target cmd rc=0  # dest/f/d/list/made stay global: the EXIT trap needs them
   run="$(get "$name" run)"; mode="$(get "$name" mode)"; target="$(get "$name" "$which")"
-  if [ "$which" = fixture ]; then
+  [ "$which" = edge ] && target="$(get "$name" fixture)"
+  if [ "$which" != clean ]; then
     for p in "$target" "$(get "$name" dest)"; do
       [ -z "$p" ] && continue
       case "/$p/" in /\/*|*/../*) OUT="registry path '$p' must be relative with no '..'"; return 99;; esac
@@ -36,14 +39,16 @@ exec_sensor() {
       [ -e "$dest/$f" ] && { rm -f "$list" "$made"; OUT="refusing to overwrite existing $dest/$f"; return 99; }
     done < "$list"
     # always remove exactly what we copied (files, then dirs we created); runs in the step subshell
-    trap 'while IFS= read -r f; do [ -n "$f" ] && rm -f "$dest/$f"; done < "$list"; sort -r "$made" | while IFS= read -r d; do rmdir "$d" 2>/dev/null; done; rm -f "$list" "$made"' EXIT
+    trap 'while IFS= read -r f; do [ -n "$f" ] && { git reset -q -- "$dest/$f" >/dev/null 2>&1; rm -f "$dest/$f"; }; done < "$list"; sort -r "$made" | while IFS= read -r d; do rmdir "$d" 2>/dev/null; done; rm -f "$list" "$made"' EXIT
     while IFS= read -r f; do
       d=""
       for seg in $(echo "$dest/$(dirname "$f")" | tr '/' ' '); do  # record every missing ancestor (shortcut: segments with spaces unsupported)
         [ "$seg" = . ] && continue
         d="${d:+$d/}$seg"; [ -d "$d" ] || { mkdir "$d"; echo "$d" >> "$made"; }
       done
-      cp "$target/$f" "$dest/$f"
+      if [ "$which" = edge ]; then  # intent-to-add, so the copy shows up in `git diff` as added lines
+        { echo "++ harness-proof"; cat "$target/$f"; } > "$dest/$f"; git add -N -- "$dest/$f" >/dev/null 2>&1
+      else cp "$target/$f" "$dest/$f"; fi
     done < "$list"
     OUT="$(bash -c "$run" 2>&1)" || rc=$?
     return $rc
@@ -69,6 +74,14 @@ prove() { # prove <name> <with-step1>
   [ "$rc" = 99 ] && { echo "proof $name: FAIL step 2 ($(cat "$TMPOUT"))"; return 1; }
   [ "$rc" != 0 ] || { echo "proof $name: FAIL step 2 (planted fixture passed; the sensor does not fire)"; return 1; }
   [ -s "$TMPOUT" ] || { echo "proof $name: FAIL step 2 (sensor failed with no message; it must say what is wrong)"; return 1; }
+  if [ "$(get "$name" scope)" = diff ]; then
+    [ "$(get "$name" mode)" = copy ] || { echo "proof $name: FAIL (a \"scope\": \"diff\" sensor needs \"mode\": \"copy\")"; return 1; }
+    step "$name" edge; rc="$(cat "$TMPRC")"
+    [ "$rc" = 99 ] && { echo "proof $name: FAIL step 2b ($(cat "$TMPOUT"))"; return 1; }
+    [ "$rc" != 0 ] || { echo "proof $name: FAIL step 2b (passed when the violation follows an added '++ ' line: it parses git diff itself; use scripts/harness/sensors/lib/diffscan.py)"; return 1; }
+    ( export HARNESS_BASE=refs/harness/no-such-base; step "$name" clean ); rc="$(cat "$TMPRC")"
+    [ "$rc" != 0 ] && [ -s "$TMPOUT" ] || { echo "proof $name: FAIL step 2c (passed silently with an unresolvable HARNESS_BASE: it must fail loudly; diffscan.py does)"; return 1; }
+  fi
   step "$name" clean; rc="$(cat "$TMPRC")"
   [ "$rc" = 0 ] || { echo "proof $name: FAIL step 3 (clean must pass again, got exit $rc)"; cat "$TMPOUT"; return 1; }
   echo "proof $name: OK"

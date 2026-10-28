@@ -58,6 +58,8 @@ t_upgrade_2_0_3_repo_runner_and_edited_template() {
   assert_contains "$(python3 "$MIG" status "$d")" "propose  decisions-ticket" "skipped stays proposed"
   python3 "$MIG" accept "$d" >/dev/null
   assert_eq "$(python3 "$MIG" diff "$d")" "" "second diff empty"
+  assert_contains "$(python3 "$MIG" status "$d")" "manual   gate-red" "gate never proven red"
+  python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["gate_red_proven"]=True; open(p,"w").write(json.dumps(d))' "$d/.harness/init-state.json"  # what gate-proof.sh records
   assert_contains "$(python3 "$MIG" status "$d")" "migrations: 0 needed" "nothing left"
   assert_contains "$(cat "$d/scripts/harness/assets.json")" "\"plugin\": \"$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"])' "$PLUGIN/.claude-plugin/plugin.json")\"" "version recorded"
 }
@@ -167,4 +169,26 @@ t_upgrade_invariants_red_proof_once() {
   assert_not_contains "$(python3 "$MIG" status "$d")" "invariants-red-proof" "idempotent"
   ( cd "$d" && bash "$PLUGIN/skills/harness-init/assets/lint.sh" ) 2>&1 | grep -q "Red\|red-proof.*FAIL" && _fail "rule lints clean"
   true
+}
+
+t_upgrade_test_exit_swallowed_manual() {
+  local d; d="$(_upgraded harness-2.0.0)"
+  assert_not_contains "$(python3 "$MIG" status "$d")" "test-exit-swallowed" "nothing swallowed"
+  printf 'HARNESS_TEST_ONE = mvn -q test \\\n  -Dtest=$(T); :\n%s' "$(cat "$d/Makefile")" > "$d/Makefile"
+  assert_contains "$(python3 "$MIG" status "$d")" "manual   test-exit-swallowed (2.0.10, sensors) Makefile — HARNESS_TEST_ONE ends in" "continued value ending in ; :"
+  sed -i.bak 's/; :$/ \&\& :/' "$d/Makefile"
+  assert_not_contains "$(python3 "$MIG" status "$d")" "test-exit-swallowed" "&& : fixes it"
+}
+t_upgrade_gate_red_reason_shown() {
+  local d; d="$(_upgraded harness-2.0.0)"
+  python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d.update(gate_red_proven=False, gate_red_reason="NOT proven (x)"); open(p,"w").write(json.dumps(d))' "$d/.harness/init-state.json"
+  assert_contains "$(python3 "$MIG" status "$d")" "gate never proven red (NOT proven (x))" "reason carried"
+}
+t_upgrade_hand_rolled_diff_sensor_manual() {
+  local d; d="$(_upgraded harness-2.0.0)"
+  assert_not_contains "$(python3 "$MIG" status "$d")" "diff-sensors" "no diff sensors"
+  printf '#!/usr/bin/env bash\ngit diff -U0 "$HARNESS_BASE"...HEAD | grep "^+.*password"\n' > "$d/scripts/harness/sensors/no-pw.sh"
+  assert_contains "$(python3 "$MIG" status "$d")" "manual   diff-sensors (2.0.10, sensors) scripts/harness/sensors/no-pw.sh — parses git diff itself" "hand-rolled parser flagged"
+  printf '#!/usr/bin/env bash\npython3 scripts/harness/sensors/lib/diffscan.py | grep password\n' > "$d/scripts/harness/sensors/no-pw.sh"
+  assert_not_contains "$(python3 "$MIG" status "$d")" "diff-sensors" "diffscan-based sensor is fine"
 }

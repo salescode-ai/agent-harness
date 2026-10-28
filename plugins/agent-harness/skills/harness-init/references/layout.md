@@ -17,7 +17,8 @@ repo/
 ├── .agents/skills/        [guides]   repo-specific skills only; .claude/skills/<name> are symlinks to these
 ├── scripts/harness/       [tools]    cmd.sh (command resolver), lint.sh, related-tests.sh, setup.sh, setup-proof.sh, local-guard.sh, dev-check.sh
 │   ├── assets.json        [tools]    sha256 of each plugin-owned copy (scripts, .githooks/, harness.mk): lets upgrades refresh unmodified copies
-│   └── sensors/           [sensors]  registry.json, project sensors, fixtures/ (planted violations), sensor-proof.sh runs them
+│   └── sensors/           [sensors]  registry.json, project sensors, fixtures/ (planted violations), sensor-proof.sh runs them;
+│                                     lib/diffscan.py (plugin-owned): the added lines, for sensors that check only new code
 ├── .githooks/             [sensors]  pre-commit → check-fast, pre-push → check (or the repo's hook manager)
 ├── docs/
 │   ├── SETUP.md           [tools]    dependency inventory: resolved (file:line) and unresolved (where to read)
@@ -115,7 +116,18 @@ HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh -C backend maven "m
 
 A failing suite (legacy debt) still uses the helper: only the tests of what you touched run. `HARNESS_TEST_CHANGED` wins over `HARNESS_TEST_SECS`; with both empty check-fast runs no tests. `harness-lint` warns `check-fast tests nothing for <file>` for each changed source file no test selects (it asks `make harness-test-plan`, which runs no tests), and once when a custom `HARNESS_TEST_CHANGED` bypasses `related-tests.sh` (`HARNESS_TEST_CHANGED_CONFIRMED = 1` once the developer has checked that selector). Source files are the extensions of the stacks whose build files the repo has; `scripts/harness/` is never source.
 
-`HARNESS_SEED`, `HARNESS_RESET` and `HARNESS_DEV` must be set **above** `include harness.mk`: their targets are defined only when set, so an unconfigured repo has no `seed` target and `make setup` skips that step. The same holds for `HARNESS_HEALTH`, which (with `HARNESS_DEV`) defines `dev-check` and `dev-stop`. A server app whose smoke boots it: `HARNESS_SETUP_SMOKE = 0`.
+**Test commands keep their exit code.** `make test T=<path>` appends T to `HARNESS_TEST_ONE`, and check-fast appends the changed files to `HARNESS_TEST_CHANGED`. A runner that can't take a trailing argument puts `{T}` / `{CHANGED}` where it goes; harness.mk then substitutes it instead of appending (`-Dtest='{T}'`, `--tests {T}`). Never end a value in `; :` to swallow the argument: that discards the exit code, so the target is green on failing tests (harness-lint warns). If you must swallow it, end in `&& :`. A selector that runs **0 tests** must fail too, or a typo passes:
+
+| Stack | `HARNESS_TEST_ONE` must fail on 0 tests |
+|---|---|
+| Maven | no `-Dsurefire.failIfNoSpecifiedTests=false` here (keep it in changed-files mode only, where related-tests.sh adds it). JUnit 4 classes without the vintage engine, or a missing `#method`, still run 0 tests and exit 0, so check the reports: `mkdir -p .harness && touch .harness/test-one.stamp && ./mvnw -B -q test -Dtest="$$(basename '{T}' .java)" && { find . -path '*/surefire-reports/TEST-*.xml' -newer .harness/test-one.stamp -exec grep -l 'tests="[1-9]' {} + \| grep -q . \|\| { echo "test: 0 tests ran for {T}" >&2; exit 1; }; }` |
+| Gradle | `--tests {T}` fails on no match by default; never set `filter.failOnNoMatchingTests = false` |
+| pytest | exit code 5 means "no tests collected"; never map it to 0 (`\|\| [ $$? -eq 5 ]`) |
+| Jest / Vitest | never set `--passWithNoTests` on `HARNESS_TEST_ONE` (related-tests.sh sets it for changed-files mode only) |
+
+`bash scripts/harness/gate-proof.sh` proves all of this: in a scratch worktree it plants one failing test (JUnit 5, pytest or Vitest/Jest) and checks that `test T=<it>`, `test T=<no such test>` and check-fast each exit non-zero. harness-init and harness-upgrade run it and record `gate_red_proven` in `.harness/init-state.json`; level.py counts a gate never proven red as a sensors gap.
+
+`HARNESS_SEED`, `HARNESS_RESET` and `HARNESS_DEV` must be set **above** `include harness.mk`: their targets are defined only when set, so an unconfigured repo has no `seed` target and `make setup` skips that step. The same holds for `HARNESS_HEALTH`, which (with `HARNESS_DEV`) defines `dev-check` and `dev-stop`. A server app whose smoke boots it: `HARNESS_SETUP_SMOKE = 0`. A repo's own `setup-services` gets none of the `*_PORT` values setup.sh picked as environment variables: Docker Compose gives shell variables precedence over `--env-file`, so they would override whatever ports that target chooses. It reads `.env.local` (or picks its own and writes them there); setup.sh re-reads `.env.local` for `setup-migrate` and `seed`.
 
 ## Module AGENTS.md — create only if one is true
 

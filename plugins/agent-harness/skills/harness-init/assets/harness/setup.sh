@@ -2,7 +2,7 @@
 # setup.sh -- one-command dev setup (run from the repo root via `make setup`). Safe to re-run, never sudo,
 # never fetches secrets, never overwrites .env. Repo steps run only if they resolve; `setup` itself is never resolved (recursion).
 # Exit 1 only when a resolved step failed; "needs you" items alone exit 0.
-NEEDS=""; ST_deps="skipped"; ST_services="skipped"; ST_migrate="skipped"; ST_seed="skipped"; ST_smoke="skipped"; FAILED=""
+NEEDS=""; ST_deps="skipped"; ST_services="skipped"; ST_migrate="skipped"; ST_seed="skipped"; ST_smoke="skipped"; FAILED=""; RT_UNSET=""
 need() { NEEDS="${NEEDS:+$NEEDS, }$1"; }
 has() { command -v "$1" >/dev/null 2>&1; }
 major() { printf %s "$1" | sed 's/^v//; s/[^0-9].*//'; }
@@ -120,7 +120,7 @@ run_target() { # <var-suffix> <target> [fallback-cmd...]
   if [ "$rc" = 0 ] && [ -n "$cmd" ]; then :
   elif [ $# -gt 0 ]; then cmd="$*"
   else return 0; fi
-  if ( eval "$cmd" ); then eval "ST_$v='✓'"; else eval "ST_$v='✗'"; FAILED="$v"; fi
+  if ( [ -n "$RT_UNSET" ] && unset $RT_UNSET; eval "$cmd" ); then eval "ST_$v='✓'"; else eval "ST_$v='✗'"; FAILED="$v"; fi
 }
 run_target deps setup-deps
 # only when deps did not succeed: a repo passing `-s settings.xml` (or a registry extension) needs no ~/.m2 copy
@@ -140,7 +140,10 @@ if [ -n "$COMPOSE" ]; then
     [ "$SHARED" != 1 ] && dc="$dc -p '$PROJECT'"; dc="$dc up -d"
   else need "install Docker (https://docs.docker.com/get-docker/) to start $COMPOSE"; fi
 fi
-run_target services setup-services $dc
+# compose prefers shell variables over --env-file, so the services step must not inherit the exported ports (a repo's own
+# setup-services may pick others and write them to .env.local); later steps re-read .env.local
+RT_UNSET="${pk:-}"; run_target services setup-services $dc; RT_UNSET=""
+for k in ${pk:-}; do p="$(ev .env.local "$k")"; [ -n "$p" ] && export "$k=$p"; done
 run_target migrate setup-migrate
 run_target seed seed
 

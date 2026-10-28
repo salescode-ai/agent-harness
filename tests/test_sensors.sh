@@ -105,3 +105,44 @@ t_no_prod_data_host_contexts_only() {
   for n in 1 2 3 4; do assert_contains "$out" "c.txt:$n: production hostname" "line $n"; done
   assert_not_contains "$out" "leave-schema.sql" "comment not flagged"
 }
+
+# --- diff-scoped sensors: sensors/lib/diffscan.py and the proof's extra steps
+_dr() { # _sr + a base commit, origin/main pointing at it, a "sec" fixture (SECRET= is the violation); echoes path
+  local d; d="$(_sr)"; mkdir -p "$d/src" "$d/scripts/harness/sensors/fixtures/sec"
+  echo "ok" > "$d/src/a.txt"; printf 'x\nSECRET=abc\n' > "$d/scripts/harness/sensors/fixtures/sec/s.txt"
+  ( cd "$d" && git config user.email t@e.com && git config user.name t && git add src scripts && git -c core.hooksPath=/dev/null commit -q -m base \
+    && git update-ref refs/remotes/origin/main HEAD ) >/dev/null
+  echo "$d"
+}
+_ds() { ( cd "$1" && shift && PYTHONDONTWRITEBYTECODE=1 python3 scripts/harness/sensors/lib/diffscan.py "$@" 2>&1 ); }
+_sec() { echo '{"name":"'"$1"'","severity":"Critical","invariant":"no secrets","run":"'"$2"'","mode":"copy","scope":"diff","clean":"","fixture":"scripts/harness/sensors/fixtures/sec/","dest":"src"}'; }
+t_diffscan_lines_and_headers() {
+  local d; d="$(_dr)"
+  ( cd "$d" && git checkout -q -b feat && printf 'ok\n++ x\nSECRET=1\n' > src/a.txt && git commit -qam c1 \
+    && printf -- '-- gone\n' > src/b.sql && git add src/b.sql && git commit -qm c2 && printf 'keep\n' > src/b.sql \
+    && echo new > src/u.txt ) >/dev/null
+  assert_eq "$(_ds "$d" | tr '\n' '|')" "src/a.txt:2:++ x|src/a.txt:3:SECRET=1|src/b.sql:1:keep|src/u.txt:1:new|" \
+    "committed, unstaged, untracked; '++ x' is content; fixtures excluded"
+}
+t_diffscan_fails_loudly_without_base() {
+  local d out rc=0; d="$(_dr)"
+  out="$(_ds "$d" origin/nope)" || rc=$?
+  assert_eq "$rc" 2 "exit"; assert_contains "$out" "sensor: cannot resolve HARNESS_BASE origin/nope; fetch it or set HARNESS_BASE" "message"
+  ( cd "$d" && git checkout -q --orphan lone && git -c core.hooksPath=/dev/null commit -qm lone ) >/dev/null; rc=0
+  out="$(_ds "$d" origin/main)" || rc=$?
+  assert_eq "$rc" 2 "no merge-base exits 2"; assert_contains "$out" "no merge-base" "says why"
+}
+t_diff_sensor_proof() {
+  local d out good naive swallow; d="$(_dr)"
+  good='out=\"$(python3 scripts/harness/sensors/lib/diffscan.py)\" || exit 2; ! grep SECRET= <<<\"$out\"'
+  # a hand-rolled parser that takes \"+++ \" for a file header anywhere
+  printf '%s\n' 'git diff -U0 HEAD | { p=""; bad=0; while IFS= read -r l; do case "$l" in "+++ b/"*) p="${l#+++ b/}";; "+++ "*) p="";; +*SECRET=*) [ -n "$p" ] && { echo "$p: secret"; bad=1; };; esac; done; [ $bad = 0 ]; } || exit 1' \
+    'for f in $(git ls-files --others --exclude-standard src); do grep -q SECRET= "$f" && { echo "$f: secret"; exit 1; }; done; exit 0' > "$d/naive.sh"
+  swallow='python3 scripts/harness/sensors/lib/diffscan.py 2>/dev/null | grep SECRET= && exit 1; exit 0'
+  _add "$d" "$(_sec good "$good")"; _add "$d" "$(_sec naive 'bash naive.sh')"; _add "$d" "$(_sec swallow "$swallow")"
+  ( cd "$d" && git add -A && git -c core.hooksPath=/dev/null commit -qm sensors && git update-ref refs/remotes/origin/main HEAD ) >/dev/null
+  assert_eq "$(_proof "$d" good)" "proof good: OK" "diffscan sensor proven"
+  out="$(_proof "$d" naive)" && return 1; assert_contains "$out" "FAIL step 2b" "naive parser caught"
+  out="$(_proof "$d" swallow)" && return 1; assert_contains "$out" "FAIL step 2c" "swallowed base error caught"
+  assert_eq "$(git -C "$d" status --short --untracked-files=all)" "" "no planted copies or index entries left"
+}

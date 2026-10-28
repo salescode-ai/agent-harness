@@ -214,3 +214,15 @@ t_check_fast_custom_limited_to_stack() {
   out="$(_run "$d")"
   assert_not_contains "$out" "does not use related-tests.sh" "confirmed custom selector: quiet"
 }
+t_test_command_swallowing_exit_warns() {
+  local d out; d="$(_lr)"
+  printf '%s\n' 'HARNESS_TEST_ALL = mvn -q test' 'HARNESS_TEST_ONE = mvn -q test \' "  -Dtest='\$(T)'; :" \
+    'HARNESS_TEST_CHANGED = run-tests;:' 'HARNESS_LINT = @true; :' > "$d/Makefile"
+  out="$(_run "$d")" || true  # lint fails on this bare fixture (no check target); only the warnings matter
+  assert_contains "$out" "Makefile: HARNESS_TEST_ONE ends in '; :'" "continued line joined"
+  assert_contains "$out" "Makefile: HARNESS_TEST_CHANGED ends in '; :'" ";: too"
+  assert_not_contains "$out" "HARNESS_TEST_ALL ends" "no suffix: quiet"
+  assert_not_contains "$out" "HARNESS_LINT ends" "only test commands"
+  printf '%s\n' 'HARNESS_TEST_ONE = mvn -q test && :' > "$d/Makefile"
+  out="$(_run "$d")" || true; assert_not_contains "$out" "ends in '; :'" "&& : keeps the exit code"
+}

@@ -216,6 +216,17 @@ if (( reg_ok )) && [[ "$runner" == make && -f harness.mk ]] && command -v make >
   fi
 fi
 
+# 15. A HARNESS_TEST_* command must keep its exit code: a trailing `; :` (added to swallow the appended T or file list)
+#     makes the target always exit 0. Continuation lines are joined first.
+mk=""; for f in GNUmakefile Makefile makefile; do [[ -f "$f" ]] && { mk="$f"; break; }; done  # the one make reads
+for f in $mk *.mk; do
+  [[ -f "$f" && "$f" != harness.mk ]] || continue
+  while IFS= read -r v; do
+    warn "$f: $v ends in '; :', which discards the test exit code (always green); end it in '&& :' or put {T} / {CHANGED} where the argument goes (harness.mk header)"
+  done < <(awk '{ if (sub(/\\[ \t]*$/, "")) { buf = buf $0 " "; next } line = buf $0; buf = "" }
+    line ~ /^[ \t]*HARNESS_TEST_[A-Z_]+[ \t]*[:?+]?=.*;[ \t]*:[ \t]*$/ { sub(/[ \t]*[:?+]?=.*/, "", line); sub(/^[ \t]*/, "", line); print line }' "$f")
+done
+
 # 8. Gitignore covers harness scratch
 if [[ -f .gitignore ]]; then
   grep -qE '^/?\.harness/?$' .gitignore || warn ".harness/ is not in .gitignore"

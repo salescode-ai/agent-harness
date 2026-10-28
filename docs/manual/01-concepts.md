@@ -61,7 +61,7 @@ Every scan finding, generated file, audit item and interview question is tagged 
 | **Controls** | Checks that observe the work and fail loudly: the `check` / `check-fast` gate, project sensors for specific invariants, and the reviewer agents. |
 | **Acts** | After, and during the loop: the stop gate runs when the agent tries to finish; git hooks run on commit and push; `harness-verify` runs before "done". |
 | **Prevents** | "Done" claims with no evidence, broken builds handed to humans, rules that exist only on paper, and verification theatre (tests skipped or weakened to pass). |
-| **Implemented by** | `harness.mk` targets `check`, `check-fast`, `lint`, `typecheck`, `test`; `stop-gate.sh` (Stop hook; SubagentStop marks a red implementer branch in its own worktree, which the Bash guard then refuses to merge); `.githooks/pre-commit` (check-fast) and `.githooks/pre-push` (check); `scripts/harness/sensors/` + `registry.json` + `fixtures/`; `sensor-proof.sh`; `red-proof.sh` (the change's tests fail without it, run by the verifier; a plan closes only with its `Red:` line); agents `verifier`, `invariants-reviewer`, `scope-guard`, `cross-repo-reviewer`, `sensor-smith`; optional CI workflow `harness.yml`. |
+| **Implemented by** | `harness.mk` targets `check`, `check-fast`, `lint`, `typecheck`, `test`; `stop-gate.sh` (Stop hook; SubagentStop marks a red implementer branch in its own worktree, which the Bash guard then refuses to merge); `.githooks/pre-commit` (check-fast) and `.githooks/pre-push` (check); `scripts/harness/sensors/` + `registry.json` + `fixtures/`; `sensor-proof.sh`; `red-proof.sh` (the change's tests fail without it, run by the verifier; a plan closes only with its `Red:` line); `gate-proof.sh` (a planted failing test turns `test T=` and check-fast red, run by init and upgrade; a gate never proven red is a sensors gap); agents `verifier`, `invariants-reviewer`, `scope-guard`, `cross-repo-reviewer`, `sensor-smith`; optional CI workflow `harness.yml`. |
 | **Example** | The agent edits a file and tries to stop. `stop-gate.sh` sees uncommitted source changes, runs `check-fast`, it fails, and the stop is blocked with `Stop blocked by agent-harness: a repo's check-fast failed on your changes.` and a summary of the output: lines with failure markers (`FAIL`, `ERROR`, `expected`, `Tests run:…Failures`…), then the last 10 lines. |
 
 Invariants carry a severity:
@@ -72,7 +72,7 @@ Invariants carry a severity:
 | **Important** | A warning; `harness-verify` stops and hands it to a human (`NEEDS-HUMAN`). |
 | **Nice-to-have** | Appears in the audit only. |
 
-A sensor is wired in only after `sensor-smith` proves it. The proof checks that clean code passes, that a planted violation in a fixture fails with a message, and that clean code passes again. `harness-lint` re-runs every fixture (`sensor-proof.sh --recheck`), so a sensor that silently stops firing is caught.
+A sensor is wired in only after `sensor-smith` proves it. The proof checks that clean code passes, that a planted violation in a fixture fails with a message, and that clean code passes again. A sensor that checks only new code reads the added lines from `scripts/harness/sensors/lib/diffscan.py` instead of parsing `git diff` itself. Its proof also plants the violation after an added `++ ` line and runs it with an unresolvable `HARNESS_BASE`, which must fail. `harness-lint` re-runs every fixture (`sensor-proof.sh --recheck`), so a sensor that silently stops firing is caught.
 
 ### Context & State (`context`)
 

@@ -6,7 +6,7 @@ Status per item: ✅ pass (1) · ⚠️ partial (0.5) · ❌ fail (0). Cite `fil
 
 1. **Integrity.** Do the file paths, commands and internal links in `AGENTS.md`, `INVARIANTS.md` and every `SKILL.md` still resolve? List any that don't.
 2. **Constraint propagation.** Without re-reading the files, name the top 3 hard constraints from `INVARIANTS.md`. If you can't, or your list is much shorter than the file, the runtime may be dropping invariants.
-3. **Sensors.** Does the check command pass? (`level.py` already ran it with `--run-checks`; read `sensors.missing`.) If not, what fails?
+3. **Sensors.** Does the check command pass? (`level.py` already ran it with `--run-checks`; read `sensors.missing`.) If not, what fails? Has the gate been proven red (`gate never proven red` in `sensors.missing` means no: report its reason; a `HARNESS_TEST_*` ending in `; :` keeps the gate green on failing tests)?
 4. **Coverage gaps.** Are there new modules with security-sensitive code, API boundaries or complex logic and no module `AGENTS.md` or footgun?
 5. **Enforcement gaps.** Can any invariant marked `not yet enforced` or `human review` now be automated (a sensor, lint rule or test)?
 6. **Footgun freshness.** Is each footgun still a live risk, traceable to a concrete pattern in source? Flag aspirational ones.

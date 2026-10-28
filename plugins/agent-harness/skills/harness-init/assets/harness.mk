@@ -4,6 +4,9 @@
 # To keep a target your Makefile already defines, set HARNESS_DEFINE_<NAME>=0 before the include
 # (NAME upper-case, - becomes _), e.g. HARNESS_DEFINE_HELP=0 or HARNESS_DEFINE_CHECK_FAST=0.
 # Include harness.mk after your own default target (an early include makes its first target the default goal).
+# Test arguments: `test` appends T and check-fast appends the changed files, unless HARNESS_TEST_ONE contains {T}
+# (HARNESS_TEST_CHANGED: {CHANGED}); then they are substituted there instead, e.g. -Dtest='{T}' or --tests {T}.
+# A command that must ignore the appended argument ends in `&& :`, never `; :` (that discards the exit code: always green).
 
 HARNESS_MK := $(lastword $(MAKEFILE_LIST))
 _HARNESS_TARGETS :=
@@ -45,6 +48,8 @@ CHANGED            = $(shell git diff --name-only --diff-filter=ACMR $(HARNESS_B
 # Changed files under a dir with given extensions, relative to that dir (for tools with legacy debt):
 #   UI_CHANGED = $(call harness_changed,ui/,ts tsx)
 harness_changed = $(patsubst $(1)%,%,$(filter $(foreach e,$(2),$(1)%.$(e)),$(CHANGED)))
+# $(call harness_args,<command>,<placeholder>,<args>): args substituted at the placeholder, else appended
+harness_args = $(if $(findstring $(2),$(1)),$(subst $(2),$(3),$(1)),$(1) $(3))
 
 # Optional single-test selector: make test T=tests/test_auth.py
 T ?=
@@ -76,7 +81,7 @@ _HARNESS_TARGETS += check-fast
 _HELP_check-fast := Quick gate (< 60 s): lint + typecheck + tests for changed files if configured
 check-fast: lint typecheck ## Quick gate (< 60 s): lint + typecheck + tests for changed files if configured
 ifneq ($(strip $(HARNESS_TEST_CHANGED)),)
-	$(HARNESS_TEST_CHANGED) $(CHANGED)
+	$(call harness_args,$(HARNESS_TEST_CHANGED),{CHANGED},$(CHANGED))
 else
 ifeq ($(shell [ "$(strip $(HARNESS_TEST_SECS))" -le 60 ] 2>/dev/null && echo y),y)
 	$(HARNESS_TEST_ALL)
@@ -92,7 +97,7 @@ harness-test-plan:
 	$(info mode=$(if $(strip $(HARNESS_TEST_CHANGED)),$(if $(findstring related-tests.sh,$(HARNESS_TEST_CHANGED)),related,$(if $(filter 1,$(strip $(HARNESS_TEST_CHANGED_CONFIRMED))),custom-confirmed,custom)),none))
 	$(foreach f,$(CHANGED),$(info file=$(f)))
 ifneq ($(findstring related-tests.sh,$(HARNESS_TEST_CHANGED)),)
-	@RELATED_TESTS_DRY=1; export RELATED_TESTS_DRY; $(patsubst @%,%,$(HARNESS_TEST_CHANGED)) $(CHANGED)
+	@RELATED_TESTS_DRY=1; export RELATED_TESTS_DRY; $(patsubst @%,%,$(call harness_args,$(HARNESS_TEST_CHANGED),{CHANGED},$(CHANGED)))
 endif
 
 ifneq ($(HARNESS_DEFINE_LINT),0)
@@ -119,7 +124,7 @@ test: ## All tests, or one file/test with T=<path>
 ifeq ($(strip $(T)),)
 	$(HARNESS_TEST_ALL)
 else
-	$(HARNESS_TEST_ONE) $(T)
+	$(call harness_args,$(HARNESS_TEST_ONE),{T},$(T))
 endif
 endif
 
@@ -209,6 +214,13 @@ endif
 #   HARNESS_TEST_ALL  = pytest -q --cov=src
 #   HARNESS_TEST_ONE  = pytest -q
 #   HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh pytest "pytest -q"   # or HARNESS_TEST_SECS = 8
+# Example wiring (Maven): T is a path, ClassName or ClassName#method. No -Dsurefire.failIfNoSpecifiedTests=false
+# on TEST_ONE: a T that runs 0 tests (typo, JUnit 4 class without the vintage engine, missing #method) must fail.
+#   HARNESS_TEST_ALL  = ./mvnw -B -q test
+#   HARNESS_TEST_ONE  = mkdir -p .harness && touch .harness/test-one.stamp && ./mvnw -B -q test -Dtest="$$(basename '{T}' .java)" \
+#     && { find . -path '*/surefire-reports/TEST-*.xml' -newer .harness/test-one.stamp -exec grep -l 'tests="[1-9]' {} + | grep -q . \
+#     || { echo "test: 0 tests ran for {T}" >&2; exit 1; }; }
+#   HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh maven "./mvnw -B -q test"
 # Example wiring (Node/TypeScript):
 #   HARNESS_LINT      = npx eslint --quiet .
 #   HARNESS_TYPECHECK = npx tsc --noEmit

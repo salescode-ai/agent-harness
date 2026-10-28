@@ -133,3 +133,30 @@ include harness.mk')"
   assert_not_contains "$out" "  dev-check " "no HARNESS_HEALTH: no dev-check"
   assert_not_contains "$out" "  dev-stop " "dev-stop only with dev-check (a repo's own dev-stop stays unclobbered)"
 }
+
+t_test_args_placeholder_or_appended() {
+  local d out
+  d="$(mk_dir "HARNESS_TEST_ONE = @echo one -Dtest='{T}' end
+include harness.mk")"
+  assert_eq "$(cd "$d" && make -s test T=FooTest)" "one -Dtest=FooTest end" "{T} substituted, not appended"
+  d="$(mk_dir 'HARNESS_TEST_ONE = @echo one
+include harness.mk')"
+  assert_eq "$(cd "$d" && make -s test T=FooTest)" "one FooTest" "no placeholder: appended as before"
+  d="$(mk_dir 'HARNESS_LINT = @true
+HARNESS_TEST_CHANGED = @echo [{CHANGED}] end
+include harness.mk')"
+  ( cd "$d" && git init -q && touch a.py )
+  out="$(cd "$d" && make -s check-fast HARNESS_BASE=HEAD)"
+  assert_contains "$out" "[" "ran"; assert_contains "$out" "a.py" "changed file substituted"
+  assert_contains "$out" "] end" "{CHANGED} substituted, not appended"
+}
+
+t_test_exit_code_kept_with_and_colon() {
+  local d
+  d="$(mk_dir 'HARNESS_TEST_ONE = @false && :
+include harness.mk')"
+  assert_exit 2 "&& : keeps the failure" -- make -s -C "$d" test T=x
+  d="$(mk_dir 'HARNESS_TEST_ONE = @false {T}
+include harness.mk')"
+  assert_exit 2 "{T}: the failure reaches make" -- make -s -C "$d" test T=x
+}

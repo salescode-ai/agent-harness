@@ -415,6 +415,16 @@ def m_dev_health(root, ws):
     return [act("manual", "Makefile", None, "HARNESS_DEV is set but HARNESS_HEALTH is not: set HARNESS_HEALTH = <url or command meaning \"the app is up\"> to enable make dev-check / dev-stop (the Bash guard then refuses `make dev`; add the run script under it to HARNESS_DEV_BLOCK). A server app whose smoke boots it: HARNESS_SETUP_SMOKE = 0")]
 
 
+def m_test_exit_swallowed(root, ws):
+    """A HARNESS_TEST_* command ending in `; :` always exits 0: the gate stays green on failing tests (2.0.10)."""
+    if ws or not os.path.isfile(os.path.join(root, "harness.mk")) or not make_runner(root):
+        return []
+    _, text = make_vars(root)
+    text = re.sub(r"\\[ \t]*\n", " ", text)  # join continuation lines
+    bad = re.findall(r"^[ \t]*(HARNESS_TEST_[A-Z_]+)[ \t]*[:?+]?=.*;[ \t]*:[ \t]*$", text, re.M)
+    return [act("manual", "Makefile", None, "%s ends in `; :`, which discards the test exit code (always green): end it in `&& :`, or put {T} / {CHANGED} where the argument goes (harness.mk header); then run scripts/harness/gate-proof.sh" % v) for v in sorted(set(bad))]
+
+
 def m_harness_mk_test_plan(root, ws):
     """harness.mk carries harness-test-plan (lint check 13 reads it); a locally modified copy is not refreshed."""
     text = read(root, "harness.mk")
@@ -449,6 +459,32 @@ def m_gate_wired(root, ws):
     return [act("manual", ".harness/init-state.json", None, "gate not wired: step 4 runs check-fast; on pass set \"gate_wired\": true, else record \"gate_reason\"")]
 
 
+def m_gate_red(root, ws):
+    """gate_red_proven: a planted failing test turned `test T=` and check-fast red (scripts/harness/gate-proof.sh, 2.0.10)."""
+    d = state(root)
+    if ws or d is None or d.get("gate_red_proven") is True:
+        return []
+    why = d.get("gate_red_reason")
+    return [act("manual", ".harness/init-state.json", None, "gate never proven red%s: step 3 runs bash scripts/harness/gate-proof.sh" % (" (" + why + ")" if why else ""))]
+
+
+def m_diff_sensors(root, ws):
+    """A sensor that parses `git diff` itself misreads an added "++ x" line as a file header and passes when HARNESS_BASE
+    is missing; sensors/lib/diffscan.py does both right, and sensor-proof.sh checks it for "scope": "diff" (2.0.10)."""
+    base = os.path.join(root, "scripts/harness/sensors")
+    if ws or not os.path.isdir(base):
+        return []
+    out = []
+    for d, dirs, files in os.walk(base):
+        dirs[:] = sorted(x for x in dirs if x not in ("lib", "fixtures"))
+        for f in sorted(files):
+            rel = os.path.relpath(os.path.join(d, f), root)
+            text = read(root, rel) or ""
+            if re.search(r"\bdiff\b", text) and "git" in text and "diffscan" not in text:
+                out.append(act("manual", rel, None, "parses git diff itself: an added \"++ \" line reads as a file header and a missing HARNESS_BASE as no changes; rebuild it on scripts/harness/sensors/lib/diffscan.py (sensor-smith), set \"scope\": \"diff\" in registry.json, run sensor-proof.sh"))
+    return out
+
+
 MIGRATIONS = [  # id, since, layer, function
     ("templates", "2.0.4", "context", m_templates),
     ("plan-ticket", "2.0.4", "context", m_plan_ticket),
@@ -467,6 +503,9 @@ MIGRATIONS = [  # id, since, layer, function
     ("gate-wired", "2.0.3", "sensors", m_gate_wired),
     ("harness-mk-test-plan", "2.0.4", "sensors", m_harness_mk_test_plan),
     ("dev-health", "2.0.9", "tools", m_dev_health),
+    ("test-exit-swallowed", "2.0.10", "sensors", m_test_exit_swallowed),
+    ("gate-red", "2.0.10", "sensors", m_gate_red),
+    ("diff-sensors", "2.0.10", "sensors", m_diff_sensors),
 ]
 
 

@@ -34,7 +34,7 @@ Also count the `TODO` and `[verify]` markers left in harness files (`grep -rn` o
 2. **Content-quality pass** (`references/checks.md`).
 3. **Simulated-task probe**: run the prompt in `${CLAUDE_PLUGIN_ROOT}/skills/harness-init/references/probe.md`, ideally in a fresh subagent with no prior context; score it against the table there.
 4. **Fresh-clone setup proof**: `bash scripts/harness/setup-proof.sh` (clones to a temp folder; touches nothing here). `SKIPPED (docker not available)` is reported as skipped, not as a pass.
-5. **Sensor recheck**: `bash scripts/harness/sensor-proof.sh --recheck` (copy-mode fixtures are removed again afterwards).
+5. **Sensor recheck**: `bash scripts/harness/sensor-proof.sh --recheck` (copy-mode fixtures are removed again afterwards). **Gate red proof**: `bash scripts/harness/gate-proof.sh` (scratch worktree, removed afterwards; it only updates the local `.harness/init-state.json`).
 6. **Compare** with the last row of `docs/harness/AUDIT-LOG.md`: level and each layer score up, same or down.
 
 ## 4. Report (this order)
@@ -52,7 +52,7 @@ Level: Functional · target: Robust · blocked by: <next_level_blockers, joined>
 ## Fixes (ranked: blockers to the target first, then Critical gaps, then cheapest)
 1. <file> — <change> — closes <blocker or question #> — layer <key>
 …
-Health: <n>/10 questions pass   (full: completeness <score>/100 · <band> · probe <summary> · setup-proof <line> · sensors <line> · vs last: <delta>)
+Health: <n>/10 questions pass   (full: completeness <score>/100 · <band> · probe <summary> · setup-proof <line> · sensors <line> · gate <line> · vs last: <delta>)
 Next: hand the fixes to /harness-garden
 Run /agent-harness:harness-improve to strengthen <top 3 gaps: blockers to the target, then failing health questions>?
 ```

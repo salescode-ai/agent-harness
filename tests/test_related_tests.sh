@@ -85,3 +85,12 @@ t_dry_run_names_untested_sources() {
   out="$(cd "$d" && RELATED_TESTS_DRY=1 bash "$RT" -C api maven "false" api/src/main/java/a/Foo.java api/src/main/java/a/Bar.java)"
   assert_eq "$out" "none: api/src/main/java/a/Bar.java" "-C module: path stays repo-relative"
 }
+t_runner_exit_code_propagates() {  # maven keeps -DfailIfNoTests=false for changed files, but a red mvn stays red
+  local d rc; d="$(_rt_repo src/main/java/a/Foo.java src/test/java/a/FooTest.java)"
+  for stack in maven gradle; do
+    rc=0; (cd "$d" && bash "$RT" "$stack" "sh -c 'exit 3' x" src/test/java/a/FooTest.java >/dev/null 2>&1) || rc=$?
+    assert_eq "$rc" 3 "$stack: runner exit code"
+  done
+  rc=0; (cd "$d" && bash "$RT" maven "true" src/test/java/a/FooTest.java >/dev/null 2>&1) || rc=$?
+  assert_eq "$rc" 0 "green runner: exit 0"
+}

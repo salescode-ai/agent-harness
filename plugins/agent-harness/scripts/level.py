@@ -160,6 +160,15 @@ def measure(repo, run_checks=False, ws_check=None, seen=frozenset()):
         ok = n >= 1 and proof.is_file() and run(["bash", str(proof), "--recheck"], repo, 60)[0] == 0
         return ok, "no sensors in registry, or sensor recheck not passing"
 
+    def crit_gate_red():
+        try:
+            st = json.loads(read(repo / ".harness/init-state.json") or "{}")
+        except ValueError:
+            st = {}
+        why = st.get("gate_red_reason") if isinstance(st, dict) else None
+        return isinstance(st, dict) and st.get("gate_red_proven") is True, \
+            "gate never proven red (run scripts/harness/gate-proof.sh)" + (": " + why if why else "")
+
     def crit_budget():
         bad = [l for l in lout.splitlines() if l.startswith("FAIL") and "(max" in l]
         return not bad, "lint budget failure: " + "; ".join(b[6:] for b in bad[:2])
@@ -197,7 +206,7 @@ def measure(repo, run_checks=False, ws_check=None, seen=frozenset()):
     tiers = [
         ("Experimental", [("guides", crit_files), ("guides", crit_shim), ("context", crit_lint)]),
         ("Functional", [("sensors", crit_check), ("sensors", crit_auto), ("guides", crit_enforced)]),
-        ("Robust", [("context", crit_plans), ("tools", crit_deny), ("sensors", crit_sensors), ("context", crit_budget),
+        ("Robust", [("context", crit_plans), ("tools", crit_deny), ("sensors", crit_sensors), ("sensors", crit_gate_red), ("context", crit_budget),
                     ("observability", crit_cadence), ("guides", crit_security)]),
         ("Enterprise", [("sensors", crit_ci), ("tools", crit_plugins), ("guides", crit_codeowners),
                         ("observability", crit_auditlog), ("observability", crit_workspace)]),
