@@ -1,5 +1,10 @@
 # Workspace Makefile — agents run these from the workspace root. Each target delegates to the member repos' own harness.
 .DEFAULT_GOAL := help
+# B, R and T reach ws.sh as environment variables, kept literal: `make test:*` may be pre-approved, so they must never be code
+override B := $(value B)
+override R := $(value R)
+override T := $(value T)
+export B R T
 .PHONY: help status changed check check-fast setup claude-md test branch bootstrap harness-lint
 
 help: ## List targets
@@ -14,9 +19,9 @@ check: ## Run 'make check' in every changed repo (the done gate)
 check-fast: ## Run 'make check-fast' in every changed repo
 	@bash ws.sh check-fast
 test: ## One repo's tests: make test R=<repo> [T=<path>]
-	@bash ws.sh test $(R) $(T)
+	@bash ws.sh test "$$R" "$$T"
 branch: ## Same branch in the repos a feature touches: make branch B=<name> R="<repo> <repo>"
-	@bash ws.sh branch $(B) $(R)
+	@bash ws.sh branch "$$B" $$R
 bootstrap: ## Clone any manifest repo that is missing
 	@bash ws.sh bootstrap
 harness-lint: ## Check the workspace map and that every repo has a harness

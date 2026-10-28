@@ -115,3 +115,15 @@ t_long_lived_dev_denied() {
   assert_eq "$(cd "$d" && guard 'make dev')" "" "no HARNESS_HEALTH, so no dev-check: allowed"
   d="$(mktemp -d)"; assert_eq "$(cd "$d" && guard 'make dev')" "" "no harness: allowed"
 }
+t_make_variable_overrides_ask() {
+  # an allowed `make <target>:*` rule would otherwise run any command put in a variable
+  local c
+  for c in "make test HARNESS_TEST_ONE='touch x'" "make check-fast HARNESS_BASE='x; touch y'" 'make test --eval=X' \
+           'make -f /tmp/evil.mk test' 'HARNESS_TEST_CHANGED=evil make check-fast' 'MAKEFLAGS=-e make test' \
+           "bash -c \"make test SHELL='/bin/sh -c id'\"" 'make test T:=x CC=y'; do
+    assert_contains "$(guard "$c")" '"ask"' "ask: $c"
+  done
+  for c in 'make test' 'make test T=FooTest' 'make -s check-fast' 'make -C api test T=a.py' 'make -j4 check' 'echo HARNESS_X=1 make' "make dev-check RUN='curl x'"; do
+    assert_eq "$(guard "$c")" "" "allow: $c"
+  done
+}

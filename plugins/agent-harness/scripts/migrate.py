@@ -485,6 +485,30 @@ def m_diff_sensors(root, ws):
     return out
 
 
+WS_MAKE_OLD = ("\t@bash ws.sh test $(R) $(T)\n", "\t@bash ws.sh branch $(B) $(R)\n")
+
+
+def m_make_args_literal(root, ws):
+    """T, B, R and changed file names reached the shell unquoted, and `make test:*` is often pre-approved, so
+    `make test T='x; <cmd>'` or T='$(shell <cmd>)' ran code unprompted; they are now literal data (2.0.11)."""
+    if ws:
+        p = "Makefile"
+        text = read(root, p)
+        if text is None or not re.search(r"ws\.sh (test|branch) .*\$\((R|B|T)\)", text):
+            return []
+        tpl = _read(PLUGIN, "skills/harness-workspace/assets/Makefile")
+        head = tpl[:tpl.index(".PHONY: help status")]
+        if all(l in text for l in WS_MAKE_OLD) and ".PHONY: help status" in text and "override T :=" not in text:
+            new = text.replace(WS_MAKE_OLD[0], "\t@bash ws.sh test \"$$R\" \"$$T\"\n").replace(WS_MAKE_OLD[1], "\t@bash ws.sh branch \"$$B\" $$R\n")
+            new = new.replace(".PHONY: help status", head[head.index("# B, R and T"):] + ".PHONY: help status", 1)
+            return [act("auto", p, new, "B, R and T passed to ws.sh as literal environment values")]
+        return [act("manual", p, None, "a ws.sh recipe takes $(R)/$(B)/$(T) unquoted, so `make test R='x; <cmd>'` runs code: copy the override/export lines and the \"$$R\" \"$$T\" recipes from the plugin's workspace Makefile")]
+    text = read(root, "harness.mk")
+    if text is None or "override T := $(value T)" in text:
+        return []
+    return [act("manual", "harness.mk", None, "T and changed file names reach the shell as code (`make test T='x; <cmd>'`): run assets.py refresh; if modified locally, merge: diff harness.mk \"%s\"" % os.path.join(PLUGIN, A, "harness.mk"))]
+
+
 MIGRATIONS = [  # id, since, layer, function
     ("templates", "2.0.4", "context", m_templates),
     ("plan-ticket", "2.0.4", "context", m_plan_ticket),
@@ -506,6 +530,7 @@ MIGRATIONS = [  # id, since, layer, function
     ("test-exit-swallowed", "2.0.10", "sensors", m_test_exit_swallowed),
     ("gate-red", "2.0.10", "sensors", m_gate_red),
     ("diff-sensors", "2.0.10", "sensors", m_diff_sensors),
+    ("make-args-literal", "2.0.11", "tools", m_make_args_literal),
 ]
 
 

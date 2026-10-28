@@ -7,8 +7,13 @@
 # Test arguments: `test` appends T and check-fast appends the changed files, unless HARNESS_TEST_ONE contains {T}
 # (HARNESS_TEST_CHANGED: {CHANGED}); then they are substituted there instead, e.g. -Dtest='{T}' or --tests {T}.
 # A command that must ignore the appended argument ends in `&& :`, never `; :` (that discards the exit code: always green).
+# T is kept literal and must match [A-Za-z0-9_./#,*?:@+=[] -] (no word starting with -), else `test` exits 2 before
+# running anything; changed file names outside [A-Za-z0-9_.@+=,:/-] are left out of CHANGED. `make test:*` is often
+# pre-approved, so neither may carry shell or make code.
 
 HARNESS_MK := $(lastword $(MAKEFILE_LIST))
+override T := $(value T)
+export T
 _HARNESS_TARGETS :=
 
 HARNESS_LINT      ?= @echo "lint: not configured" && false
@@ -43,7 +48,7 @@ HARNESS_TEST_CHANGED_CONFIRMED ?=
 HARNESS_TEST_SECS ?=
 # Files changed vs the base branch, plus untracked new files (used by check-fast): origin/HEAD, else origin/main, else origin/master
 HARNESS_BASE      ?= $(or $(shell git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null),$(if $(shell git rev-parse -q --verify origin/main 2>/dev/null),origin/main,origin/master))
-CHANGED            = $(shell git diff --name-only --diff-filter=ACMR $(HARNESS_BASE)...HEAD 2>/dev/null; git diff --name-only --diff-filter=ACMR HEAD 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null)
+CHANGED            = $(shell { git diff --name-only --diff-filter=ACMR $(HARNESS_BASE)...HEAD; git diff --name-only --diff-filter=ACMR HEAD; git ls-files --others --exclude-standard; } 2>/dev/null | grep -E '^[A-Za-z0-9_.@+=,:/][A-Za-z0-9_.@+=,:/-]*$$')
 
 # Changed files under a dir with given extensions, relative to that dir (for tools with legacy debt):
 #   UI_CHANGED = $(call harness_changed,ui/,ts tsx)
@@ -124,6 +129,7 @@ test: ## All tests, or one file/test with T=<path>
 ifeq ($(strip $(T)),)
 	$(HARNESS_TEST_ALL)
 else
+	@case "$$T" in *[!]A-Za-z0-9_./#,*?:@+=[\ -]*|-*|*" -"*) echo "test: T may only hold names, paths, #method, commas and globs ([A-Za-z0-9_./#,*?:@+=[] -], no word starting with -): $$T" >&2; exit 2;; esac
 	$(call harness_args,$(HARNESS_TEST_ONE),{T},$(T))
 endif
 endif

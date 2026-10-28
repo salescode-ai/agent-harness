@@ -261,6 +261,40 @@ def infra_ask(prog, args):
     return None
 
 
+MAKE_ARG_FLAGS = set("CfIjloWE")  # short make flags that take a value
+
+
+def make_ask(env, prog, args):
+    """Reason to ask before `make` runs code from the command line, else None. A pre-approved `Bash(make test:*)` also
+    approves `make test HARNESS_TEST_ONE='<cmd>'`, --eval, -f <file> or MAKEFLAGS=-e. Only the harness's own parameters pass:
+    T= (harness.mk checks it is plain data) and dev-check's RUN= (a command by design)."""
+    if prog not in ("make", "gmake"):
+        return None
+    why = "make with %s runs whatever command it carries, outside the targets the harness defines. Confirm it was intended."
+    bad = [e for e in env if e in ("MAKEFLAGS", "MFLAGS", "GNUMAKEFLAGS", "MAKEFILES") or e.startswith("HARNESS_")]
+    if bad:
+        return why % ("%s set in its environment" % bad[0])
+    skip = False
+    for a in args:
+        if skip:
+            skip = False
+        elif a.startswith("--"):
+            if a.split("=", 1)[0] in ("--eval", "--file", "--makefile", "--environment-overrides"):
+                return why % a.split("=", 1)[0]
+        elif a.startswith("-") and len(a) > 1:
+            for k, c in enumerate(a[1:]):
+                if c in "fEe":
+                    return why % ("-" + c)
+                if c in MAKE_ARG_FLAGS:
+                    skip = k == len(a) - 2  # the value is the next token
+                    break
+        else:
+            m = re.match(r"^([A-Za-z_][A-Za-z0-9_.-]*?)[:+?!]?=", a)
+            if m and m.group(1) not in ("T", "RUN"):
+                return why % ("the variable override %s" % m.group(1))
+    return None
+
+
 READERS = {"grep", "rg", "cat", "less", "head", "tail", "sed", "awk", "echo", "printf", "git", "ls", "find", "diff", "wc"}
 DEV_MSG = ("Agents don't leave the dev server running. Use `make dev-check` (starts it, waits for HARNESS_HEALTH, "
            "runs RUN='<cmd>' if given, then stops it); `make dev-stop` stops a leftover one. "
@@ -327,7 +361,7 @@ def check(cmd, cwd, depth=0):
         if not argv:
             continue
         prog = os.path.basename(argv[0])
-        a = infra_ask(prog, argv[1:])
+        a = infra_ask(prog, argv[1:]) or make_ask(env, prog, argv[1:])
         if a:
             asks.append(a)
         if long_lived_dev(prog, argv, cwd):

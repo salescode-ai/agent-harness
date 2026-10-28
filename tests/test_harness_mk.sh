@@ -160,3 +160,30 @@ include harness.mk')"
 include harness.mk')"
   assert_exit 2 "{T}: the failure reaches make" -- make -s -C "$d" test T=x
 }
+
+t_test_arg_cannot_run_commands() {
+  # `Bash(make test:*)` is auto-approved, so T must never reach the shell or make as code
+  local d p out rc
+  d="$(mk_dir 'HARNESS_TEST_ONE = @echo ran
+include harness.mk')"
+  for p in 'x; touch pwned' 'x && touch pwned' 'x`touch pwned`' 'x$$(touch pwned)' '$(shell touch pwned)' 'x | touch pwned' \
+           "x' ; touch pwned" 'x > pwned' "$(printf 'x\ntouch pwned')" '-o pwned'; do
+    rc=0; out="$(cd "$d" && make -s test T="$p" 2>&1)" || rc=$?
+    [ "$rc" != 0 ] || _fail "T='$p' was accepted: $out"
+    assert_not_contains "$out" "ran" "nothing ran for T='$p'"
+    [ ! -e "$d/pwned" ] || _fail "T='$p' ran a command"; rm -f "$d/pwned"
+  done
+  assert_contains "$out" "test: T may only hold" "says why"
+  for p in 'src/test/java/a/FooTest.java' 'FooTest#bar' 'FooTest,BarTest' 'tests/test_a.py::test_x[1-2]' 'src/*.test.ts' 'a.py b.py' 'pkg/foo:bar@1'; do
+    assert_eq "$(cd "$d" && make -s test T="$p" 2>&1)" "ran $p" "accepted: $p"
+  done
+}
+t_changed_file_names_cannot_run_commands() {
+  local d out; d="$(mk_dir 'HARNESS_LINT = @true
+HARNESS_TEST_CHANGED = @echo files:
+include harness.mk')"
+  ( cd "$d" && git init -q && touch ok.py 'x;touch pwned' '$(touch pwned)' '-rf' ) 
+  out="$(cd "$d" && make -s check-fast HARNESS_BASE=HEAD 2>&1)"
+  [ ! -e "$d/pwned" ] || _fail "a changed file name ran a command"
+  assert_contains "$out" "ok.py" "plain name kept"; assert_not_contains "$out" "-rf" "option-like name dropped"
+}

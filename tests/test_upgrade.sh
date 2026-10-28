@@ -192,3 +192,17 @@ t_upgrade_hand_rolled_diff_sensor_manual() {
   printf '#!/usr/bin/env bash\npython3 scripts/harness/sensors/lib/diffscan.py | grep password\n' > "$d/scripts/harness/sensors/no-pw.sh"
   assert_not_contains "$(python3 "$MIG" status "$d")" "diff-sensors" "diffscan-based sensor is fine"
 }
+t_upgrade_make_args_literal() {
+  local w out; w="$(mktemp -d)"; printf '{"repos":[]}\n' > "$w/harness-workspace.json"
+  git -C "$ROOT" show v2.0.10:plugins/agent-harness/skills/harness-workspace/assets/Makefile > "$w/Makefile" 2>/dev/null || skip upgrade_ws "no git history"
+  assert_contains "$(python3 "$MIG" status "$w")" "auto     make-args-literal (2.0.11, tools) Makefile" "workspace Makefile fixed automatically"
+  python3 "$MIG" apply "$w" >/dev/null
+  assert_eq "$(cat "$w/Makefile")" "$(cat "$PLUGIN/skills/harness-workspace/assets/Makefile")" "same as the current template"
+  assert_not_contains "$(python3 "$MIG" status "$w")" "make-args-literal" "once"
+  printf 'x:\n\t@bash ws.sh test $(R) $(T) --mine\n' > "$w/Makefile"
+  assert_contains "$(python3 "$MIG" status "$w")" "manual   make-args-literal (2.0.11, tools) Makefile" "edited: manual"
+  local d; d="$(_upgraded harness-2.0.0)"
+  assert_not_contains "$(python3 "$MIG" status "$d")" "make-args-literal" "refreshed harness.mk is fine"
+  sed -i.bak '/^override T := /d' "$d/harness.mk"
+  assert_contains "$(python3 "$MIG" status "$d")" "manual   make-args-literal (2.0.11, tools) harness.mk" "modified harness.mk: manual"
+}

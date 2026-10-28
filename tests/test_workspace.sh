@@ -140,3 +140,12 @@ t_workspace_plan_ticket() {
   sed -i.bak 's/^\*\*Ticket\*\*: .*/**Ticket**: SHOP-7/' "$WS_T/plans/active/2026-10-27-x.md"; rm "$WS_T/plans/active/"*.bak
   assert_contains "$(ws lint)" "workspace-lint: OK" "key accepted"
 }
+t_make_args_cannot_run_commands() {
+  local w p; w="$(mk_ws)"; cp "$PLUGIN/skills/harness-workspace/assets/Makefile" "$w/"
+  for p in "R=api; touch pwned" "R=api T=x;touch pwned" 'R=$(shell touch pwned)' 'B=x$(touch pwned)' "B=f R=api;touch pwned"; do
+    ( cd "$w" && make -s test "$p" ; make -s branch "$p" ) >/dev/null 2>&1 || true
+    [ ! -e "$w/pwned" ] || _fail "make test/branch '$p' ran a command"; rm -f "$w/pwned"
+  done
+  ( cd "$w" && make -s branch B=feat-x R="api app" ) >/dev/null 2>&1
+  assert_eq "$(git -C "$w/api" branch --show-current) $(git -C "$w/app" branch --show-current)" "feat-x feat-x" "R still splits into repos"
+}
