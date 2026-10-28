@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.11
+
+Security fix, from a report on a repo using 2.0.8: `make test T=…` could run any command without a permission prompt.
+
+- **T is data, not code.** harness.mk added `$(T)` to the recipe unquoted, and team settings usually pre-approve `Bash(make test:*)`. So `make test T='x; <cmd>'` (shell) and `make test T='$(shell <cmd>)'` (make expands command-line variables) both ran their payload unprompted, and check-fast did the same with changed file names. Now `override T := $(value T)` keeps T literal, and `test` exits 2 before any command when T holds anything but names, paths, `#method`, commas and globs (`[A-Za-z0-9_./#,*?:@+=[] -]`, no word starting with `-`). `CHANGED` leaves out file names outside `[A-Za-z0-9_.@+=,:/-]` or starting with `-`. T is still substituted at `{T}` or appended, so existing `HARNESS_TEST_ONE` values keep working.
+- **Workspace `Makefile`:** `make test R= T=` and `make branch B= R=` pass their values to `ws.sh` as literal environment variables, no longer as shell text.
+- **The Bash guard asks before `make` runs command-line code.** A pre-approved `make test:*` also matches `make test HARNESS_TEST_ONE='<cmd>'`. The guard now asks for any variable override except `T=` and dev-check's `RUN=`, for `--eval`, `-e`/`--environment-overrides` and `-f`/`--file`, and for `MAKEFLAGS`, `MAKEFILES` or `HARNESS_*` set in front of `make`.
+- **Upgrade:** `/agent-harness:harness-upgrade` refreshes `harness.mk` (unmodified copies). Migration `make-args-literal`: fixes an unedited workspace `Makefile` automatically, and names a workspace `Makefile` with edited `ws.sh` recipes or a locally modified `harness.mk` as manual.
+- Not changed: running tests runs repo code. An agent that can edit a test or the Makefile and run `make test` can still run anything; these fixes close the route that needed no file change.
+
 ## 2.0.10
 
 Found on a Spring Boot/Maven repo: since init, `make test T=<class>` and check-fast's changed-test step exited 0 even with failing tests; a code review of the same repo found the sensor and setup bugs below.
