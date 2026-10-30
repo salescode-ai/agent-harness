@@ -28,7 +28,7 @@ A harness has two halves:
 1. **Committed repo files work for everyone, with any tool:** the guides (`AGENTS.md`, `INVARIANTS.md`, `CLAUDE.md`, `GLOSSARY.md`, `docs/`); `Makefile` + `harness.mk` + `scripts/harness/` (`make check`, `check-fast`, `test`, `setup`, `seed`/`reset` behind `local-guard.sh`, `harness-lint`, the sensor proofs); the `.githooks/` once `make setup` has run in that clone; CI if you opted in.
 2. **Plugin only (Claude Code):** the hooks (stop gate, Bash and file guards, session orientation), the skills and the reviewer agents. None of these are copied into the repo.
 
-**Team rollout.** Commit `.claude/settings.json` with `extraKnownMarketplaces` (`agent-harness` → `salescode-ai/agent-harness`) and `enabledPlugins: {"agent-harness@agent-harness": true}`, so every teammate's Claude Code offers the plugin when they trust the folder. `harness-init` asks before writing it; one-shot leaves it as a TODO; `harness-improve` reports "team rollout settings missing" as a gap until it is committed. For Codex, Cursor, Copilot or Gemini, `install-local.sh` copies the skills to `.agents/skills/`; those tools get no agent hooks, so the git hooks and CI do the enforcing.
+**Team rollout.** Commit `.claude/settings.json` with `extraKnownMarketplaces` (`agent-harness` → `salescode-ai/agent-harness`) and `enabledPlugins: {"agent-harness@agent-harness": true}`, so every teammate's Claude Code offers the plugin when they trust the folder. Pin a version by adding `"ref": "vX.Y.Z"` to that `source`: always an exact release tag, never a branch (release tags never move; harness lint warns otherwise). `harness-init` asks before writing it; one-shot leaves it as a TODO; `harness-improve` reports "team rollout settings missing" as a gap until it is committed. For Codex, Cursor, Copilot or Gemini, `install-local.sh` copies the skills to `.agents/skills/`; those tools get no agent hooks, so the git hooks and CI do the enforcing.
 
 ### Headless and CI runs (`claude -p`)
 
@@ -320,7 +320,7 @@ Scope: pin only `agent-harness` in project settings; keep other packs in user sc
 | Variable | Effect |
 |---|---|
 | `HARNESS_STOP_GATE=0` | Turns off the stop gate (and the red-branch check for worktree subagents) for the session |
-| `HARNESS_HOOK_STAGED_ONLY=1` | pre-commit runs `check-fast` on the staged snapshot only, pre-push runs `check` on the pushed commit only (scratch worktree; `node_modules`, `.venv`, `.env`, `.env.local` linked, other gitignored files absent, build output cold). Without it, both test the working tree and warn when uncommitted or untracked code is part of the run |
+| `HARNESS_HOOK_STAGED_ONLY=1` | pre-commit runs `check-fast` on the staged snapshot only, pre-push runs `check` on each pushed commit only, including a branch other than the checked-out one (scratch worktree; `node_modules`, `.venv`, `.env`, `.env.local` linked, other gitignored files absent, build output cold). Without it, both test the working tree in place (fast, warm build) and warn when uncommitted or untracked code is part of the run; pre-push then skips a pushed branch other than the checked-out one |
 | `SKIP_HOOKS=1` | Skips the pre-commit and pre-push hooks once. For people: the Bash guard refuses it for agents |
 | `HARNESS_GUARD=0` | Turns off the Bash and file guards for the session (not recommended) |
 | `HARNESS_SHARED_SERVICES=1` | `make setup` shares local services instead of an isolated compose project and ports (env or `.env.local`) |
@@ -344,7 +344,7 @@ Scope: pin only `agent-harness` in project settings; keep other packs in user sc
 
 **`agent-harness: check-fast could not run (environment, not your change) in: repo (Docker is not running)`.** The stop gate saw an environment failure, not a code failure, and let the turn end: Docker not running or not installed (`Could not find a valid Docker environment`, `docker: command not found`), or a line starting with `setup error:` (optionally after the target's name: `typecheck: setup error: …`), which a repo's gate can print for its own setup problems (`setup error: no base branch`). Free text such as a skip reason `requires docker` is not enough: a real failure next to it still blocks. Start Docker (or fix setup) and run `make check-fast`.
 
-**`harness: no pushed ref is the checked-out HEAD …, skipping check`.** pre-push tests the checked-out commit (the working tree, or with `HARNESS_HOOK_STAGED_ONLY=1` that commit alone in a scratch worktree), so it runs `check` only when one of the pushed refs is that commit. Tags, branch deletions and other branches are pushed without it.
+**`harness: pushed commit … is not the checked-out HEAD …; skipping`.** In its default mode pre-push checks the working tree, which can only stand in for the checked-out commit, so a push of another branch (`git push origin other-branch`) runs no check. Push it with `HARNESS_HOOK_STAGED_ONLY=1` to check that commit in a scratch worktree. Tags and branch deletions are never checked (`harness: only tags or deletions pushed, skipping check`).
 
 **The stop gate or a git hook says nothing during setup.** That's intended. While `.harness/init-state.json` exists without `"gate_wired": true`, the stop gate is silent and git hooks print `harness: setup in progress, skipping`. Finish or resume `/agent-harness:harness-init`.
 
