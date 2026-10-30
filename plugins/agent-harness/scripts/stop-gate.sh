@@ -3,7 +3,8 @@
 # commits ahead of the base) and the repo is ahead of its base or dirty, run the repo's check-fast and block the stop
 # on failure. The base is the repo's own (`make harness-base`, cached per HEAD), else HARNESS_BASE, else origin/HEAD.
 # In a workspace, does this for every member repo that changed, using that repo's own gate. Success is silent; a
-# check-fast that could not run (Docker down, a setup error) warns instead of blocking. Disable with HARNESS_STOP_GATE=0.
+# check-fast that could not run (Docker down or missing, a setup error) warns instead of blocking: a repo's gate can
+# print a line containing "setup error" (e.g. "setup error: no base branch") to be treated so. HARNESS_STOP_GATE=0 disables it.
 # --subagent (SubagentStop): gates only a subagent working in a linked git worktree (an isolated implementer);
 # reviewers and explorers in the main checkout are never blocked by the main session's unfinished work.
 source "$(dirname "$0")/_lib.sh"
@@ -24,7 +25,7 @@ ACTIVE=0; grep -qE '"stop_hook_active"[[:space:]]*:[[:space:]]*true' <<<"$HOOK_I
 MAX_BLOCKS=3
 
 STATE=""; LC_SUFFIX=""; FAILED=0; REPORT=""; SKIPPED=""; RERAN=0; STILL=""; ENVFAIL=""
-ENV_RE='docker is not running|cannot connect to the docker daemon|is the docker daemon running|setup error'
+ENV_RE='docker is not running|cannot connect to the docker daemon|is the docker daemon running|requires? docker|docker: (command )?not found|command not found: docker|setup error'
 repo_base() { # repo_base <dir>: the repo's HARNESS_BASE (harness-base target), cached per HEAD and branch in .harness/
   local dir="$1" cache="$1/.harness/base-cache" key b="" cmd
   key="$(git -C "$dir" rev-parse HEAD 2>/dev/null) $(git -C "$dir" branch --show-current 2>/dev/null)"

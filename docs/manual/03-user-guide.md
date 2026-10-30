@@ -335,7 +335,7 @@ Scope: pin only `agent-harness` in project settings; keep other packs in user sc
 
 **`harness: cannot resolve the check-fast gate (scripts/harness/cmd.sh exit 3)`.** The gate is wired (or a Makefile exists) but `make -n check-fast` fails: a syntax error, a bad `$(shell …)`, a missing include. The hook shows make's error and refuses the commit (pre-push: the push) instead of skipping it. Run `make -n check-fast`, fix the Makefile, commit again. Before 2.0.12 the hooks skipped silently here.
 
-**`agent-harness: check-fast could not run (environment, not your change) in: repo (Docker is not running)`.** The stop gate saw an environment failure, not a code failure, and let the turn end. Start Docker (or fix setup) and run `make check-fast`.
+**`agent-harness: check-fast could not run (environment, not your change) in: repo (Docker is not running)`.** The stop gate saw an environment failure, not a code failure, and let the turn end: Docker not running or not installed (`… require Docker`, `docker: command not found`), or a line containing `setup error`, which a repo's gate can print for its own setup problems (`setup error: no base branch`). Start Docker (or fix setup) and run `make check-fast`.
 
 **`harness: no pushed ref is the checked-out HEAD …, skipping check`.** pre-push tests the checked-out commit (in a scratch worktree when there are uncommitted changes), so it runs `check` only when one of the pushed refs is that commit. Tags, branch deletions and other branches are pushed without it.
 

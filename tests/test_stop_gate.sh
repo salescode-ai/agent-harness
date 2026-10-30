@@ -249,3 +249,13 @@ t_environment_failure_warns_not_blocks() {
   assert_contains "$out" '"systemMessage":"agent-harness: check-fast could not run (environment, not your change) in: repo' "warns"
   [ ! -e "$d/.harness/stop-blocks" ] || _fail "no block counted"
 }
+t_environment_failure_phrasings() {
+  # Docker missing (not just stopped) and a repo's own "setup error:" line are environment, not code
+  local d out m
+  for m in 'Tests that need Postgres require Docker' 'bash: docker: command not found' 'zsh: command not found: docker' \
+           'setup error: no base branch for this checkout'; do
+    d="$(_gate_repo "echo \"$m\"; exit 2")"
+    RC=0; out="$(printf '{"cwd":"%s"}' "$d" | "$GATE" 2>/dev/null)" || RC=$?
+    assert_eq "$RC" 0 "does not block: $m"; assert_contains "$out" "could not run (environment" "warns: $m"
+  done
+}
