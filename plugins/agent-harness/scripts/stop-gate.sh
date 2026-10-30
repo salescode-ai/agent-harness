@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Stop: if code changed (uncommitted, or committed ahead of the base branch) since the last green run,
-# run the repo's check-fast and block the stop on failure. In a workspace, does this for every member repo
-# that changed, using that repo's own gate. Success is silent. Disable with HARNESS_STOP_GATE=0.
+# Stop: if this session changed code (vs the code_fp SessionStart recorded; without one, any uncommitted code or
+# commits ahead of the base) and the repo is ahead of its base or dirty, run the repo's check-fast and block the stop
+# on failure. The base is the repo's own (`make harness-base`, cached per HEAD), else HARNESS_BASE, else origin/HEAD.
+# In a workspace, does this for every member repo that changed, using that repo's own gate. Success is silent; a
+# check-fast that could not run (Docker down, a setup error) warns instead of blocking. Disable with HARNESS_STOP_GATE=0.
 # --subagent (SubagentStop): gates only a subagent working in a linked git worktree (an isolated implementer);
 # reviewers and explorers in the main checkout are never blocked by the main session's unfinished work.
 source "$(dirname "$0")/_lib.sh"
@@ -21,7 +23,19 @@ fi
 ACTIVE=0; grep -qE '"stop_hook_active"[[:space:]]*:[[:space:]]*true' <<<"$HOOK_INPUT" && ACTIVE=1
 MAX_BLOCKS=3
 
-STATE=""; LC_SUFFIX=""; FAILED=0; REPORT=""; SKIPPED=""; RERAN=0; STILL=""
+STATE=""; LC_SUFFIX=""; FAILED=0; REPORT=""; SKIPPED=""; RERAN=0; STILL=""; ENVFAIL=""
+ENV_RE='docker is not running|cannot connect to the docker daemon|is the docker daemon running|setup error'
+repo_base() { # repo_base <dir>: the repo's HARNESS_BASE (harness-base target), cached per HEAD and branch in .harness/
+  local dir="$1" cache="$1/.harness/base-cache" key b="" cmd
+  key="$(git -C "$dir" rev-parse HEAD 2>/dev/null) $(git -C "$dir" branch --show-current 2>/dev/null)"
+  [[ -f "$cache" ]] && b="$(awk -F'\t' -v k="$key" '$1 == k {print $2}' "$cache" 2>/dev/null)"
+  if [[ -z "$b" ]] && cmd="$(harness_cmd "$dir" harness-base 2>/dev/null)"; then
+    b="$(cd "$dir" && eval "$cmd" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -1)"
+    git -C "$dir" rev-parse -q --verify "$b^{commit}" >/dev/null 2>&1 || b=""
+    [[ -n "$b" ]] && mkdir -p "$dir/.harness" 2>/dev/null && printf '%s\t%s\n' "$key" "$b" > "$cache" 2>/dev/null
+  fi
+  echo "${b:-${HARNESS_BASE:-$(default_base "$dir")}}"
+}
 changed_since() { # changed_since <dir> <base>: uncommitted source changes or commits ahead of base
   local ahead=0
   [[ -n "$(git -C "$1" status --porcelain -- . ':(exclude)docs' ':(exclude)*.md' ':(exclude).harness' 2>/dev/null)" ]] && return 0
@@ -32,14 +46,17 @@ fail_summary() { # failure-marker lines (up to 20), then the last 10 lines; with
   local m; m="$(grep -E 'FAIL|ERROR|Error:|expected|AssertionError|Tests run:.*Failures|tests? completed, [0-9]+ failed|✗|error TS|SyntaxError' <<<"$1" | head -20)"
   if [[ -n "$m" ]]; then printf '%s\n...\n' "$m"; tail -10 <<<"$1"; else tail -30 <<<"$1"; fi
 }
-gate_repo() { # gate_repo <repo dir> <base> <label>
-  local dir="$1" base="$2" label="$3" cmd fp out rc
+gate_repo() { # gate_repo <repo dir> <base, empty: repo_base> <label>
+  local dir="$1" base="$2" label="$3" cmd fp out rc start
   [[ -f "$dir/AGENTS.md" ]] || return 0
+  [[ -n "$base" ]] || base="$(repo_base "$dir")"
   # half-built harness (harness-init has not wired the gate) or no check-fast: not gated, named if another repo blocks
   init_pending "$dir" && { changed_since "$dir" "$base" && SKIPPED+=" $label (gate not wired)"; return 0; }
   cmd="$(harness_cmd "$dir" check-fast 2>/dev/null)" || { changed_since "$dir" "$base" && SKIPPED+=" $label (check-fast not resolvable)"; return 0; }
   changed_since "$dir" "$base" || return 0
-  fp="$( { git -C "$dir" rev-parse HEAD; git -C "$dir" diff HEAD; (cd "$dir" && git ls-files -z --others --exclude-standard | xargs -0 cksum 2>/dev/null); } 2>/dev/null | cksum | cut -d' ' -f1)"
+  fp="$(code_fp "$dir")"
+  # a session that only read code (or started on a dirty tree and left it alone) is not gated
+  start="$(session_file "$dir")"; [[ -n "$start" && -f "$start" && "$(cat "$start")" == "$fp" ]] && return 0
   local key="$STATE/last-green-${label//[^A-Za-z0-9_-]/_}"
   [[ -f "$key" && "$(cat "$key")" == "$fp" ]] && return 0
   local failkey="$STATE/last-fail-${label//[^A-Za-z0-9_-]/_}"
@@ -49,6 +66,7 @@ gate_repo() { # gate_repo <repo dir> <base> <label>
   out="$(cd "$dir" && eval "$cmd" 2>&1)"; rc=$?
   mkdir -p "$STATE" 2>/dev/null  # only now: repos without a harness never get a .harness/
   if (( rc == 0 )); then echo "$fp" > "$key"; echo "$fp pass $(date +%Y-%m-%d)" > "$STATE/last-check$LC_SUFFIX"; rm -f "$failkey"; return 0; fi
+  grep -qiE "$ENV_RE" <<<"$out" && { ENVFAIL+=" $label ($(grep -iE "$ENV_RE" <<<"$out" | head -1 | cut -c1-120))"; return 0; }
   FAILED=1; RERAN=1; STILL+=" $label"
   echo "$fp" > "$failkey" 2>/dev/null
   REPORT+="---- $label: check-fast failed (failure lines, then the last lines)"$'\n'"$(fail_summary "$out")"$'\n'
@@ -59,7 +77,7 @@ if (( ! SUB )) && [[ -n "$ws" && -z "$(git -C "$HOOK_CWD" rev-parse --show-tople
   STATE="$ws/.harness"
   while IFS=$'\t' read -r name path base; do
     [[ -n "$name" && -d "$ws/$path" ]] || continue
-    b="${HARNESS_BASE:-${base:+origin/$base}}"; [[ -n "$b" ]] || b="$(default_base "$ws/$path")"
+    b="${base:+origin/$base}"  # the manifest's base, else the member's own (repo_base)
     st="$(member_state "$ws/$path")"
     if [[ "$st" != present ]]; then changed_since "$ws/$path" "$b" && SKIPPED+=" $name ($st harness)"; continue; fi
     LC_SUFFIX="-${name//[^A-Za-z0-9_-]/_}"
@@ -68,7 +86,7 @@ if (( ! SUB )) && [[ -n "$ws" && -z "$(git -C "$HOOK_CWD" rev-parse --show-tople
 else
   root="$(repo_root)"; [[ -n "$root" ]] || exit 0
   STATE="$root/.harness"
-  gate_repo "$root" "${HARNESS_BASE:-$(default_base "$root")}" "repo"
+  gate_repo "$root" "" "repo"
 fi
 if (( SUB )); then  # remember a red implementer branch: the Bash guard refuses to merge it (subagents can't be held open)
   red="$(cd "$HOOK_CWD" && cd "$(git rev-parse --git-common-dir)" && pwd -P)/harness-red"
@@ -80,6 +98,11 @@ if (( SUB )); then  # remember a red implementer branch: the Bash guard refuses 
 fi
 BLOCKS="$STATE/stop-blocks"
 (( ACTIVE )) || rm -f "$BLOCKS" 2>/dev/null  # a new stop chain
+if [[ -n "$ENVFAIL" ]]; then  # environment, not code: say so, never block on it
+  msg="agent-harness: check-fast could not run (environment, not your change) in:$ENVFAIL. Not verified: start it, then make check-fast."
+  msg="${msg//\\/\\\\}"; msg="${msg//\"/\\\"}"; msg="$(tr -d '\000-\037' <<<"$msg")"
+  (( FAILED )) && REPORT+="$msg"$'\n' || printf '{"systemMessage":"%s"}\n' "$msg"
+fi
 (( FAILED == 0 )) && { rm -f "$BLOCKS" 2>/dev/null; exit 0; }
 n="$(cat "$BLOCKS" 2>/dev/null)"; [[ "$n" =~ ^[0-9]+$ ]] || n=0
 if (( ACTIVE )) && { (( RERAN == 0 || n >= MAX_BLOCKS )) || ! echo $((n + 1)) > "$BLOCKS" 2>/dev/null; }; then

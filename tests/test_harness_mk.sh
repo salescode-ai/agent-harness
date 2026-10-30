@@ -187,3 +187,15 @@ include harness.mk')"
   [ ! -e "$d/pwned" ] || _fail "a changed file name ran a command"
   assert_contains "$out" "ok.py" "plain name kept"; assert_not_contains "$out" "-rf" "option-like name dropped"
 }
+t_check_fast_changed_args_opt_out() {
+  local d bin out; d="$(mk_dir 'HARNESS_LINT = @true
+HARNESS_TEST_CHANGED = @echo runner-args:
+include harness.mk')"
+  bin="$d/bin"; mkdir "$bin"; printf '#!/bin/sh\necho "$*" >> %s/git.log\n' "$d" > "$bin/git"; chmod +x "$bin/git"
+  out="$(cd "$d" && PATH="$bin:$PATH" make -s check-fast HARNESS_BASE=x 2>&1)"
+  assert_contains "$(cat "$d/git.log")" "ls-files" "default: CHANGED is computed"
+  rm -f "$d/git.log"
+  out="$(cd "$d" && PATH="$bin:$PATH" make -s check-fast HARNESS_BASE=x HARNESS_TEST_CHANGED_ARGS= 2>&1)"
+  assert_contains "$out" "check-fast: OK" "runs"; [ ! -f "$d/git.log" ] || _fail "git ran with the args opted out: $(cat "$d/git.log")"
+  assert_eq "$(cd "$d" && make -s harness-base HARNESS_BASE=origin/dev)" "origin/dev" "harness-base prints the base"
+}

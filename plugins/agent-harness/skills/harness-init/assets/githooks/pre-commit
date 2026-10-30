@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# agent-harness git hook: runs the repo's check-fast gate. Skips quietly when the gate isn't wired.
+# agent-harness git hook: runs the repo's check-fast gate. Skips only while the gate isn't wired yet; a gate that
+# can't be resolved (broken Makefile) fails the commit. SKIP_HOOKS=1 skips it (people only: the Bash guard refuses
+# it for agents). HARNESS_HOOK_STAGED_ONLY=1 tests the staged snapshot instead of the working tree.
+[ "${SKIP_HOOKS:-}" = 1 ] && { echo "harness: SKIP_HOOKS=1, skipping pre-commit"; exit 0; }
 # harness-init writes .harness/init-state.json first and sets "gate_wired": true last; skip until then
 if [ -f .harness/init-state.json ] && ! grep -qE '"gate_wired"[[:space:]]*:[[:space:]]*true' .harness/init-state.json; then
   echo "harness: setup in progress, skipping"; exit 0
@@ -25,5 +28,37 @@ if [ -n "$closed" ]; then
 fi
 [ -f scripts/harness/cmd.sh ] || { echo "harness: scripts/harness/cmd.sh missing, skipping"; exit 0; }
 cmd="$(bash scripts/harness/cmd.sh . check-fast)"; rc=$?
-case $rc in 0) ;; 3|4) echo "harness: check-fast not wired, skipping"; exit 0;; *) exit 0;; esac
-eval "$cmd"
+if [ $rc != 0 ]; then
+  # nothing to resolve the gate from, and init never wired it: not set up yet
+  if [ $rc = 3 ] && ! grep -qs '"gate_wired"[[:space:]]*:[[:space:]]*true' .harness/init-state.json \
+    && [ ! -f Makefile ] && [ ! -f makefile ] && [ ! -f GNUmakefile ] && [ ! -f .agents/harness.json ]; then
+    echo "harness: check-fast not wired, skipping"; exit 0
+  fi
+  echo "harness: cannot resolve the check-fast gate (scripts/harness/cmd.sh exit $rc):" >&2
+  make -n check-fast 2>&1 >/dev/null | tail -5 | sed 's/^/  /' >&2
+  echo "  Run make -n check-fast and fix the Makefile (or .agents/harness.json)." >&2
+  exit 1
+fi
+dirty="$( { git diff --name-only; git ls-files --others --exclude-standard; } | grep -vE '^docs/|\.md$' | sort -u)"
+[ -n "$dirty" ] || { eval "$cmd"; exit; }
+if [ "${HARNESS_HOOK_STAGED_ONLY:-}" != 1 ]; then
+  echo "harness: unstaged or untracked changes are part of this check ($(head -3 <<<"$dirty" | tr '\n' ' ' | sed 's/ $//')); HARNESS_HOOK_STAGED_ONLY=1 checks only what is staged" >&2
+  eval "$cmd"; exit
+fi
+# the staged snapshot in a scratch worktree (git write-tree honours the commit's index, GIT_INDEX_FILE)
+tree="$(git write-tree)" || exit 1
+tmp="$(mktemp -d)"; w="$tmp/w"
+cleanup() { (unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE; git worktree remove --force "$w" >/dev/null 2>&1); rm -rf "$tmp"; }
+trap cleanup EXIT
+(
+  unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE
+  git worktree add -q --detach "$w" HEAD >/dev/null 2>&1 && git -C "$w" read-tree -u --reset "$tree" \
+    || { echo "harness: could not check out the staged snapshot (no commit yet?); unset HARNESS_HOOK_STAGED_ONLY" >&2; exit 1; }
+  # shortcut: shares the usual gitignored dependency/env folders by symlink (as red-proof.sh); build output starts cold
+  for d in $(find . -maxdepth 3 \( -name node_modules -o -name .venv -o -name venv \) -type d -prune 2>/dev/null) .env .env.local; do
+    [ -e "$d" ] && [ ! -e "$w/$d" ] && { mkdir -p "$w/$(dirname "$d")"; ln -s "$PWD/${d#./}" "$w/${d#./}"; }
+  done
+  echo "harness: checking the staged snapshot only (HARNESS_HOOK_STAGED_ONLY=1)"
+  c="$(bash scripts/harness/cmd.sh "$w" check-fast)" || exit 1
+  cd "$w" && eval "$c"
+)

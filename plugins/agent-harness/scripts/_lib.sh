@@ -60,6 +60,16 @@ default_base() { # default_base <dir>: origin/HEAD's branch, else origin/main, e
   git -C "$1" rev-parse -q --verify origin/main >/dev/null 2>&1 && { echo origin/main; return; }
   echo origin/master
 }
+CODE_PATHS=(. ':(exclude)docs' ':(exclude)*.md' ':(exclude).harness')  # what counts as code for the stop gate
+code_fp() { # code_fp <dir>: checksum of HEAD, uncommitted code changes and untracked code files
+  ( cd "$1" 2>/dev/null || exit 0
+    { git rev-parse HEAD; git diff HEAD -- "${CODE_PATHS[@]}"
+      git ls-files -z --others --exclude-standard -- "${CODE_PATHS[@]}" | xargs -0 cksum 2>/dev/null; } 2>/dev/null | cksum | cut -d' ' -f1 )
+}
+session_file() { # session_file <dir>: where SessionStart records code_fp for this session (empty without a session id)
+  local sid; sid="$(json_get "d.get('session_id','')")"
+  [[ -n "$sid" ]] && echo "$1/.harness/session-${sid//[^A-Za-z0-9_-]/_}"
+}
 init_pending() { # init_pending <dir>: true while harness-init is mid-setup (init-state.json without "gate_wired": true)
   local f="$1/.harness/init-state.json"
   [[ -f "$f" ]] || return 1

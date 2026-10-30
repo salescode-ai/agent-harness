@@ -11,7 +11,7 @@ t_precommit_blocks_failing() {
   local d rc=0; d="$(_hook_repo false)"
   (cd "$d" && bash "$HOOKS/pre-commit") >/dev/null 2>&1 || rc=$?
   [ "$rc" != 0 ] || _fail "expected non-zero"
-  (cd "$d" && bash "$HOOKS/pre-push") >/dev/null 2>&1 && _fail "pre-push should fail" || true
+  (cd "$d" && bash "$HOOKS/pre-push" </dev/null) >/dev/null 2>&1 && _fail "pre-push should fail" || true
 }
 t_precommit_passes() {
   local d; d="$(_hook_repo true)"
@@ -30,7 +30,7 @@ t_hooks_skip_mid_init() {
   local d out h; d="$(_hook_repo false)"; mkdir "$d/.harness"
   echo '{"layers_done": []}' > "$d/.harness/init-state.json"
   for h in pre-commit pre-push; do
-    out="$(cd "$d" && bash "$HOOKS/$h" 2>&1)" || _fail "$h blocked mid-init"
+    out="$(cd "$d" && bash "$HOOKS/$h" </dev/null 2>&1)" || _fail "$h blocked mid-init"
     assert_contains "$out" "harness: setup in progress, skipping" "$h msg"
   done
   echo '{"gate_wired": true}' > "$d/.harness/init-state.json"
@@ -65,4 +65,56 @@ t_precommit_blocks_status_done_in_place() {
   printf '\nnote\n' >> "$d/docs/plans/active/2026-01-01-p.md"; git -C "$d" -c user.email=t@e -c user.name=t -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -qm x >/dev/null
   printf 'more\n' >> "$d/docs/plans/active/2026-01-01-p.md"; git -C "$d" add -A
   (cd "$d" && bash "$HOOKS/pre-commit") >/dev/null 2>&1 || _fail "editing an already-done plan is not a close"
+}
+t_hooks_fail_closed_when_gate_unresolvable() {
+  local d out rc h; d="$(_hook_repo true)"; mkdir "$d/.harness"
+  echo '{"gate_wired": true}' > "$d/.harness/init-state.json"
+  printf 'include missing.mk\n' >> "$d/Makefile"
+  for h in pre-commit pre-push; do
+    rc=0; out="$(cd "$d" && bash "$HOOKS/$h" </dev/null 2>&1)" || rc=$?
+    assert_eq "$rc" 1 "$h fails when make -n rejects the Makefile"
+    assert_contains "$out" "cannot resolve" "$h says why"; assert_contains "$out" "make -n check" "$h names the fix"
+    assert_contains "$out" "missing.mk" "$h shows make's error"
+  done
+  rm "$d/.harness/init-state.json"; rc=0
+  (cd "$d" && bash "$HOOKS/pre-commit" >/dev/null 2>&1) || rc=$?
+  assert_eq "$rc" 1 "no local init state (a teammate's clone) but a Makefile: still an error"
+  echo '{"layers_done": []}' > "$d/.harness/init-state.json"
+  (cd "$d" && bash "$HOOKS/pre-commit" >/dev/null 2>&1) || _fail "mid-setup still skips"
+}
+_staged_repo() { # committed a.sh; check-fast syntax-checks every *.sh
+  local d; d="$(_hook_repo 'for f in *.sh; do sh -n $$f || exit 1; done')"
+  ( cd "$d" && echo 'echo a' > a.sh && git init -q -b main && git add -A \
+    && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -qm init ) >/dev/null
+  echo "$d"
+}
+_commit() { RC=0; OUT="$(cd "$1" && shift && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false -c core.hooksPath="$HOOKS" commit -qm x "$@" 2>&1)" || RC=$?; }
+t_precommit_staged_snapshot() {
+  local d; d="$(_staged_repo)"
+  echo 'echo b' > "$d/b.sh"; git -C "$d" add b.sh; echo 'if then' > "$d/a.sh"   # good change staged, broken edit not
+  _commit "$d"; assert_eq "$RC" 1 "default: the working tree is tested"
+  assert_contains "$OUT" "unstaged or untracked changes are part of this check (a.sh)" "warning names them"
+  HARNESS_HOOK_STAGED_ONLY=1 _commit "$d"; assert_eq "$RC" 0 "staged-only: the commit is good on its own"
+  assert_eq "$(git -C "$d" worktree list | wc -l | tr -d ' ')" 1 "scratch worktree removed"
+  assert_eq "$(cat "$d/a.sh")" "if then" "unstaged edit untouched"
+  echo 'fi fi' > "$d/c.sh"; git -C "$d" add c.sh; rm "$d/c.sh"           # broken file staged, deleted on disk
+  HARNESS_HOOK_STAGED_ONLY=1 _commit "$d"; assert_eq "$RC" 1 "staged-only: a broken staged file fails"
+  git -C "$d" rm -q --cached c.sh; echo 'echo a' > "$d/a.sh"; echo 'echo d' > "$d/d.sh"; git -C "$d" add d.sh
+  _commit "$d"; assert_eq "$RC" 0 "clean tree"; assert_not_contains "$OUT" "unstaged" "no warning"
+}
+_push() { # _push <dir> <stdin> [env...]: run pre-push with git's ref lines
+  local d="$1" in="$2"; shift 2; RC=0
+  OUT="$(cd "$d" && printf '%s\n' "$in" | env "$@" bash "$HOOKS/pre-push" 2>&1)" || RC=$?
+}
+t_prepush_tests_only_what_is_pushed() {
+  local d h z=0000000000000000000000000000000000000000; d="$(_staged_repo)"; h="$(git -C "$d" rev-parse HEAD)"
+  printf 'check-fast:\n\t@true\ncheck:\n\t@false\n' > "$d/Makefile"
+  _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 2 "the checked-out branch runs check"
+  _push "$d" "refs/tags/v1 $h refs/tags/v1 $z"; assert_eq "$RC" 0 "tag push skips"; assert_contains "$OUT" "skipping" "says so"
+  _push "$d" "(delete) $z refs/heads/old $h"; assert_eq "$RC" 0 "branch deletion skips"
+  _push "$d" "refs/heads/other 1111111111111111111111111111111111111111 refs/heads/other $z"
+  assert_eq "$RC" 0 "another branch skips"; assert_contains "$OUT" "checked-out" "names why"
+  _push "$d" "refs/heads/main $h refs/heads/main $z" SKIP_HOOKS=1; assert_eq "$RC" 0 "SKIP_HOOKS=1 skips"
+  assert_contains "$OUT" "SKIP_HOOKS=1" "says so"
+  RC=0; (cd "$d" && SKIP_HOOKS=1 bash "$HOOKS/pre-commit" >/dev/null 2>&1) || RC=$?; assert_eq "$RC" 0 "pre-commit too"
 }

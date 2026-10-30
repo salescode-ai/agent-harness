@@ -20,6 +20,12 @@ stale_assets() { # stale_assets <root>: one line when plugin-owned harness scrip
   [[ "$n" =~ ^[0-9]+$ ]] && (( n > 0 )) && echo "[agent-harness] harness scripts are older than the plugin ($n files) — run /agent-harness:harness-upgrade"
   return 0
 }
+record_start() { # record_start <dir>: this session's starting code_fp, kept across resume/compact (first write wins)
+  local f; f="$(session_file "$1")"; [[ -n "$f" && ! -f "$f" ]] || return 0
+  mkdir -p "$1/.harness" 2>/dev/null && code_fp "$1" > "$f" 2>/dev/null
+  find "$1/.harness" -maxdepth 1 -name 'session-*' -mtime +7 -delete 2>/dev/null
+  return 0
+}
 ws="$(workspace_root)"
 if [[ -n "$ws" && -z "$(git -C "$HOOK_CWD" rev-parse --show-toplevel 2>/dev/null)" ]]; then
   echo "[agent-harness] workspace: $(basename "$ws") — each change goes to the repo that owns it (see AGENTS.md); read that repo's AGENTS.md before editing it"
@@ -31,6 +37,7 @@ if [[ -n "$ws" && -z "$(git -C "$HOOK_CWD" rev-parse --show-toplevel 2>/dev/null
     st="$(member_state "$ws/$path")"
     [[ "$st" == present ]] && { init_pending "$ws/$path" || ! harness_cmd "$ws/$path" check-fast >/dev/null 2>&1; } && st="present (gate not wired)"
     echo "[agent-harness]   $name: ${br:-detached} · $dirty uncommitted · harness $st"
+    [[ -f "$ws/$path/AGENTS.md" ]] && record_start "$ws/$path"
   done <<<"$(workspace_members "$ws")"
   print_plan "$ws" "" ""
   stale_assets "$ws"
@@ -38,6 +45,7 @@ if [[ -n "$ws" && -z "$(git -C "$HOOK_CWD" rev-parse --show-toplevel 2>/dev/null
   exit 0
 fi
 root="$(repo_root)"; [[ -n "$root" && -f "$root/AGENTS.md" ]] || exit 0
+record_start "$root"
 branch="$(git -C "$root" branch --show-current 2>/dev/null)"
 dirty="$(git -C "$root" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
 echo "[agent-harness] branch: ${branch:-detached} · uncommitted files: $dirty"

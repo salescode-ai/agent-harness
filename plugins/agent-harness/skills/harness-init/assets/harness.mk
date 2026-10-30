@@ -41,6 +41,9 @@ HARNESS_DEV_BLOCK   ?=
 # Tests for changed files (receives the file list), usually scripts/harness/related-tests.sh:
 #   HARNESS_TEST_CHANGED = bash scripts/harness/related-tests.sh maven "./mvnw -B -q test"
 HARNESS_TEST_CHANGED ?=
+# What HARNESS_TEST_CHANGED receives (at {CHANGED}, else appended). Set it empty when the runner picks its own
+# tests: CHANGED (three git commands) is then never computed.
+HARNESS_TEST_CHANGED_ARGS ?= $(CHANGED)
 # 1 = a custom HARNESS_TEST_CHANGED (not related-tests.sh) was reviewed: harness-lint stops warning about it
 HARNESS_TEST_CHANGED_CONFIRMED ?=
 # Seconds the full suite took at init (its green baseline). With HARNESS_TEST_CHANGED empty and this <= 60,
@@ -86,7 +89,7 @@ _HARNESS_TARGETS += check-fast
 _HELP_check-fast := Quick gate (< 60 s): lint + typecheck + tests for changed files if configured
 check-fast: lint typecheck ## Quick gate (< 60 s): lint + typecheck + tests for changed files if configured
 ifneq ($(strip $(HARNESS_TEST_CHANGED)),)
-	$(call harness_args,$(HARNESS_TEST_CHANGED),{CHANGED},$(CHANGED))
+	$(call harness_args,$(HARNESS_TEST_CHANGED),{CHANGED},$(HARNESS_TEST_CHANGED_ARGS))
 else
 ifeq ($(shell [ "$(strip $(HARNESS_TEST_SECS))" -le 60 ] 2>/dev/null && echo y),y)
 	$(HARNESS_TEST_ALL)
@@ -94,6 +97,12 @@ endif
 endif
 	@echo "check-fast: OK"
 endif
+
+# Used by the stop hook (not listed in help): the base branch this checkout is compared with.
+.PHONY: harness-base
+harness-base:
+	$(info $(HARNESS_BASE))
+	@:
 
 # Used by harness-lint (not listed in help): which changed files check-fast would test. Runs no tests.
 .PHONY: harness-test-plan

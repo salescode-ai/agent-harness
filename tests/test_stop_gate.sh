@@ -219,3 +219,33 @@ t_subagent_red_branch_marked_then_cleared() {
   _run_sub "$WT"
   [ ! -f "$m" ] || _fail "green stop clears the marker"
 }
+_start() { printf '{"cwd":"%s","session_id":"s-1","source":"startup"}' "$1" | "$PLUGIN/scripts/session-context.sh" >/dev/null 2>&1; }
+t_session_that_only_reads_is_not_gated() {
+  local d; d="$(_gate_repo false)"            # src.py already dirty when the session starts
+  _start "$d"; _run_gate "$d" ',"session_id":"s-1"'
+  assert_eq "$RC" 0 "nothing changed by this session"; assert_eq "$ERR" "" "silent"
+  printf '{"cwd":"%s","session_id":"s-1","source":"compact"}' "$d" | "$PLUGIN/scripts/session-context.sh" >/dev/null 2>&1
+  echo 'x=2' > "$d/src.py"; _run_gate "$d" ',"session_id":"s-1"'
+  assert_eq "$RC" 2 "a source edit in this session (start kept across compaction) is gated"
+  echo 'x=1' > "$d/src.py"; echo 'select 1;' > "$d/scratch.sql"; echo '# n' > "$d/notes.md"
+  _run_gate "$d" ',"session_id":"s-1"'; assert_eq "$RC" 2 "a new untracked source file counts"
+  rm "$d/scratch.sql"; _run_gate "$d" ',"session_id":"s-1"'; assert_eq "$RC" 0 "docs-only change does not"
+  _run_gate "$d" ',"session_id":"s-2"'; assert_eq "$RC" 2 "no recorded start: gates as before"
+}
+t_base_comes_from_the_repo() {
+  local d; d="$(_gate_repo false)"
+  printf 'harness-base:\n\t@echo main\n' >> "$d/Makefile"
+  ( cd "$d" && git add -A && git -c core.hooksPath=/dev/null commit -qm work ) >/dev/null   # 1 commit ahead of origin/main
+  _run_gate "$d"; assert_eq "$RC" 0 "the repo's base (main) has nothing ahead"
+  assert_contains "$(cat "$d/.harness/base-cache")" "main" "cached per HEAD"
+  printf 'harness-base:\n\t@echo origin/main\n' > "$d/Makefile.new"; mv "$d/Makefile.new" "$d/Makefile"
+  printf 'check-fast:\n\t@false\n' >> "$d/Makefile"; git -C "$d" commit -qam base2 >/dev/null
+  _run_gate "$d"; assert_eq "$RC" 2 "a new HEAD asks again: origin/main is behind"
+}
+t_environment_failure_warns_not_blocks() {
+  local d out; d="$(_gate_repo 'echo "Docker is not running"; exit 2')"
+  RC=0; out="$(printf '{"cwd":"%s"}' "$d" | "$GATE" 2>/dev/null)" || RC=$?
+  assert_eq "$RC" 0 "Docker down does not block"
+  assert_contains "$out" '"systemMessage":"agent-harness: check-fast could not run (environment, not your change) in: repo' "warns"
+  [ ! -e "$d/.harness/stop-blocks" ] || _fail "no block counted"
+}

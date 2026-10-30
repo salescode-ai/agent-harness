@@ -45,3 +45,12 @@ t_red_committed_branch_against_base() {
   _rp "$d" main; assert_eq "$RC" 0 "exit"; assert_contains "$OUT" "red: proven" "committed change vs main"
   _rp "$d"; assert_contains "$OUT" "red: n/a" "no remote: base HEAD, nothing uncommitted"
 }
+t_red_explicit_base_is_fork_point() {
+  local d; d="$(_rp_repo)"; git -C "$d" checkout -q -b KEY-2-double
+  ( cd "$d" && git checkout -q main && echo 'other() { :; }' > src/other.sh && git add -A \
+    && git -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -qm base-moves && git checkout -q KEY-2-double ) >/dev/null
+  echo 'double() { echo $(($1*2)); }' >> "$d/src/calc.sh"
+  printf '. src/calc.sh\n[ "$(double 2)" = 4 ]\n' > "$d/tests/test_double.sh"
+  _rp "$d" main; assert_eq "$RC" 0 "exit"; assert_contains "$OUT" "red: proven" "proven"
+  assert_contains "$OUT" "1 production file(s) reverted to $(git -C "$d" merge-base HEAD main | cut -c1-9)" "only the branch's file, vs the fork point"
+}
