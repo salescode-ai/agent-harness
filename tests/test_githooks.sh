@@ -11,7 +11,8 @@ t_precommit_blocks_failing() {
   local d rc=0; d="$(_hook_repo false)"
   (cd "$d" && bash "$HOOKS/pre-commit") >/dev/null 2>&1 || rc=$?
   [ "$rc" != 0 ] || _fail "expected non-zero"
-  (cd "$d" && bash "$HOOKS/pre-push" </dev/null) >/dev/null 2>&1 && _fail "pre-push should fail" || true
+  rc=0; (cd "$d" && bash "$HOOKS/pre-push" </dev/null) >/dev/null 2>&1 || rc=$?
+  [ "$rc" != 0 ] || _fail "pre-push should fail"
 }
 t_precommit_passes() {
   local d; d="$(_hook_repo true)"
@@ -150,7 +151,45 @@ t_prepush_tests_the_pushed_commit() {
   assert_eq "$(git -C "$d" worktree list | wc -l | tr -d ' ')" 1 "scratch worktree removed"
   echo 'echo b' > "$d/b.sh"
   _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 0 "clean tree passes"
-  assert_contains "$OUT" "in place" "clean tree runs in place"
+}
+t_prepush_dirty_tree_warns_like_precommit() {
+  # in place (the default) a dirty tree is part of the verdict: say so as pre-commit does; a clean tree adds nothing
+  local d h z=0000000000000000000000000000000000000000; d="$(_staged_repo)"
+  printf 'check:\n\t@echo GATE-OK\n' > "$d/Makefile"; git -C "$d" -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qam mk
+  h="$(git -C "$d" rev-parse HEAD)"; echo 'echo u' > "$d/u.sh"
+  _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 0 "dirty: $OUT"
+  assert_contains "$OUT" "unstaged or untracked changes are part of this check (u.sh)" "the pre-commit warning"
+  assert_contains "$OUT" "HARNESS_HOOK_STAGED_ONLY=1 checks only the pushed commit" "names the opt-in"
+  rm "$d/u.sh"; _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 0 "clean: $OUT"
+  assert_eq "$OUT" "GATE-OK" "a clean tree prints nothing extra"
+}
+t_prepush_snapshot_checks_the_pushed_branch_not_head() {
+  # git push origin other: the hook gets other's sha on stdin; snapshot mode checks that commit, not HEAD
+  local d r; d="$(_staged_repo)"; r="$(mktemp -d)"; git init -q --bare "$r"
+  printf 'check:\n\t@for f in *.sh; do sh -n $$f || exit 1; done\n' > "$d/Makefile"
+  ( cd "$d" && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qam mk && git remote add origin "$r" \
+    && git checkout -qb bad && echo 'if then' > b.sh && git add b.sh && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qm bad \
+    && git checkout -qb good main && echo 'echo g' > g.sh && git add g.sh && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qm good \
+    && git checkout -q bad ) >/dev/null 2>&1                                  # HEAD broken, good branch fine
+  RC=0; OUT="$(cd "$d" && HARNESS_HOOK_STAGED_ONLY=1 git -c core.hooksPath="$HOOKS" push -q origin good 2>&1)" || RC=$?
+  assert_eq "$RC" 0 "the pushed good branch is checked, not the broken HEAD: $OUT"
+  assert_contains "$OUT" "scratch worktree" "checked in a scratch worktree"
+  git -C "$d" checkout -q good
+  RC=0; OUT="$(cd "$d" && HARNESS_HOOK_STAGED_ONLY=1 git -c core.hooksPath="$HOOKS" push -q origin bad 2>&1)" || RC=$?
+  assert_eq "$RC" 1 "the pushed broken branch fails though HEAD is fine: $OUT"
+  RC=0; OUT="$(cd "$d" && git -c core.hooksPath="$HOOKS" push -q origin bad 2>&1)" || RC=$?
+  assert_eq "$RC" 0 "in place, another branch can't be checked from the working tree: skipped: $OUT"
+  assert_contains "$OUT" "HARNESS_HOOK_STAGED_ONLY=1 checks it" "names the opt-in"
+  assert_eq "$(git -C "$d" worktree list | wc -l | tr -d ' ')" 1 "scratch worktrees removed"
+}
+t_prepush_broken_commit_uncommitted_fix_by_mode() {
+  local d h z=0000000000000000000000000000000000000000; d="$(_staged_repo)"
+  printf 'check:\n\t@for f in *.sh; do sh -n $$f || exit 1; done\n' > "$d/Makefile"
+  ( cd "$d" && git add Makefile && echo 'if then' > b.sh && git add b.sh \
+    && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qm broken && echo 'echo b' > b.sh ) >/dev/null
+  h="$(git -C "$d" rev-parse HEAD)"
+  _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 0 "in place: the fixed tree passes: $OUT"
+  _push "$d" "refs/heads/main $h refs/heads/main $z" HARNESS_HOOK_STAGED_ONLY=1; assert_eq "$RC" 2 "snapshot: the broken commit fails: $OUT"
 }
 t_prepush_dirty_tree_checks_in_place_by_default() {
   # a scratch worktree lacks gitignored inputs (local config, generated code, build caches): opt-in only
