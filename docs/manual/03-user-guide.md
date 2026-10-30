@@ -295,6 +295,13 @@ The stop gate runs `check-fast` only when source changed (uncommitted files outs
 
 **Parallel implementers.** The same gate runs when a subagent finishes, but only for a subagent working in its own linked git worktree (for example, implementers a spec-driven flow starts one per ticket). Claude Code (2.1.x) records a block on a subagent's stop but doesn't keep the subagent working, so the gate enforces at the merge instead: when `check-fast` fails in that worktree, the branch is recorded as red in `.git/harness-red/<branch>` (shared by all worktrees), the subagent's transcript gets the failures and a hint to run the `setup` target if dependencies are missing, and the Bash guard denies `git merge`, `git cherry-pick` or `git pull .` of that branch. The marker clears when a later stop in that worktree passes (for example, after the orchestrator sends the failures back to the implementer); after fixing it some other way, run `check-fast` there and delete the marker as the deny message says. Git hooks still refuse red commits in every worktree. Reviewers and explorers working in the main checkout are never blocked by the main session's unfinished work. `AGENTS.md` → Agent skills rule 8 covers the rest of such a flow: one plan for the spec with every ticket key in `Ticket:`, worktrees under `.worktrees/`, harness-verify on the integration branch after the final review, and ticket transitions only after a yes. Existing repos get rule 8 from `harness-upgrade` (migration `agents-parallel`).
 
+### Lines your targets can print
+
+Two lines a repo's own targets can print to talk to the harness (each may start with the target's name, `typecheck: setup error: …`):
+
+- `setup error: <what>` from `check-fast` (stdout or stderr), when the gate can't run here (base not fetched, no local database): the stop gate warns `check-fast could not run (environment, not your change)` instead of blocking. Never for a code failure.
+- `needs you: <what>` on stdout from a setup step (`setup-deps`, `setup-services`, `setup-migrate`, `seed`, `smoke`) that exits 0 but can't finish without a person: `make setup` lists it under "needs you" with the target's name and shows the step as `✓ (needs you)`.
+
 ## 3.10 Working alongside other skill packs
 
 The harness holds the facts; packs bring process. Any pack works inside it if it follows `AGENTS.md` → `## Agent skills`:

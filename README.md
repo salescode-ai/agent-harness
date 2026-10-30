@@ -127,6 +127,13 @@ The audit measures the level (`Experimental`, `Functional`, `Robust`, `Enterpris
 | Git hooks: pre-commit runs `check-fast`, pre-push runs `check` | on | If a hook manager exists (husky, lefthook, pre-commit), add to its config. Otherwise use `.githooks/` with `core.hooksPath`, set by `make setup`. The session hook warns when the hooks are off. |
 | CI workflow | opt-in | Generated only on a yes, after the explanation is shown. It is the only check nobody can skip; required for Enterprise. |
 
+### Lines your targets can print
+
+Two lines a repo's own targets can print to talk to the harness (each may start with the target's name, `typecheck: setup error: …`):
+
+- `setup error: <what>` from `check-fast` (stdout or stderr), when the gate can't run here (base not fetched, no local database): the stop gate warns `check-fast could not run (environment, not your change)` instead of blocking. Never for a code failure.
+- `needs you: <what>` on stdout from a setup step (`setup-deps`, `setup-services`, `setup-migrate`, `seed`, `smoke`) that exits 0 but can't finish without a person: `make setup` lists it under "needs you" with the target's name and shows the step as `✓ (needs you)`.
+
 ## Using a runner other than make
 
 Register commands in `.agents/harness.json`. Hooks, the verifier, the audit and git hooks read it first and fall back to `make <target>`:
@@ -143,7 +150,7 @@ Register commands in `.agents/harness.json`. Hooks, the verifier, the audit and 
 ## Settings
 
 - `HARNESS_STOP_GATE=0`: turn off the stop gate (and the red-branch check for worktree subagents) for a session.
-- `HARNESS_HOOK_STAGED_ONLY=1`: pre-commit runs `check-fast` on the staged snapshot, and pre-push runs `check` on the pushed commit, in a scratch worktree (`node_modules`/`.venv`/`.env`/`.env.local` linked; other gitignored files are absent and build output starts cold) instead of the working tree.
+- `HARNESS_HOOK_STAGED_ONLY=1`: pre-commit runs `check-fast` on the staged snapshot, and pre-push runs `check` on the pushed commit, in a scratch worktree (`node_modules`/`.venv`/`.env`/`.env.local` linked; other gitignored files are absent and build output starts cold) instead of the working tree. By default both hooks check the working tree in place and say when uncommitted code is part of the run.
 - `SKIP_HOOKS=1`: skip the pre-commit and pre-push hooks once (for people; the Bash guard refuses it for agents).
 - `HARNESS_GUARD=0`: turn off the command and file guards for a session (not recommended).
 - `HARNESS_SHARED_SERVICES=1`: `make setup` shares local services instead of giving the checkout its own compose project (and each linked worktree its own free ports; the main checkout keeps the `.env.example` ports).
