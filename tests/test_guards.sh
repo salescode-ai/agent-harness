@@ -127,3 +127,53 @@ t_make_variable_overrides_ask() {
     assert_eq "$(guard "$c")" "" "allow: $c"
   done
 }
+t_skip_hooks_set_any_way_denied() {
+  # the hooks skip on SKIP_HOOKS=1 from the environment, however it got there
+  local c
+  for c in 'export SKIP_HOOKS=1 && git commit -m x' 'export SKIP_HOOKS=1; git push' 'env SKIP_HOOKS=1 git commit -m x' \
+           'SKIP_HOOKS=1 git commit -m x' 'declare -x SKIP_HOOKS=1; git merge f' 'SKIP_HOOKS=1; export SKIP_HOOKS; git push' \
+           'export SKIP_HOOKS=1' 'SKIP_HOOKS=1 make release' 'export HUSKY=0 && git commit -m x' 'export SKIP=lint; git commit -m x'; do
+    assert_contains "$(guard "$c")" '"deny"' "deny: $c"
+  done
+  for c in 'git commit -m "export SKIP_HOOKS=1 is refused"' 'echo SKIP_HOOKS' 'grep -rn SKIP_HOOKS= scripts' 'export FOO=1; git status'; do
+    assert_eq "$(guard "$c")" "" "allow: $c"
+  done
+}
+t_guard_fails_closed_on_internal_error() {
+  # a parser crash must not turn into "allow": the command could be anything
+  local out
+  out="$(printf '{"tool_input":{"command":"git push"},"cwd":"/"}' | python3 -c '
+import runpy, shlex, sys
+def boom(*a, **k): raise RuntimeError("boom")
+shlex.shlex = boom
+runpy.run_path(sys.argv[1], run_name="__main__")' "$PLUGIN/scripts/guard_bash.py" 2>/dev/null)" || true
+  assert_contains "$out" '"ask"' "an internal error asks instead of allowing"
+}
+# File guard: fguard <file> <content> (Write) or fguard <file> <old> <new> (Edit); echoes its stdout (empty = allow)
+fguard() {
+  python3 -c 'import json,sys
+a=sys.argv[1:]; ti={"file_path":a[0]}
+if len(a)==2: ti["content"]=a[1]
+else: ti["old_string"],ti["new_string"]=a[1],a[2]
+print(json.dumps({"cwd":"/","tool_input":ti}))' "$@" | bash "$PLUGIN/scripts/guard-files.sh"
+}
+t_init_state_gate_cannot_be_switched_off() {
+  # the git hooks skip while init-state.json lacks "gate_wired": true; once wired, an agent must not unwire it
+  local d f out; d="$(mktemp -d)"; mkdir "$d/.harness"; f="$d/.harness/init-state.json"
+  out="$(fguard "$f" '{"gate_wired": false}')"; assert_eq "$out" "" "fresh setup may write it"
+  printf '{"layers_done": ["guides"], "gate_wired": false}\n' > "$f"
+  out="$(fguard "$f" '{"gate_wired": true}')"; assert_eq "$out" "" "init may wire the gate"
+  printf '{\n  "layers_done": ["guides"],\n  "gate_wired": true\n}\n' > "$f"
+  out="$(fguard "$f" '{}')"; assert_contains "$out" '"deny"' "Write {} over a wired gate"
+  out="$(fguard "$f" '"gate_wired": true' '"gate_wired": false')"; assert_contains "$out" '"deny"' "Edit unwires"
+  out="$(fguard "$f" '["guides"]' '["guides", "tools"]')"; assert_eq "$out" "" "other keys may change"
+  ( cd "$d" && git init -q )
+  local c
+  for c in "echo '{}' > .harness/init-state.json" "printf x | tee .harness/init-state.json" "sed -i '' s/true/false/ .harness/init-state.json" \
+           "cp /tmp/x .harness/init-state.json" "python3 -c \"open('.harness/init-state.json','w').write('{}')\""; do
+    assert_contains "$(cd "$d" && guard "$c")" '"deny"' "deny: $c"
+  done
+  assert_eq "$(cd "$d" && guard 'cat .harness/init-state.json')" "" "reading is fine"
+  printf '{"gate_wired": false}\n' > "$f"
+  assert_eq "$(cd "$d" && guard "echo '{}' > .harness/init-state.json")" "" "not wired yet: nothing to protect"
+}
