@@ -199,3 +199,11 @@ t_init_state_bypasses_closed() {
   assert_contains "$(cd "$d" && guard 'echo e30= | base64 -d > .harness/init-stat?.json')" '"ask"' "write through a glob"
   assert_eq "$(cd "$d" && guard 'npm test > $LOG 2>&1')" "" "an unrelated variable target"
 }
+t_hooks_off_prefix_on_other_command_allowed() {
+  # HUSKY=0 / SKIP=x before npm only affects npm; a later git in the same line still runs its hooks
+  local c
+  for c in 'HUSKY=0 npm ci && git status' 'SKIP=flake8 npm run lint; git diff'; do assert_eq "$(guard "$c")" "" "allow: $c"; done
+  for c in 'HUSKY=0 git commit -m x' 'npm ci && HUSKY=0 git push' 'SKIP=lint git commit -m x' 'HUSKY=0; git commit -m x'; do
+    assert_contains "$(guard "$c")" '"deny"' "deny: $c"
+  done
+}

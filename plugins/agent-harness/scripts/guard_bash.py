@@ -240,8 +240,10 @@ HOOKS_OFF_MSG = "Disabling git hooks via environment is blocked by INVARIANTS.md
 
 
 def hooks_off_names(env, argv):
-    """HOOKS_OFF names a segment sets: a prefix (`X=1 cmd`, `env X=1 cmd`), a bare `X=1`, or export/declare X[=1]."""
-    names = set(env)
+    """HOOKS_OFF names a segment sets: a bare `X=1`, export/declare X[=1], or a prefix (`X=1 cmd`, `env X=1 cmd`).
+    A prefix reaches only its own command: HUSKY/SKIP count before git, SKIP_HOOKS before anything."""
+    prog = os.path.basename(argv[0]) if argv else ""
+    names = set(env) if prog in ("", "git") else set(env) & {"SKIP_HOOKS"}
     if argv and os.path.basename(argv[0]) in DECLARERS:
         names |= {a.split("=", 1)[0] for a in argv[1:] if not a.startswith("-")}
     return names & HOOKS_OFF
