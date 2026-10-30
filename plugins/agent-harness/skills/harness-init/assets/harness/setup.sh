@@ -64,6 +64,7 @@ s.close(); c=socket.socket(); c.settimeout(0.5); sys.exit(c.connect_ex(("127.0.0
 }
 port_ours() { has docker && docker ps --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Ports}}' 2>/dev/null | grep -q ":$1->"; }
 ev() { sed -n "s/^\(export \)\{0,1\}$2=//p" "$1" 2>/dev/null | head -1 | sed "s/^[\"']//; s/[\"']\$//"; }
+cdef() { [ -n "$COMPOSE" ] && sed -n "s/.*\${$1:-\([0-9]*\)}.*/\1/p" "$COMPOSE" | head -1; }  # ${NAME_PORT:-5442} -> 5442
 if [ -f .env.example ]; then
   [ -f .env ] || { cp .env.example .env; FRESH=1; }
   keys="$(sed -n 's/^\(export \)\{0,1\}\([A-Za-z_][A-Za-z0-9_]*\)=.*/\2/p' .env.example)"
@@ -75,7 +76,9 @@ if [ -f .env.example ]; then
 fi
 SHARED="${HARNESS_SHARED_SERVICES:-$(ev .env.local HARNESS_SHARED_SERVICES)}"
 if [ -f .env.example ] || [ -n "$COMPOSE" ]; then
-  pk=""; [ -f .env.example ] && pk="$(printf '%s\n' $keys | grep '_PORT$')"
+  # port keys from .env.example and from ${NAME_PORT:-…} in the compose file (a repo may have only the latter)
+  pk="$( { [ -f .env.example ] && printf '%s\n' $keys | grep '_PORT$'
+    [ -n "$COMPOSE" ] && grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*_PORT(:?-[^}]*)?\}' "$COMPOSE" | sed -E 's/^\$\{([A-Za-z0-9_]+).*/\1/'; } | awk 'NF && !s[$0]++')"
   managed="COMPOSE_PROJECT_NAME DB_NAME $pk"
   new="$(mktemp)"; : > "$new"
   if [ "$SHARED" != 1 ]; then
@@ -93,7 +96,7 @@ print(*[x.getsockname()[1] for x in s])' "$n" 2>/dev/null)"
         # main checkout keeps the example's port while it is free or held by this compose project; otherwise,
         # and in linked worktrees (.git is a file), a free one. A value already in .env.local always wins.
         p="$(ev .env.local "$k")"
-        if [ -z "$p" ] && [ -z "$WT" ]; then p="$(ev .env.example "$k")"; [ -n "$p" ] && ! port_free "$p" && ! port_ours "$p" && p=""; fi
+        if [ -z "$p" ] && [ -z "$WT" ]; then p="$(ev .env.example "$k")"; [ -z "$p" ] && p="$(cdef "$k")"; [ -n "$p" ] && ! port_free "$p" && ! port_ours "$p" && p=""; fi
         [ -z "$p" ] && p="${1:-}"; shift 2>/dev/null
         [ -n "$p" ] && { echo "$k=$p" >> "$new"; PORTS="$PORTS ${k%_PORT}=$p"; export "$k=$p"; }
       done

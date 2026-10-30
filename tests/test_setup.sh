@@ -329,3 +329,14 @@ setup-migrate:
   _run "$d" >/dev/null
   assert_eq "$(cat "$d/seen" | tr '\n' ' ')" "svc=[] mig=[17777] " "services clean, migrate re-reads .env.local"
 }
+t_compose_only_ports_per_worktree() {
+  # no .env.example: ports come from ${NAME_PORT:-default} in the compose file, else every worktree binds the same one
+  local m w1 w2 bin a b; m="$(_su)"; w1="$(dirname "$m")/w1"; w2="$(dirname "$m")/w2"; bin="$(mktemp -d)"
+  printf '#!/bin/sh\n[ "$2" = version ] && { echo v2.24.6; exit 0; }\nexit 0\n' > "$bin/docker"; chmod +x "$bin/docker"
+  rm -f "$m/.env.example"; printf 'services:\n  db:\n    image: postgres:16\n    ports: ["${LOCAL_PG_PORT:-5442}:5432"]\n' > "$m/docker-compose.yml"
+  ( cd "$m" && git add -A && git -c core.hooksPath=/dev/null commit -qm c && git worktree add -q "$w1" -b w1 && git worktree add -q "$w2" -b w2 ) >/dev/null 2>&1
+  ( cd "$w1" && PATH="$bin:$PATH" make -s setup ) >/dev/null 2>&1; ( cd "$w2" && PATH="$bin:$PATH" make -s setup ) >/dev/null 2>&1
+  a="$(sed -n 's/^LOCAL_PG_PORT=//p' "$w1/.env.local")"; b="$(sed -n 's/^LOCAL_PG_PORT=//p' "$w2/.env.local")"
+  [ -n "$a" ] && [ -n "$b" ] || _fail "LOCAL_PG_PORT not assigned ('$a' '$b')"
+  [ "$a" != "$b" ] || _fail "same port in both worktrees ($a)"
+}
