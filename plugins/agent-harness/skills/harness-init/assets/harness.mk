@@ -10,6 +10,7 @@
 # T is kept literal and must match [A-Za-z0-9_./#,*?:@+=[] -] (no word starting with -), else `test` exits 2 before
 # running anything; changed file names outside [A-Za-z0-9_.@+=,:/-] are left out of CHANGED. `make test:*` is often
 # pre-approved, so neither may carry shell or make code.
+# A repo may describe what its targets really do: set _HELP_<target> := <text> after the include (any text prints verbatim).
 
 HARNESS_MK := $(lastword $(MAKEFILE_LIST))
 override T := $(value T)
@@ -58,6 +59,10 @@ CHANGED            = $(shell { git diff --name-only --diff-filter=ACMR $(HARNESS
 harness_changed = $(patsubst $(1)%,%,$(filter $(foreach e,$(2),$(1)%.$(e)),$(CHANGED)))
 # $(call harness_args,<command>,<placeholder>,<args>): args substituted at the placeholder, else appended
 harness_args = $(if $(findstring $(2),$(1)),$(subst $(2),$(3),$(1)),$(1) $(3))
+# $(call harness_sq,<text>): text safe inside single quotes in a recipe
+harness_sq = $(subst ','\'',$(1))
+# HARNESS_TEST_SECS if it is digits only, else empty: the value reaches a shell test, so it must not carry code
+_harness_secs = $(if $(strip $(subst 0,,$(subst 1,,$(subst 2,,$(subst 3,,$(subst 4,,$(subst 5,,$(subst 6,,$(subst 7,,$(subst 8,,$(subst 9,,$(1)))))))))))),,$(1))
 
 # Optional single-test selector: make test T=tests/test_auth.py
 T ?=
@@ -71,7 +76,7 @@ _HARNESS_TARGETS += help
 _HELP_help := List targets (delete this one if your Makefile already defines help)
 help: ## List targets (delete this one if your Makefile already defines help)
 	@echo "Agents: run only these make targets."
-	@$(foreach t,$(_HARNESS_TARGETS),printf '  %-14s %s\n' '$(t)' '$(_HELP_$(t))';)
+	@$(foreach t,$(_HARNESS_TARGETS),printf '  %-14s %s\n' '$(t)' '$(call harness_sq,$(_HELP_$(t)))';)
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(filter-out $(HARNESS_MK),$(MAKEFILE_LIST)) | awk 'BEGIN {FS=":.*## "} {printf "  %-14s %s\n", $$1, $$2}' || true
 endif
 
@@ -91,7 +96,7 @@ check-fast: lint typecheck ## Quick gate (< 60 s): lint + typecheck + tests for 
 ifneq ($(strip $(HARNESS_TEST_CHANGED)),)
 	$(call harness_args,$(HARNESS_TEST_CHANGED),{CHANGED},$(HARNESS_TEST_CHANGED_ARGS))
 else
-ifeq ($(shell [ "$(strip $(HARNESS_TEST_SECS))" -le 60 ] 2>/dev/null && echo y),y)
+ifeq ($(shell [ "$(call _harness_secs,$(strip $(HARNESS_TEST_SECS)))" -le 60 ] 2>/dev/null && echo y),y)
 	$(HARNESS_TEST_ALL)
 endif
 endif
