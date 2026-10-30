@@ -15,7 +15,7 @@ repo/
 ├── .claude/settings.json                                    [tools]
 ├── scripts/harness/  cmd.sh lint.sh setup.sh setup-proof.sh local-guard.sh sensor-proof.sh red-proof.sh gate-proof.sh dev-check.sh
 │   └── sensors/      registry.json  no-prod-data.sh  lib/diffscan.py  fixtures/   [sensors]
-├── .githooks/        pre-commit  pre-push                    [sensors]
+├── .githooks/        pre-commit  pre-push  snapshot.sh       [sensors]
 ├── docs/  ARCHITECTURE.md TESTING.md SETUP.md DECISIONS.md adr/ plans/ specs/ agents/ harness/AUDIT-LOG.md
 ├── .github/workflows/harness.yml   (only after a CI yes)   [sensors]
 ├── <module>/AGENTS.md (+ CLAUDE.md) (only where it earns its place) [guides]
@@ -244,7 +244,7 @@ Layer tools. The dependency inventory: one row per external dependency (Dependen
 | File | Purpose | Written by | Read by | Humans edit? |
 |---|---|---|---|---|
 | `.githooks/pre-commit` | Runs resolved `check-fast`. Prints `harness: setup in progress, skipping` while `.harness/init-state.json` lacks `"gate_wired": true`; skips with a one-line message when `cmd.sh` is missing (`harness: scripts/harness/cmd.sh missing, skipping`) or there is nothing to resolve the gate from (no Makefile or `.agents/harness.json`, gate never wired: `harness: check-fast not wired, skipping`). Any other resolution failure (a broken Makefile) prints make's error and `Run make -n check-fast …` and exits 1. Warns when unstaged or untracked code (outside `docs/`, `*.md`) is part of the run; `HARNESS_HOOK_STAGED_ONLY=1` runs check-fast on the staged snapshot in a scratch worktree instead. `SKIP_HOOKS=1` skips it. Before that, a staged plan close (a plan added under `docs/plans/done/` or `plans/done/`, or a `Status: done` line) runs `plan-check.sh fresh .harness/evidence/<plan file name>` and blocks with its message unless the evidence is a fresh PASS (`HARNESS_ALLOW_UNVERIFIED_DONE=1` skips only when `.harness/evidence/` does not exist). | init / `install-local.sh` | git (via `core.hooksPath .githooks`, set by `make setup`) or your hook manager | Prefer not |
-| `.githooks/pre-push` | Same, with `check`, but only when a pushed ref is the checked-out HEAD (reads git's ref lines; tags, deletions and other branches skip). No staged mode | same | same | Prefer not |
+| `.githooks/pre-push` | Same, with `check`, but only when a pushed ref is the checked-out HEAD (reads git's ref lines; tags, deletions and other branches skip). With uncommitted or untracked code it runs `check` on the pushed commit in a scratch worktree (`snapshot.sh`, shared with pre-commit); a clean tree runs in place | same | same | Prefer not |
 | Hook manager config | husky: `bash .githooks/pre-commit  # harness check-fast` in `.husky/pre-commit`; lefthook: `harness-check-fast` / `harness-check` commands; pre-commit: `repo: local` hooks `harness-check-fast`, `harness-check` (`stages: [pre-push]`) | init (Sensors layer) | the manager | Yes |
 | `docs/TESTING.md` | Test layout, what must be tested, fixtures and mocks, "a test proves a change only if it fails without it" | init (skeleton) | agents writing tests | Yes |
 | `.github/workflows/harness.yml` | CI: `make harness-lint`, then `make check` on PRs and pushes to main; weekly lint-only run | init, **only after a CI yes** | CI; `level.py` (Enterprise) | Yes (add toolchain setup) |

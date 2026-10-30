@@ -124,6 +124,7 @@ _push() { # _push <dir> <stdin> [env...]: run pre-push with git's ref lines
 t_prepush_tests_only_what_is_pushed() {
   local d h z=0000000000000000000000000000000000000000; d="$(_staged_repo)"; h="$(git -C "$d" rev-parse HEAD)"
   printf 'check-fast:\n\t@true\ncheck:\n\t@false\n' > "$d/Makefile"
+  ( cd "$d" && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qam mk ) >/dev/null; h="$(git -C "$d" rev-parse HEAD)"
   _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 2 "the checked-out branch runs check"
   _push "$d" "refs/tags/v1 $h refs/tags/v1 $z"; assert_eq "$RC" 0 "tag push skips"; assert_contains "$OUT" "skipping" "says so"
   _push "$d" "(delete) $z refs/heads/old $h"; assert_eq "$RC" 0 "branch deletion skips"
@@ -132,4 +133,22 @@ t_prepush_tests_only_what_is_pushed() {
   _push "$d" "refs/heads/main $h refs/heads/main $z" SKIP_HOOKS=1; assert_eq "$RC" 0 "SKIP_HOOKS=1 skips"
   assert_contains "$OUT" "SKIP_HOOKS=1" "says so"
   RC=0; (cd "$d" && SKIP_HOOKS=1 bash "$HOOKS/pre-commit" >/dev/null 2>&1) || RC=$?; assert_eq "$RC" 0 "pre-commit too"
+}
+t_prepush_tests_the_pushed_commit() {
+  # check must judge what is pushed: an uncommitted fix must not hide a broken commit, nor a half-edit block a good one
+  local d h z=0000000000000000000000000000000000000000; d="$(_staged_repo)"
+  printf 'check:\n\t@for f in *.sh; do sh -n $$f || exit 1; done\n' > "$d/Makefile"
+  ( cd "$d" && git add Makefile && echo 'if then' > b.sh && git add b.sh \
+    && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qm broken && echo 'echo b' > b.sh ) >/dev/null
+  h="$(git -C "$d" rev-parse HEAD)"
+  _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 2 "broken commit, fixed tree: blocked: $OUT"
+  assert_contains "$OUT" "scratch worktree" "says it checked the pushed commit"
+  assert_eq "$(cat "$d/b.sh")" "echo b" "working tree untouched"
+  ( cd "$d" && git add b.sh && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qm fix && echo 'if then' > b.sh ) >/dev/null
+  h="$(git -C "$d" rev-parse HEAD)"
+  _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 0 "good commit, broken edit: passes: $OUT"
+  assert_eq "$(git -C "$d" worktree list | wc -l | tr -d ' ')" 1 "scratch worktree removed"
+  echo 'echo b' > "$d/b.sh"
+  _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 0 "clean tree passes"
+  assert_contains "$OUT" "in place" "clean tree runs in place"
 }
