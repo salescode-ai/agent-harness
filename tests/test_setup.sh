@@ -350,3 +350,12 @@ t_compose_ports_main_checkout_keeps_env() {
   assert_not_contains "$(cat "$m/.env.local")" "DB_PORT=" "no default in the compose file: left to .env"
   assert_contains "$(cat "$m/.env.local")" "CACHE_PORT=47392" ".env beats the compose default"
 }
+t_target_reports_needs_you() {
+  # a step that can't finish without a person exits 0 (setup-proof must pass) but must not look done
+  local d out rc=0; d="$(_su 'setup-services:
+	@echo "x: needs you: set FOO"; echo "plain output kept"')"
+  out="$(_run "$d")" || rc=$?
+  assert_eq "$rc" 0 "exit 0"; assert_contains "$out" "plain output kept" "target output still shown"
+  assert_contains "$out" "services ✓ (needs you)" "step marked"
+  assert_contains "$out" "needs you: " "summary line"; assert_contains "$(grep '^needs you:' <<<"$out")" "setup-services: set FOO" "item named with its target"
+}

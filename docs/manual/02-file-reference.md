@@ -175,7 +175,7 @@ UI_CHANGED   = $(call harness_changed,ui/,ts tsx)
 HARNESS_LINT = @if [ -n "$(strip $(UI_CHANGED))" ]; then cd ui && npx eslint $(UI_CHANGED); else echo "lint: no changed UI files"; fi
 ```
 
-Repo-specific setup steps live in your `Makefile` (or `.agents/harness.json`) as `setup-deps`, `setup-services`, `setup-migrate`; `setup.sh` runs each one only if it resolves. `setup-smith` wires them. Your `setup-services` does not inherit the `*_PORT` values setup.sh picked as environment variables (Compose would let them override `--env-file`); it reads `.env.local`, and `setup-migrate` and `seed` get the ports re-read from `.env.local` after it.
+Repo-specific setup steps live in your `Makefile` (or `.agents/harness.json`) as `setup-deps`, `setup-services`, `setup-migrate`; `setup.sh` runs each one only if it resolves. A step that cannot finish without a person (no DB configured, a missing credential) exits 0 and prints a line `needs you: <what>` (or `<target>: needs you: <what>`): setup lists it under "needs you", shows the step as `✓ (needs you)` and skips smoke, while a fresh clone still passes `setup-proof`. `setup-smith` wires them. Your `setup-services` does not inherit the `*_PORT` values setup.sh picked as environment variables (Compose would let them override `--env-file`); it reads `.env.local`, and `setup-migrate` and `seed` get the ports re-read from `.env.local` after it.
 
 ### `.agents/harness.json`
 

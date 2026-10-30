@@ -2,6 +2,8 @@
 # setup.sh -- one-command dev setup (run from the repo root via `make setup`). Safe to re-run, never sudo,
 # never fetches secrets, never overwrites .env. Repo steps run only if they resolve; `setup` itself is never resolved (recursion).
 # Exit 1 only when a resolved step failed; "needs you" items alone exit 0.
+# A repo step that can't finish without a person exits 0 and prints a line `needs you: <what>` (optionally
+# `<target>: needs you: <what>`): it is listed under "needs you" and the step shows "✓ (needs you)".
 NEEDS=""; ST_deps="skipped"; ST_services="skipped"; ST_migrate="skipped"; ST_seed="skipped"; ST_smoke="skipped"; FAILED=""; RT_UNSET=""
 need() { NEEDS="${NEEDS:+$NEEDS, }$1"; }
 has() { command -v "$1" >/dev/null 2>&1; }
@@ -125,7 +127,14 @@ run_target() { # <var-suffix> <target> [fallback-cmd...]
   if [ "$rc" = 0 ] && [ -n "$cmd" ]; then :
   elif [ $# -gt 0 ]; then cmd="$*"
   else return 0; fi
-  if ( [ -n "$RT_UNSET" ] && unset $RT_UNSET; eval "$cmd" ); then eval "ST_$v='✓'"; else eval "ST_$v='✗'"; FAILED="$v"; fi
+  local log n; log="$(mktemp)"
+  # stdout goes through tee so "needs you:" lines can be read back; pipefail keeps the step's exit code
+  if ( set -o pipefail; ( [ -n "$RT_UNSET" ] && unset $RT_UNSET; eval "$cmd" ) | tee "$log" ); then eval "ST_$v='✓'"; else eval "ST_$v='✗'"; FAILED="$v"; fi
+  n="$(sed -n 's/^\([A-Za-z0-9_.-]*: \)\{0,1\}needs you: //p' "$log")"; rm -f "$log"
+  if [ -n "$n" ]; then
+    while IFS= read -r l; do need "$t: $l"; done <<<"$n"
+    eval "[ \"\$ST_$v\" = '✓' ] && ST_$v='✓ (needs you)'"
+  fi
 }
 run_target deps setup-deps
 # only when deps did not succeed: a repo passing `-s settings.xml` (or a registry extension) needs no ~/.m2 copy

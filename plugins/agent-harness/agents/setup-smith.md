@@ -14,7 +14,7 @@ You make `make setup` work on a fresh machine and in any git worktree. The gener
 
 1. Read `scan.json`. Check `docs/SETUP.md` for unresolved dependencies and ask the developer about each one: "Where can I read the details for X?" Accept a URL, another repo, a teammate, or "not needed locally".
 2. Wire the repo steps, each only if the repo has a real command for it:
-   - `setup-deps` (install), `setup-services`, `setup-migrate`, `seed`, `smoke`.
+   - `setup-deps` (install), `setup-services`, `setup-migrate`, `seed`, `smoke`. A step that cannot finish without a person (no DB configured, a missing credential) exits 0 and prints a line `needs you: <what>` (or `<target>: needs you: <what>`): setup lists it under "needs you", shows the step as `✓ (needs you)` and skips smoke, while a fresh clone still passes `setup-proof`.
    - Define them in the root `Makefile` (or register them in `.agents/harness.json`). Never define a target named `setup` that calls itself.
    - Skip a step rather than invent a stub. A missing step is reported as skipped.
    - A server app: set `HARNESS_HEALTH` (health URL or command) so agents use `make dev-check`, and list the run script under `make dev` in `HARNESS_DEV_BLOCK`. If its smoke boots the app, set `HARNESS_SETUP_SMOKE = 0` so setup does not start it before the database is configured.
