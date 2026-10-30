@@ -202,8 +202,8 @@ if (( reg_ok )) && [[ "$runner" == make && -f harness.mk ]] && command -v make >
   if [[ "$secs" =~ ^[0-9]+$ ]] && (( secs <= 60 )) && [[ "$mode" == none ]]; then srcs=""; fi  # full suite runs
   if [[ -n "$srcs" ]] && git ls-files --cached --others --exclude-standard 2>/dev/null | grep -E "$test_re" >/dev/null; then  # not grep -q: under pipefail its early exit SIGPIPEs git (141) on big repos
     case "$mode" in
-      related) untested=$(sed -n 's/^none: //p' <<<"$plan") ;;
-      custom)  untested=""; warn "check-fast: HARNESS_TEST_CHANGED does not use related-tests.sh, so changed source files ($(head -1 <<<"$srcs")…) may select no tests; wire scripts/harness/related-tests.sh (see layout.md), or set HARNESS_TEST_CHANGED_CONFIRMED = 1 once you have checked the custom selector" ;;
+      related|plan) untested=$(sed -n 's/^none: //p' <<<"$plan") ;;
+      custom)  untested=""; warn "check-fast: HARNESS_TEST_CHANGED does not use related-tests.sh, so changed source files ($(head -1 <<<"$srcs")…) may select no tests; wire scripts/harness/related-tests.sh (see layout.md), or set HARNESS_TEST_PLAN to a command that prints \"none: <file>\" for what it would not test (keeps this warning), or HARNESS_TEST_CHANGED_CONFIRMED = 1 once you have checked the custom selector" ;;
       custom-confirmed) untested="" ;;
       *)       untested="$srcs" ;;
     esac

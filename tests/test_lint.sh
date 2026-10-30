@@ -226,3 +226,14 @@ t_test_command_swallowing_exit_warns() {
   printf '%s\n' 'HARNESS_TEST_ONE = mvn -q test && :' > "$d/Makefile"
   out="$(_run "$d")" || true; assert_not_contains "$out" "ends in '; :'" "&& : keeps the exit code"
 }
+t_check_fast_custom_runner_test_plan() {
+  # a repo's own selector (confirmed) keeps the "tests nothing for <file>" warning through HARNESS_TEST_PLAN
+  local d out
+  d="$(_tp 'HARNESS_TEST_CHANGED = ./t changed\nHARNESS_TEST_CHANGED_ARGS =\nHARNESS_TEST_CHANGED_CONFIRMED = 1\nHARNESS_TEST_PLAN = bash plan.sh')"
+  printf 'echo "checking $#"; for f in "$@"; do case "$f" in *Bar.java) echo "none: $f";; esac; done\n' > "$d/plan.sh"
+  out="$(_run "$d")"
+  assert_contains "$out" "check-fast tests nothing for src/main/java/a/Bar.java" "plan names the untested source"
+  assert_not_contains "$out" "nothing for src/main/java/a/Foo.java" "tested source quiet"
+  assert_not_contains "$out" "does not use related-tests.sh" "no custom-runner warning"
+  assert_contains "$out" "harness-lint: OK" "warning only"
+}

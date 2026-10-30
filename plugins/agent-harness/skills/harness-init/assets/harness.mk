@@ -47,6 +47,10 @@ HARNESS_TEST_CHANGED ?=
 HARNESS_TEST_CHANGED_ARGS ?= $(CHANGED)
 # 1 = a custom HARNESS_TEST_CHANGED (not related-tests.sh) was reviewed: harness-lint stops warning about it
 HARNESS_TEST_CHANGED_CONFIRMED ?=
+# With a custom HARNESS_TEST_CHANGED, keeps harness-lint's "check-fast tests nothing for <file>" warning: a command
+# that gets the changed files (at {CHANGED}, else appended), runs no tests and prints "none: <file>" for each one
+# HARNESS_TEST_CHANGED would test nothing for (the format of related-tests.sh with RELATED_TESTS_DRY=1).
+HARNESS_TEST_PLAN ?=
 # Seconds the full suite took at init (its green baseline). With HARNESS_TEST_CHANGED empty and this <= 60,
 # check-fast runs the full suite (HARNESS_TEST_ALL). Both empty: check-fast runs no tests.
 HARNESS_TEST_SECS ?=
@@ -113,10 +117,14 @@ harness-base:
 .PHONY: harness-test-plan
 harness-test-plan:
 	$(info secs=$(strip $(HARNESS_TEST_SECS)))
-	$(info mode=$(if $(strip $(HARNESS_TEST_CHANGED)),$(if $(findstring related-tests.sh,$(HARNESS_TEST_CHANGED)),related,$(if $(filter 1,$(strip $(HARNESS_TEST_CHANGED_CONFIRMED))),custom-confirmed,custom)),none))
+	$(info mode=$(if $(strip $(HARNESS_TEST_CHANGED)),$(if $(findstring related-tests.sh,$(HARNESS_TEST_CHANGED)),related,$(if $(strip $(HARNESS_TEST_PLAN)),plan,$(if $(filter 1,$(strip $(HARNESS_TEST_CHANGED_CONFIRMED))),custom-confirmed,custom))),none))
 	$(foreach f,$(CHANGED),$(info file=$(f)))
 ifneq ($(findstring related-tests.sh,$(HARNESS_TEST_CHANGED)),)
 	@RELATED_TESTS_DRY=1; export RELATED_TESTS_DRY; $(patsubst @%,%,$(call harness_args,$(HARNESS_TEST_CHANGED),{CHANGED},$(CHANGED)))
+else ifneq ($(strip $(HARNESS_TEST_CHANGED)),)
+ifneq ($(strip $(HARNESS_TEST_PLAN)),)
+	@$(patsubst @%,%,$(call harness_args,$(HARNESS_TEST_PLAN),{CHANGED},$(CHANGED)))
+endif
 endif
 
 ifneq ($(HARNESS_DEFINE_LINT),0)
