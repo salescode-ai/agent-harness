@@ -252,10 +252,20 @@ t_environment_failure_warns_not_blocks() {
 t_environment_failure_phrasings() {
   # Docker missing (not just stopped) and a repo's own "setup error:" line are environment, not code
   local d out m
-  for m in 'Tests that need Postgres require Docker' 'bash: docker: command not found' 'zsh: command not found: docker' \
+  for m in 'Could not find a valid Docker environment. Please see logs' 'bash: docker: command not found' 'zsh: command not found: docker' \
            'setup error: no base branch for this checkout'; do
     d="$(_gate_repo "echo \"$m\"; exit 2")"
     RC=0; out="$(printf '{"cwd":"%s"}' "$d" | "$GATE" 2>/dev/null)" || RC=$?
     assert_eq "$RC" 0 "does not block: $m"; assert_contains "$out" "could not run (environment" "warns: $m"
+  done
+}
+t_real_failure_mentioning_docker_blocks() {
+  # a skip reason, test name or log line that mentions Docker is not an environment failure: the real failure blocks
+  local d m
+  for m in 'SKIPPED [1] tests/test_db.py:3: requires docker' 'FAILED tests/test_cli.py::test_prints_setup error_on_bad_flag' \
+           'Tests that need Postgres require Docker'; do
+    d="$(_gate_repo "echo \"$m\"; echo 'FAILED tests/test_x.py::test_a - assert 1 == 2'; exit 2")"
+    RC=0; printf '{"cwd":"%s"}' "$d" | "$GATE" >/dev/null 2>&1 || RC=$?
+    assert_eq "$RC" 2 "blocks: $m"
   done
 }
