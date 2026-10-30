@@ -127,9 +127,13 @@ run_target() { # <var-suffix> <target> [fallback-cmd...]
   if [ "$rc" = 0 ] && [ -n "$cmd" ]; then :
   elif [ $# -gt 0 ]; then cmd="$*"
   else return 0; fi
-  local log n; log="$(mktemp)"
-  # stdout goes through tee so "needs you:" lines can be read back; pipefail keeps the step's exit code
-  if ( set -o pipefail; ( [ -n "$RT_UNSET" ] && unset $RT_UNSET; eval "$cmd" ) | tee "$log" ); then eval "ST_$v='✓'"; else eval "ST_$v='✗'"; FAILED="$v"; fi
+  local log n i z=-1; log="$(mktemp)"
+  # stdout is copied to $log by a tee in a process substitution, not a pipe: the step's exit code is its own, and a
+  # process it leaves running (a server, a watcher) holding stdout doesn't make setup wait. PYTHONUNBUFFERED: python
+  # would block-buffer the pipe and show a long step's lines only at its end.
+  if ( [ -n "$RT_UNSET" ] && unset $RT_UNSET; export PYTHONUNBUFFERED=1; eval "$cmd" ) > >(tee "$log"); then eval "ST_$v='✓'"; else eval "ST_$v='✗'"; FAILED="$v"; fi
+  # tee may lag the step's exit: read the log once it stops growing (at most ~2 s)
+  for i in 1 2 3 4 5 6 7 8 9 10; do n="$(wc -c < "$log")"; [ "$n" = "$z" ] && break; z="$n"; sleep 0.2; done
   n="$(sed -n 's/^\([A-Za-z0-9_.-]*: \)\{0,1\}needs you: //p' "$log")"; rm -f "$log"
   if [ -n "$n" ]; then
     while IFS= read -r l; do need "$t: $l"; done <<<"$n"
@@ -138,7 +142,7 @@ run_target() { # <var-suffix> <target> [fallback-cmd...]
 }
 run_target deps setup-deps
 # only when deps did not succeed: a repo passing `-s settings.xml` (or a registry extension) needs no ~/.m2 copy
-if [ "$ST_deps" != '✓' ] && [ -f settings.xml ] && [ ! -f "$HOME/.m2/settings.xml" ]; then need "maven credentials: copy settings.xml to ~/.m2 and add your server login"; fi
+if [ "${ST_deps#✓}" = "$ST_deps" ] && [ -f settings.xml ] && [ ! -f "$HOME/.m2/settings.xml" ]; then need "maven credentials: copy settings.xml to ~/.m2 and add your server login"; fi
 dc=""
 if [ -n "$COMPOSE" ]; then
   if has docker; then

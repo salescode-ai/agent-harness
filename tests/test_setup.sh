@@ -359,3 +359,29 @@ t_target_reports_needs_you() {
   assert_contains "$out" "services ✓ (needs you)" "step marked"
   assert_contains "$out" "needs you: " "summary line"; assert_contains "$(grep '^needs you:' <<<"$out")" "setup-services: set FOO" "item named with its target"
 }
+t_step_background_process_does_not_block() {
+  # a step may leave a process running (a dev server, a watcher) that keeps its stdout open: setup must go on and
+  # finish without waiting for it (whoever reads setup's output may still see that process's lines afterwards)
+  local d got; d="$(_su 'setup-services:
+	@sleep 6 & echo "needs you: start the VPN"')"
+  got="$( (cd "$d" && t0="$(date +%s)"; make -s setup 2>&1 | while IFS= read -r l; do
+    case "$l" in ("needs you: "*"setup-services: "*) echo "$(( $(date +%s) - t0 )) $l"; break;; esac; done) )"
+  pkill -f 'sleep 6' 2>/dev/null || true
+  [ -n "$got" ] && [ "${got%% *}" -lt 4 ] || _fail "setup's summary came after ${got%% *}s: $got"
+  assert_contains "$got" "setup-services: start the VPN" "needs you still read"
+}
+t_step_output_streams() {
+  # a long step's lines must show as they happen, not at its end (python block-buffers a pipe)
+  local d first; d="$(_su 'setup-migrate:
+	@python3 -c "import time; print(\"step1\"); time.sleep(3); print(\"step2\")"')"
+  first="$( (cd "$d" && t0="$(date +%s)"; make -s setup 2>&1 | while IFS= read -r l; do
+    [ "$l" = step1 ] && { echo $(( $(date +%s) - t0 )); break; }; done) )"
+  [ -n "$first" ] && [ "$first" -lt 2 ] || _fail "step1 shown after ${first:-?}s"
+}
+t_deps_needs_you_is_not_a_failed_deps() {
+  # "✓ (needs you)" is a deps step that ran: no maven-credentials hint for it
+  local d h out; h="$(mktemp -d)"; d="$(_su 'setup-deps:
+	@echo "needs you: accept the licence"')"; touch "$d/settings.xml"
+  out="$(cd "$d" && HOME="$h" make -s setup 2>&1)"
+  assert_contains "$out" "deps ✓ (needs you)" "marked"; assert_not_contains "$out" "maven credentials" "no hint"
+}
