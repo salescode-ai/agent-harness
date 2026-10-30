@@ -41,3 +41,28 @@ t_gate_inconclusive_without_tests() {
   local d; d="$(_gp_repo "$PYT" "$CHG")"; git -C "$d" rm -q tests/test_calc.py
   _gp "$d"; assert_eq "$RC" 2 "exit: $OUT"; assert_contains "$OUT" "gate: inconclusive" "no test to plant beside"
 }
+_gp_junit_repo() { # Maven-shaped repo, sub/ (a separate project) sorting before the root's src/; fake runner; echoes path
+  local d A="$PLUGIN/skills/harness-init/assets"; d="$(mktemp -d)"
+  ( cd "$d"; git init -q -b main; git config user.email t@example.com; git config user.name test
+    mkdir -p scripts/harness a/src/test/java/a src/test/java/r; touch pom.xml a/pom.xml
+    cp "$PLUGIN/scripts/harness-cmd.sh" scripts/harness/cmd.sh; cp "$GP" scripts/harness/; cp "$A/harness.mk" .
+    # the runner fails a missing file or one asserting false
+    printf 'for f in "$@"; do [ -f "$f" ] && ! grep -q "assertTrue(false" "$f" || exit 1; done\n' > run.sh
+    printf '.harness/\n' > .gitignore
+    printf 'HARNESS_LINT = @true\nHARNESS_TEST_ONE = sh run.sh\ninclude harness.mk\n' > Makefile
+    for f in a/src/test/java/a/ATest.java src/test/java/r/RTest.java; do
+      printf 'package %s;\nimport org.junit.jupiter.api.Test;\nclass X { @Test void t() {} }\n' "$(basename "$(dirname "$f")")" > "$f"; done
+    git add -A; git -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q -m init ) >/dev/null
+  echo "$d"
+}
+t_gate_junit5_prefers_root_module() {
+  local d; d="$(_gp_junit_repo)"
+  _gp "$d"; assert_eq "$RC" 0 "exit: $OUT"; assert_contains "$OUT" "planted beside src/test/java/r/RTest.java" "root module first"
+}
+t_gate_beside_override() {
+  local d; d="$(_gp_junit_repo)"
+  RC=0; OUT="$(cd "$d" && HARNESS_GATE_PROOF_BESIDE=a/src/test/java/a/ATest.java bash scripts/harness/gate-proof.sh 2>&1)" || RC=$?
+  assert_eq "$RC" 0 "exit: $OUT"; assert_contains "$OUT" "planted beside a/src/test/java/a/ATest.java" "override honoured"
+  RC=0; OUT="$(cd "$d" && HARNESS_GATE_PROOF_BESIDE=no/such/Test.java bash scripts/harness/gate-proof.sh 2>&1)" || RC=$?
+  assert_eq "$RC" 2 "missing override file: $OUT"; assert_contains "$OUT" "HARNESS_GATE_PROOF_BESIDE" "names the variable"
+}
