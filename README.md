@@ -65,7 +65,7 @@ The harness is organised in five layers. Each one acts at a different moment: be
 
 | Piece | What it does |
 |---|---|
-| `make check` | The definition of done: lint + typecheck + all tests + harness lint. |
+| `make check` | The definition of done: lint + typecheck + the test suite (`HARNESS_TEST_ALL`: all tests, or what the repo's own selector picks) + harness lint. |
 | `make check-fast` | The same on changed files only (under ~60 s), including the tests related to changed source files. |
 | `scripts/harness/red-proof.sh` | Test-first, proven: harness-verify runs the change's tests in a scratch worktree with the change (green) and without it (must fail). A plan closes only when its evidence says `Red: proven` or `Red: n/a (<reason>)`. |
 | `scripts/harness/gate-proof.sh` | The gate can fail: init and upgrade plant one failing test in a scratch worktree and check that `make test T=<it>`, `make test T=<no such test>` and `make check-fast` all exit non-zero. A test command ending in `; :` (always green) or passing on 0 tests is caught here and by harness-lint. |

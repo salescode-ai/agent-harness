@@ -219,3 +219,11 @@ include harness.mk')"
   out="$(cd "$d" && make check-fast HARNESS_TEST_SECS=90 2>&1)"; assert_not_contains "$out" "RAN_ALL" "90: no tests"
   out="$(cd "$d" && make check-fast HARNESS_TEST_SECS=' 60 ' 2>&1)"; assert_contains "$out" "RAN_ALL" "60, padded: full suite"
 }
+t_help_does_not_claim_all_tests() {
+  # test runs HARNESS_TEST_ALL, which a repo may point at a selector (only what changed): help must not say "all tests"
+  local d out; d="$(mk_dir 'HARNESS_TEST_ALL = ./t changed
+include harness.mk')"
+  out="$(cd "$d" && make help 2>&1)"
+  assert_not_contains "$(tr 'A' 'a' <<<"$out")" "all tests" "no claim of all tests"
+  assert_contains "$out" "HARNESS_TEST_ALL" "names what runs"
+}

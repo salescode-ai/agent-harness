@@ -87,8 +87,8 @@ endif
 ifneq ($(HARNESS_DEFINE_CHECK),0)
 .PHONY: check
 _HARNESS_TARGETS += check
-_HELP_check := Completion gate: lint + typecheck + all tests + harness lint
-check: lint typecheck test harness-lint ## Completion gate: lint + typecheck + all tests + harness lint
+_HELP_check := Completion gate: lint + typecheck + test (as configured: HARNESS_TEST_ALL) + harness lint
+check: lint typecheck test harness-lint ## Completion gate: lint + typecheck + test (as configured: HARNESS_TEST_ALL) + harness lint
 	@echo "check: OK"
 endif
 
@@ -146,8 +146,8 @@ endif
 ifneq ($(HARNESS_DEFINE_TEST),0)
 .PHONY: test
 _HARNESS_TARGETS += test
-_HELP_test := All tests, or one file/test with T=<path>
-test: ## All tests, or one file/test with T=<path>
+_HELP_test := Tests as configured (HARNESS_TEST_ALL), or one file/test with T=<path>
+test: ## Tests as configured (HARNESS_TEST_ALL), or one file/test with T=<path>
 ifeq ($(strip $(T)),)
 	$(HARNESS_TEST_ALL)
 else
