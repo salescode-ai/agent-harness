@@ -23,7 +23,7 @@ You make `make setup` work on a fresh machine and in any git worktree. The gener
    - With no compose file, propose a local-only `compose.harness.yml` (image versions from config, or confirmed by the developer). Show it and write it only after a yes.
    - External services that cannot run locally: ask per service for a stub (OpenAPI or recorded responses), a shared dev URL, or "not needed".
 4. Seed: use existing seeds, fixtures or factories. With none, and only if the developer opts in, propose a small synthetic seed (a few rows per main entity, edge cases included) and write it after a yes. Never copy real or production data.
-5. Ports and names: list the `*_PORT` and `DB_NAME` variables in `.env.example`, or bind ports as `${NAME_PORT:-default}` in the compose file, so `setup.sh` can pick free ports per worktree. If the repo hardcodes a port, report it and propose the change. Do not edit it yourself.
+5. Ports and names: list the `*_PORT` and `DB_NAME` variables in `.env.example`, or bind ports as `${NAME_PORT:-<port>}` (with a numeric default) in the compose file, so `setup.sh` can pick free ports per worktree. If the repo hardcodes a port, report it and propose the change. Do not edit it yourself.
 6. Run `bash scripts/harness/setup-proof.sh`. It clones the repo to a temp folder, runs `make setup`, tears down and prints `setup-proof: OK|FAIL (<step>)`. Without Docker and with a compose file it prints `SKIPPED (docker not available)`; say so plainly, do not call that a pass.
 7. On FAIL, read the failing step's output, fix your wiring and rerun. Stop after three attempts and report.
 

@@ -340,3 +340,13 @@ t_compose_only_ports_per_worktree() {
   [ -n "$a" ] && [ -n "$b" ] || _fail "LOCAL_PG_PORT not assigned ('$a' '$b')"
   [ "$a" != "$b" ] || _fail "same port in both worktrees ($a)"
 }
+t_compose_ports_main_checkout_keeps_env() {
+  # main checkout: a compose key without a default is not ours to assign, and a value in .env beats the compose default
+  local m bin; m="$(_su)"; bin="$(mktemp -d)"
+  printf '#!/bin/sh\n[ "$2" = version ] && { echo v2.24.6; exit 0; }\nexit 0\n' > "$bin/docker"; chmod +x "$bin/docker"
+  printf 'services:\n  db:\n    image: postgres:16\n    ports: ["${DB_PORT}:5432"]\n  cache:\n    image: redis:7\n    ports: ["${CACHE_PORT:-47391}:6379"]\n' > "$m/docker-compose.yml"
+  printf 'DB_PORT=5432\nCACHE_PORT=47392\n' > "$m/.env"
+  ( cd "$m" && PATH="$bin:$PATH" make -s setup ) >/dev/null 2>&1
+  assert_not_contains "$(cat "$m/.env.local")" "DB_PORT=" "no default in the compose file: left to .env"
+  assert_contains "$(cat "$m/.env.local")" "CACHE_PORT=47392" ".env beats the compose default"
+}

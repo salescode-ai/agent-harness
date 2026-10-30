@@ -232,7 +232,7 @@ Local-host rules in `local-guard.sh`: `localhost`, `::1`, `host.docker.internal`
 |---|---|---|---|
 | `.env` | Real local values. Created from `.env.example` by `setup.sh` only if missing; never overwritten. | `setup.sh` (first copy), then you | Yes. Agents are denied by `guard-files.sh`. |
 | `.env.example` / `.env.sample` | Variable names and safe defaults; `*_PORT` and `DB_NAME` here drive worktree isolation | you | Yes. Agents may write these. |
-| `.env.local` | Gitignored, per-checkout values: `COMPOSE_PROJECT_NAME`, `*_PORT` from `.env.example` and from `${NAME_PORT:-…}` in the compose file (main checkout: the `.env.example` or compose-default port unless something other than this compose project holds it), `DB_NAME=<db>_<project>`. Your other lines are kept on re-run. `HARNESS_SHARED_SERVICES=1` here is honoured. | `setup.sh` | Yes (managed keys are rewritten) |
+| `.env.local` | Gitignored, per-checkout values: `COMPOSE_PROJECT_NAME`, `*_PORT` from `.env.example` and from `${NAME_PORT:-<port>}` in the compose file (`${NAME_PORT}` without a default is left to `.env`). Main checkout: the `.env.example` port, or for a compose-only key the `.env` value, else the compose default, unless something other than this compose project holds it, `DB_NAME=<db>_<project>`. Your other lines are kept on re-run. `HARNESS_SHARED_SERVICES=1` here is honoured. | `setup.sh` | Yes (managed keys are rewritten) |
 | `compose.harness.yml` | Local-only services when the repo has no compose file | `setup-smith`, **only after an explicit yes** (never by "defaults" or one-shot) | Yes |
 
 ### `docs/SETUP.md`

@@ -76,9 +76,10 @@ if [ -f .env.example ]; then
 fi
 SHARED="${HARNESS_SHARED_SERVICES:-$(ev .env.local HARNESS_SHARED_SERVICES)}"
 if [ -f .env.example ] || [ -n "$COMPOSE" ]; then
-  # port keys from .env.example and from ${NAME_PORT:-…} in the compose file (a repo may have only the latter)
+  # port keys from .env.example and from ${NAME_PORT:-<port>} in the compose file (a repo may have only the latter);
+  # a ${NAME_PORT} without a default is set elsewhere (.env, the shell) and left alone
   pk="$( { [ -f .env.example ] && printf '%s\n' $keys | grep '_PORT$'
-    [ -n "$COMPOSE" ] && grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*_PORT(:?-[^}]*)?\}' "$COMPOSE" | sed -E 's/^\$\{([A-Za-z0-9_]+).*/\1/'; } | awk 'NF && !s[$0]++')"
+    [ -n "$COMPOSE" ] && grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*_PORT:-[0-9]+\}' "$COMPOSE" | sed -E 's/^\$\{([A-Za-z0-9_]+).*/\1/'; } | awk 'NF && !s[$0]++')"
   managed="COMPOSE_PROJECT_NAME DB_NAME $pk"
   new="$(mktemp)"; : > "$new"
   if [ "$SHARED" != 1 ]; then
@@ -94,9 +95,10 @@ print(*[x.getsockname()[1] for x in s])' "$n" 2>/dev/null)"
       set -- $free
       for k in $pk; do
         # main checkout keeps the example's port while it is free or held by this compose project; otherwise,
-        # and in linked worktrees (.git is a file), a free one. A value already in .env.local always wins.
+        # and in linked worktrees (.git is a file), a free one. A value already in .env.local always wins; for a key
+        # only the compose file names, the main checkout takes .env's value before the compose default.
         p="$(ev .env.local "$k")"
-        if [ -z "$p" ] && [ -z "$WT" ]; then p="$(ev .env.example "$k")"; [ -z "$p" ] && p="$(cdef "$k")"; [ -n "$p" ] && ! port_free "$p" && ! port_ours "$p" && p=""; fi
+        if [ -z "$p" ] && [ -z "$WT" ]; then p="$(ev .env.example "$k")"; [ -z "$p" ] && ! grep -qs "^\(export \)\{0,1\}$k=" .env.example && { p="$(ev .env "$k")"; [ -z "$p" ] && p="$(cdef "$k")"; }; [ -n "$p" ] && ! port_free "$p" && ! port_ours "$p" && p=""; fi
         [ -z "$p" ] && p="${1:-}"; shift 2>/dev/null
         [ -n "$p" ] && { echo "$k=$p" >> "$new"; PORTS="$PORTS ${k%_PORT}=$p"; export "$k=$p"; }
       done
