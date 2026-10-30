@@ -29,12 +29,11 @@ repo_base() { # repo_base <dir>: the repo's HARNESS_BASE (harness-base target), 
   local dir="$1" cache="$1/.harness/base-cache" key b="" cmd
   key="$(git -C "$dir" rev-parse HEAD 2>/dev/null) $(git -C "$dir" branch --show-current 2>/dev/null)"
   [[ -f "$cache" ]] && b="$(awk -F'\t' -v k="$key" '$1 == k {print $2}' "$cache" 2>/dev/null)"
-  if [[ -z "$b" ]] && cmd="$(harness_cmd "$dir" harness-base 2>/dev/null)"; then
-    b="$(cd "$dir" && eval "$cmd" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -1)"
-    git -C "$dir" rev-parse -q --verify "$b^{commit}" >/dev/null 2>&1 || b=""
-    [[ -n "$b" ]] && mkdir -p "$dir/.harness" 2>/dev/null && printf '%s\t%s\n' "$key" "$b" > "$cache" 2>/dev/null
+  if [[ -z "$b" ]]; then
+    # cached only when the repo's harness-base answered: a fallback writes nothing into the repo
+    b="$(harness_cmd "$dir" --base)" && mkdir -p "$dir/.harness" 2>/dev/null && printf '%s\t%s\n' "$key" "$b" > "$cache" 2>/dev/null
   fi
-  echo "${b:-${HARNESS_BASE:-$(default_base "$dir")}}"
+  echo "$b"
 }
 changed_since() { # changed_since <dir> <base>: uncommitted source changes or commits ahead of base
   local ahead=0

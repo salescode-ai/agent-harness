@@ -54,12 +54,6 @@ active_plan() { # active_plan <root> <branch>: plan for the branch's ticket key 
     grep -qE '^[[:space:]]*- \[ \]' "$root/$f" && { echo "$f"; return; }
   done <<<"$(head -10 <<<"$cands")"
 }
-default_base() { # default_base <dir>: origin/HEAD's branch, else origin/main, else origin/master
-  local b; b="$(git -C "$1" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)"
-  [[ -n "$b" ]] && { echo "$b"; return; }
-  git -C "$1" rev-parse -q --verify origin/main >/dev/null 2>&1 && { echo origin/main; return; }
-  echo origin/master
-}
 CODE_PATHS=(. ':(exclude)docs' ':(exclude)*.md' ':(exclude).harness')  # what counts as code for the stop gate
 code_fp() { # code_fp <dir>: checksum of HEAD, uncommitted code changes and untracked code files
   ( cd "$1" 2>/dev/null || exit 0

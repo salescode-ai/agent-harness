@@ -6,7 +6,7 @@
         for n, text in lines.items(): ...
 
 Shell sensors: `python3 scripts/harness/sensors/lib/diffscan.py [base]` prints `path:lineno:text` per added line.
-New code = everything since the merge-base with HARNESS_BASE: commits, staged and unstaged edits, untracked files;
+New code = everything since the merge-base with the repo's base (make harness-base, else HARNESS_BASE, else origin/HEAD): commits, staged and unstaged edits, untracked files;
 planted violations under scripts/harness/sensors/fixtures/ are not new code.
 An unresolvable base or merge-base (shallow or single-branch clone, never-fetched remote) exits 2 with a message,
 never "no changes": a sensor that silently checks nothing is worse than none.
@@ -26,7 +26,16 @@ def _die(msg):
     sys.exit(2)
 
 
-def default_base():  # same default as harness.mk
+def default_base():  # the repo's base (cmd.sh --base: harness-base target, HARNESS_BASE, origin/HEAD), as the stop gate
+    top = _git("rev-parse", "--show-toplevel").stdout.decode().strip()
+    cmd = os.path.join(top, "scripts", "harness", "cmd.sh")
+    if top and os.path.isfile(cmd):
+        r = subprocess.run(["bash", cmd, top, "--base"], capture_output=True)
+        lines = r.stdout.decode().split()
+        if lines:  # exit 1 = a fallback base, still the right order
+            return lines[-1]
+    if os.environ.get("HARNESS_BASE"):
+        return os.environ["HARNESS_BASE"]
     r = _git("symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD")
     if r.returncode == 0 and r.stdout.strip():
         return r.stdout.decode().strip()
@@ -63,7 +72,7 @@ def parse(diff):
 
 
 def added_lines(base=None):
-    base = base or os.environ.get("HARNESS_BASE") or default_base()
+    base = base or default_base()
     if _git("rev-parse", "-q", "--verify", base + "^{commit}").returncode != 0:
         _die(f"cannot resolve HARNESS_BASE {base}; fetch it or set HARNESS_BASE")
     mb = _git("merge-base", base, "HEAD")

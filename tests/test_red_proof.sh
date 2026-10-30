@@ -54,3 +54,12 @@ t_red_explicit_base_is_fork_point() {
   _rp "$d" main; assert_eq "$RC" 0 "exit"; assert_contains "$OUT" "red: proven" "proven"
   assert_contains "$OUT" "1 production file(s) reverted to $(git -C "$d" merge-base HEAD main | cut -c1-9)" "only the branch's file, vs the fork point"
 }
+t_red_default_base_from_the_repo() {
+  # features branch from dev while origin/HEAD is main: the default base must be the repo's (make harness-base)
+  local d; d="$(_rp_repo)"; git -C "$d" update-ref refs/remotes/origin/main HEAD
+  ( cd "$d" && git checkout -q -b dev && echo 'devonly() { :; }' > src/devonly.sh && printf 'harness-base:\n\t@echo dev\n' >> Makefile \
+    && git add -A && git -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -qm dev && git checkout -q -b KEY-3-double ) >/dev/null
+  echo 'double() { echo $(($1*2)); }' >> "$d/src/calc.sh"
+  printf '. src/calc.sh\n[ "$(double 2)" = 4 ]\n' > "$d/tests/test_double.sh"
+  _rp "$d"; assert_eq "$RC" 0 "exit: $OUT"; assert_contains "$OUT" "1 production file(s) reverted to $(git -C "$d" rev-parse dev | cut -c1-9)" "vs dev, not origin/main"
+}
