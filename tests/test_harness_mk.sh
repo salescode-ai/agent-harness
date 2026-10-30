@@ -199,3 +199,31 @@ include harness.mk')"
   assert_contains "$out" "check-fast: OK" "runs"; [ ! -f "$d/git.log" ] || _fail "git ran with the args opted out: $(cat "$d/git.log")"
   assert_eq "$(cd "$d" && make -s harness-base HARNESS_BASE=origin/dev)" "origin/dev" "harness-base prints the base"
 }
+
+t_help_prints_apostrophes() {
+  # a repo may override _HELP_<target> after the include; any text must print verbatim
+  local d out; d="$(mk_dir "include harness.mk
+_HELP_check := Runs the branch's tests, not \"all\" (100%)")"
+  out="$(cd "$d" && make help 2>&1)" || _fail "make help failed: $out"
+  assert_contains "$out" "  check          Runs the branch's tests, not \"all\" (100%)" "override printed verbatim"
+}
+t_test_secs_is_data() {
+  # HARNESS_TEST_SECS reached a shell test at parse time: a command-line value could run code
+  local d out; d="$(mk_dir 'HARNESS_LINT = @true
+HARNESS_TEST_ALL = @echo RAN_ALL
+include harness.mk')"
+  out="$(cd "$d" && make check-fast HARNESS_TEST_SECS="1\" ]; touch $d/pwned; [ \"" 2>&1)" || true
+  [ ! -e "$d/pwned" ] || _fail "HARNESS_TEST_SECS ran a command"
+  assert_not_contains "$out" "RAN_ALL" "an invalid value runs no tests"
+  out="$(cd "$d" && make check-fast HARNESS_TEST_SECS=30 2>&1)"; assert_contains "$out" "RAN_ALL" "30: full suite"
+  out="$(cd "$d" && make check-fast HARNESS_TEST_SECS=90 2>&1)"; assert_not_contains "$out" "RAN_ALL" "90: no tests"
+  out="$(cd "$d" && make check-fast HARNESS_TEST_SECS=' 60 ' 2>&1)"; assert_contains "$out" "RAN_ALL" "60, padded: full suite"
+}
+t_help_does_not_claim_all_tests() {
+  # test runs HARNESS_TEST_ALL, which a repo may point at a selector (only what changed): help must not say "all tests"
+  local d out; d="$(mk_dir 'HARNESS_TEST_ALL = ./t changed
+include harness.mk')"
+  out="$(cd "$d" && make help 2>&1)"
+  assert_not_contains "$(tr 'A' 'a' <<<"$out")" "all tests" "no claim of all tests"
+  assert_contains "$out" "HARNESS_TEST_ALL" "names what runs"
+}

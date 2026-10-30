@@ -7,8 +7,20 @@
 #     target "help" without commands.help -> the optional top-level "help" (e.g. "just --list")
 #   otherwise -> make -s -C <dir> <target> [T=<T>], only if `make -n <target>` succeeds
 # Exit: 3 unresolvable (prints nothing); 4 make not installed.
+# harness-cmd.sh <repo-dir> --base -- print the branch this checkout is compared with: the repo's harness-base target,
+#   else $HARNESS_BASE, else origin/HEAD, origin/main, origin/master (the stop gate, red-proof.sh and diffscan.py share it).
+#   Exit 0 when the repo's target answered, 1 when a fallback was printed.
 dir="${1:-}"; target="${2:-}"; t="${3:-}"
 [ -n "$dir" ] && [ -n "$target" ] || { echo "usage: harness-cmd.sh <repo-dir> <target> [T]  (registered commands: use {T} unquoted)" >&2; exit 2; }
+
+if [ "$target" = --base ]; then
+  c="$(bash "$0" "$dir" harness-base 2>/dev/null)" && b="$(cd "$dir" && eval "$c" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -1)"
+  git -C "$dir" rev-parse -q --verify "${b:-}^{commit}" >/dev/null 2>&1 && { echo "$b"; exit 0; }
+  b="${HARNESS_BASE:-}"
+  [ -n "$b" ] || b="$(git -C "$dir" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)"
+  [ -n "$b" ] || { git -C "$dir" rev-parse -q --verify origin/main >/dev/null 2>&1 && b=origin/main || b=origin/master; }
+  echo "$b"; exit 1
+fi
 
 q() { case "$1" in ''|*[!A-Za-z0-9_./=:@%+,-]*) printf "'%s'" "$(printf %s "$1" | sed "s/'/'\\\\''/g")";; *) printf %s "$1";; esac; }
 

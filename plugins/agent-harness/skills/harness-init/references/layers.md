@@ -49,8 +49,8 @@ Scope by target level: `Functional` → Guides and Sensors; `Robust` → all fiv
 5. Permission rules for `.claude/settings.json`: a) apply ➡️ b) show only. Proposed rules:
    - deny `Read(./.env)`, `Read(./**/.env)`, `Read(./**/.env.local)`, `Read(./**/.env.*.local)`, `Read(./**/.env.prod*)`, `Read(./**/.env.staging*)` (not `.env.*`: `.env.example`/`.env.sample` must stay readable), `Read(./**/secrets/**)`, `Read(./**/*.pem)`, `Read(./**/*.key)`;
    - deny the dangerous infrastructure and production commands found in the repo (e.g. `Bash(terraform apply:*)`, `Bash(kubectl delete:*)`, a deploy script), each with its `file:line`;
-   - allow the runner's commands, e.g. `Bash(make check:*)`, `Bash(make test:*)`.
-   Start from `assets/claude-settings.json`. Claude Code may refuse the write: then show the full JSON for the developer to add, and do not work around the refusal.
+   - allow the runner's commands as exact commands: `Bash(make check)`, `Bash(make check-fast)`, `Bash(make help)`. Never a prefix such as `Bash(make check:*)` or `Bash(make test:*)`: make takes variable overrides on the command line and harness.mk runs `HARNESS_*` variables as recipes, so `make test T=x HARNESS_TEST_ONE='<any command>'` would run without a prompt. `make test T=…` keeps asking.
+   Start from `assets/claude-settings.json`, and add `"ref": "v<version>"` to the marketplace `source` (this plugin's version from `plugin.json`): the ref must be an exact tag (vX.Y.Z), never a branch. Claude Code may refuse the write: then show the full JSON for the developer to add, and do not work around the refusal.
 
 **Then, one at a time, for each unresolved dependency** (`env_vars` with `resolved: false`, services with no config): "Where can I read the details for X?" a) wiki URL b) another repo c) a teammate d) not needed locally. Record each answer in `docs/SETUP.md`. `setup-smith` asks separately, with an explicit yes, about a synthetic seed when the repo has none.
 
@@ -74,6 +74,7 @@ Scope by target level: `Functional` → Guides and Sensors; `Robust` → all fiv
   - `husky` → append `bash .githooks/pre-commit  # harness check-fast` to `.husky/pre-commit` and `bash .githooks/pre-push  # harness check` to `.husky/pre-push`.
   - `lefthook` → in `lefthook.yml`: `pre-commit: commands: harness-check-fast: run: bash .githooks/pre-commit`, and `pre-push: commands: harness-check: run: bash .githooks/pre-push`.
   - `pre-commit` → a `repo: local` hook in `.pre-commit-config.yaml`: `id: harness-check-fast`, `entry: bash .githooks/pre-commit`, `language: system`, `pass_filenames: false`; and `id: harness-check`, `entry: bash .githooks/pre-push`, `stages: [pre-push]`.
+  - A repo that already has its own `.githooks/pre-commit` (or `pre-push`): `assets.py` installs and tracks the plugin hook beside it as `.githooks/harness-pre-commit` (with `snapshot.sh`), refreshes it on upgrade and never touches the repo's hook. The repo's hook calls it as its last step: `HARNESS_GIT_HOOK=1 bash "$ROOT/.githooks/harness-pre-commit" || exit 1` (`ROOT=$(git rev-parse --show-toplevel)`; `HARNESS_GIT_HOOK=1` lets the Makefile tell a hook run from a manual one). `assets.py` prints this line while the repo's hook does not call it.
 
 **Questions (defaults).**
 1. Proposed invariants, each with severity: a) Critical (fails `check`, blocks the stop gate) b) Important ➡️ (warning; `harness-verify` sends it to a human) c) Nice-to-have (audit only). Format: `- <rule> — Severity: <tier> — Enforced by: <target | hook | sensor | human review | not yet enforced>`.

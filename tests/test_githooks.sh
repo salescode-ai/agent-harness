@@ -11,7 +11,8 @@ t_precommit_blocks_failing() {
   local d rc=0; d="$(_hook_repo false)"
   (cd "$d" && bash "$HOOKS/pre-commit") >/dev/null 2>&1 || rc=$?
   [ "$rc" != 0 ] || _fail "expected non-zero"
-  (cd "$d" && bash "$HOOKS/pre-push" </dev/null) >/dev/null 2>&1 && _fail "pre-push should fail" || true
+  rc=0; (cd "$d" && bash "$HOOKS/pre-push" </dev/null) >/dev/null 2>&1 || rc=$?
+  [ "$rc" != 0 ] || _fail "pre-push should fail"
 }
 t_precommit_passes() {
   local d; d="$(_hook_repo true)"
@@ -102,6 +103,21 @@ t_precommit_staged_snapshot() {
   git -C "$d" rm -q --cached c.sh; echo 'echo a' > "$d/a.sh"; echo 'echo d' > "$d/d.sh"; git -C "$d" add d.sh
   _commit "$d"; assert_eq "$RC" 0 "clean tree"; assert_not_contains "$OUT" "unstaged" "no warning"
 }
+t_precommit_staged_snapshot_keeps_merge_head() {
+  # merge-aware test selection in the repo reads MERGE_HEAD; the scratch worktree must see the real one
+  local d m; d="$(_staged_repo)"; printf 'check-fast:\n\t@echo "MH=$$(git rev-parse -q --verify MERGE_HEAD)"\n' > "$d/Makefile"
+  ( cd "$d" && git add Makefile && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qm mk && git checkout -qb side \
+    && echo 'echo s' > s.sh && git add s.sh && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qm s \
+    && git checkout -q main && echo 'echo u' > u.sh ) >/dev/null   # u.sh untracked: the staged-only path runs
+  m="$(git -C "$d" rev-parse side)"
+  RC=0; OUT="$(cd "$d" && HARNESS_HOOK_STAGED_ONLY=1 bash "$HOOKS/pre-commit" 2>&1)" || RC=$?
+  assert_eq "$RC" 0 "no merge: $OUT"; assert_contains "$OUT" "MH=" "ran"; assert_not_contains "$OUT" "MH=$m" "no MERGE_HEAD without a merge"
+  git -C "$d" -c user.email=t@e -c user.name=t merge -q --no-ff --no-commit side >/dev/null 2>&1
+  RC=0; OUT="$(cd "$d" && HARNESS_HOOK_STAGED_ONLY=1 bash "$HOOKS/pre-commit" 2>&1)" || RC=$?
+  assert_eq "$RC" 0 "merge: $OUT"; assert_contains "$OUT" "MH=$m" "MERGE_HEAD visible in the staged snapshot"
+  assert_eq "$(git -C "$d" worktree list | wc -l | tr -d ' ')" 1 "scratch worktree removed"
+  assert_eq "$(git -C "$d" rev-parse MERGE_HEAD)" "$m" "the real merge is untouched"
+}
 _push() { # _push <dir> <stdin> [env...]: run pre-push with git's ref lines
   local d="$1" in="$2"; shift 2; RC=0
   OUT="$(cd "$d" && printf '%s\n' "$in" | env "$@" bash "$HOOKS/pre-push" 2>&1)" || RC=$?
@@ -109,6 +125,7 @@ _push() { # _push <dir> <stdin> [env...]: run pre-push with git's ref lines
 t_prepush_tests_only_what_is_pushed() {
   local d h z=0000000000000000000000000000000000000000; d="$(_staged_repo)"; h="$(git -C "$d" rev-parse HEAD)"
   printf 'check-fast:\n\t@true\ncheck:\n\t@false\n' > "$d/Makefile"
+  ( cd "$d" && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qam mk ) >/dev/null; h="$(git -C "$d" rev-parse HEAD)"
   _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 2 "the checked-out branch runs check"
   _push "$d" "refs/tags/v1 $h refs/tags/v1 $z"; assert_eq "$RC" 0 "tag push skips"; assert_contains "$OUT" "skipping" "says so"
   _push "$d" "(delete) $z refs/heads/old $h"; assert_eq "$RC" 0 "branch deletion skips"
@@ -117,4 +134,96 @@ t_prepush_tests_only_what_is_pushed() {
   _push "$d" "refs/heads/main $h refs/heads/main $z" SKIP_HOOKS=1; assert_eq "$RC" 0 "SKIP_HOOKS=1 skips"
   assert_contains "$OUT" "SKIP_HOOKS=1" "says so"
   RC=0; (cd "$d" && SKIP_HOOKS=1 bash "$HOOKS/pre-commit" >/dev/null 2>&1) || RC=$?; assert_eq "$RC" 0 "pre-commit too"
+}
+t_prepush_tests_the_pushed_commit() {
+  # opted in, check judges what is pushed: an uncommitted fix must not hide a broken commit, nor a half-edit block a good one
+  local d h z=0000000000000000000000000000000000000000; d="$(_staged_repo)"
+  printf 'check:\n\t@for f in *.sh; do sh -n $$f || exit 1; done\n' > "$d/Makefile"
+  ( cd "$d" && git add Makefile && echo 'if then' > b.sh && git add b.sh \
+    && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qm broken && echo 'echo b' > b.sh ) >/dev/null
+  h="$(git -C "$d" rev-parse HEAD)"
+  _push "$d" "refs/heads/main $h refs/heads/main $z" HARNESS_HOOK_STAGED_ONLY=1; assert_eq "$RC" 2 "broken commit, fixed tree: blocked: $OUT"
+  assert_contains "$OUT" "scratch worktree" "says it checked the pushed commit"
+  assert_eq "$(cat "$d/b.sh")" "echo b" "working tree untouched"
+  ( cd "$d" && git add b.sh && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qm fix && echo 'if then' > b.sh ) >/dev/null
+  h="$(git -C "$d" rev-parse HEAD)"
+  _push "$d" "refs/heads/main $h refs/heads/main $z" HARNESS_HOOK_STAGED_ONLY=1; assert_eq "$RC" 0 "good commit, broken edit: passes: $OUT"
+  assert_eq "$(git -C "$d" worktree list | wc -l | tr -d ' ')" 1 "scratch worktree removed"
+  echo 'echo b' > "$d/b.sh"
+  _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 0 "clean tree passes"
+}
+t_prepush_dirty_tree_warns_like_precommit() {
+  # in place (the default) a dirty tree is part of the verdict: say so as pre-commit does; a clean tree adds nothing
+  local d h z=0000000000000000000000000000000000000000; d="$(_staged_repo)"
+  printf 'check:\n\t@echo GATE-OK\n' > "$d/Makefile"; git -C "$d" -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qam mk
+  h="$(git -C "$d" rev-parse HEAD)"; echo 'echo u' > "$d/u.sh"
+  _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 0 "dirty: $OUT"
+  assert_contains "$OUT" "unstaged or untracked changes are part of this check (u.sh)" "the pre-commit warning"
+  assert_contains "$OUT" "HARNESS_HOOK_STAGED_ONLY=1 checks only the pushed commit" "names the opt-in"
+  rm "$d/u.sh"; _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 0 "clean: $OUT"
+  assert_eq "$OUT" "GATE-OK" "a clean tree prints nothing extra"
+}
+t_prepush_snapshot_checks_the_pushed_branch_not_head() {
+  # git push origin other: the hook gets other's sha on stdin; snapshot mode checks that commit, not HEAD
+  local d r; d="$(_staged_repo)"; r="$(mktemp -d)"; git init -q --bare "$r"
+  printf 'check:\n\t@for f in *.sh; do sh -n $$f || exit 1; done\n' > "$d/Makefile"
+  ( cd "$d" && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qam mk && git remote add origin "$r" \
+    && git checkout -qb bad && echo 'if then' > b.sh && git add b.sh && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qm bad \
+    && git checkout -qb good main && echo 'echo g' > g.sh && git add g.sh && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qm good \
+    && git checkout -q bad ) >/dev/null 2>&1                                  # HEAD broken, good branch fine
+  RC=0; OUT="$(cd "$d" && HARNESS_HOOK_STAGED_ONLY=1 git -c core.hooksPath="$HOOKS" push -q origin good 2>&1)" || RC=$?
+  assert_eq "$RC" 0 "the pushed good branch is checked, not the broken HEAD: $OUT"
+  assert_contains "$OUT" "scratch worktree" "checked in a scratch worktree"
+  git -C "$d" checkout -q good
+  RC=0; OUT="$(cd "$d" && HARNESS_HOOK_STAGED_ONLY=1 git -c core.hooksPath="$HOOKS" push -q origin bad 2>&1)" || RC=$?
+  assert_eq "$RC" 1 "the pushed broken branch fails though HEAD is fine: $OUT"
+  RC=0; OUT="$(cd "$d" && git -c core.hooksPath="$HOOKS" push -q origin bad 2>&1)" || RC=$?
+  assert_eq "$RC" 0 "in place, another branch can't be checked from the working tree: skipped: $OUT"
+  assert_contains "$OUT" "HARNESS_HOOK_STAGED_ONLY=1 checks it" "names the opt-in"
+  assert_eq "$(git -C "$d" worktree list | wc -l | tr -d ' ')" 1 "scratch worktrees removed"
+}
+t_prepush_broken_commit_uncommitted_fix_by_mode() {
+  local d h z=0000000000000000000000000000000000000000; d="$(_staged_repo)"
+  printf 'check:\n\t@for f in *.sh; do sh -n $$f || exit 1; done\n' > "$d/Makefile"
+  ( cd "$d" && git add Makefile && echo 'if then' > b.sh && git add b.sh \
+    && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qm broken && echo 'echo b' > b.sh ) >/dev/null
+  h="$(git -C "$d" rev-parse HEAD)"
+  _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 0 "in place: the fixed tree passes: $OUT"
+  _push "$d" "refs/heads/main $h refs/heads/main $z" HARNESS_HOOK_STAGED_ONLY=1; assert_eq "$RC" 2 "snapshot: the broken commit fails: $OUT"
+}
+t_prepush_dirty_tree_checks_in_place_by_default() {
+  # a scratch worktree lacks gitignored inputs (local config, generated code, build caches): opt-in only
+  local d h z=0000000000000000000000000000000000000000 hk; d="$(_staged_repo)"
+  printf 'check:\n\t@test -f local.cfg && echo GATE-OK\n' > "$d/Makefile"; printf 'local.cfg\n' >> "$d/.gitignore"; touch "$d/local.cfg"
+  ( cd "$d" && git add -A && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qm cfg && echo 'echo w' > w.sh ) >/dev/null
+  h="$(git -C "$d" rev-parse HEAD)"
+  _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 0 "gitignored input present in place: $OUT"
+  assert_contains "$OUT" "HARNESS_HOOK_STAGED_ONLY=1" "names the opt-in"; assert_contains "$OUT" "GATE-OK" "ran"
+  hk="$(mktemp -d)"; cp "$HOOKS/pre-push" "$hk/"   # an upgrade that never installed snapshot.sh
+  RC=0; OUT="$(cd "$d" && printf '%s\n' "refs/heads/main $h refs/heads/main $z" | HARNESS_HOOK_STAGED_ONLY=1 bash "$hk/pre-push" 2>&1)" || RC=$?
+  assert_eq "$RC" 0 "no snapshot.sh: in place: $OUT"; assert_contains "$OUT" "snapshot.sh missing" "says so"
+}
+t_repo_own_precommit_calls_harness_copy() {
+  # a repo hook calling .githooks/harness-pre-commit: the gate runs (also staged-only, snapshot.sh beside it)
+  local d; d="$(_staged_repo)"; mkdir -p "$d/.githooks"
+  printf 'check-fast:\n\t@echo "GATE hook=$$HARNESS_GIT_HOOK"; for f in *.sh; do sh -n $$f || exit 1; done\n' > "$d/Makefile"
+  cp "$HOOKS/pre-commit" "$d/.githooks/harness-pre-commit"; cp "$HOOKS/snapshot.sh" "$d/.githooks/"
+  printf '#!/usr/bin/env bash\nROOT=$(git rev-parse --show-toplevel)\necho repo-check\nHARNESS_GIT_HOOK=1 bash "$ROOT/.githooks/harness-pre-commit" || exit 1\n' > "$d/.githooks/pre-commit"
+  chmod +x "$d/.githooks/"*; git -C "$d" add -A >/dev/null
+  _commit_with "$d" .githooks; assert_eq "$RC" 0 "commit: $OUT"; assert_contains "$OUT" "repo-check" "repo hook ran"
+  assert_contains "$OUT" "GATE hook=1" "harness gate ran from the repo hook"
+  echo 'echo b' > "$d/b.sh"; git -C "$d" add b.sh; echo 'if then' > "$d/u.sh"   # broken untracked file
+  _commit_with "$d" .githooks HARNESS_HOOK_STAGED_ONLY=1; assert_eq "$RC" 0 "staged-only ignores the untracked file: $OUT"
+  assert_contains "$OUT" "staged snapshot only" "snapshot.sh found beside harness-pre-commit"
+}
+t_precommit_staged_only_without_snapshot_checks_in_place() {
+  # an upgrade that only refreshed the hook: no snapshot.sh beside it, so say so and check the working tree
+  local d hk; d="$(_staged_repo)"; hk="$(mktemp -d)"; cp "$HOOKS/pre-commit" "$hk/"
+  echo 'echo b' > "$d/b.sh"; git -C "$d" add b.sh; echo 'echo u' > "$d/u.sh"
+  RC=0; OUT="$(cd "$d" && HARNESS_HOOK_STAGED_ONLY=1 bash "$hk/pre-commit" 2>&1)" || RC=$?
+  assert_eq "$RC" 0 "checks in place: $OUT"; assert_contains "$OUT" "snapshot.sh missing" "says so"
+}
+_commit_with() { # _commit_with <dir> <hooksPath> [env...]
+  local d="$1" hp="$2"; shift 2; RC=0
+  OUT="$(cd "$d" && env "$@" git -c user.email=t@e -c user.name=t -c commit.gpgsign=false -c core.hooksPath="$hp" commit -qm x 2>&1)" || RC=$?
 }

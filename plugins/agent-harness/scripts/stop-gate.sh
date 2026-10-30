@@ -3,7 +3,8 @@
 # commits ahead of the base) and the repo is ahead of its base or dirty, run the repo's check-fast and block the stop
 # on failure. The base is the repo's own (`make harness-base`, cached per HEAD), else HARNESS_BASE, else origin/HEAD.
 # In a workspace, does this for every member repo that changed, using that repo's own gate. Success is silent; a
-# check-fast that could not run (Docker down, a setup error) warns instead of blocking. Disable with HARNESS_STOP_GATE=0.
+# check-fast that could not run (Docker down or missing, a setup error) warns instead of blocking: a repo's gate can
+# print a line starting with "setup error:", optionally after a target name ("typecheck: setup error: no base"), to be treated so. HARNESS_STOP_GATE=0 disables it.
 # --subagent (SubagentStop): gates only a subagent working in a linked git worktree (an isolated implementer);
 # reviewers and explorers in the main checkout are never blocked by the main session's unfinished work.
 source "$(dirname "$0")/_lib.sh"
@@ -24,17 +25,19 @@ ACTIVE=0; grep -qE '"stop_hook_active"[[:space:]]*:[[:space:]]*true' <<<"$HOOK_I
 MAX_BLOCKS=3
 
 STATE=""; LC_SUFFIX=""; FAILED=0; REPORT=""; SKIPPED=""; RERAN=0; STILL=""; ENVFAIL=""
-ENV_RE='docker is not running|cannot connect to the docker daemon|is the docker daemon running|setup error'
+# only what Docker, a shell or Testcontainers print when Docker is unusable, or a line a repo starts with "setup error:"
+# (optionally after its target's name, "typecheck: setup error: …");
+# free text ("requires docker" in a skip reason, a test name) would turn a real failure into a warning
+ENV_RE='docker is not running|cannot connect to the docker daemon|is the docker daemon running|could not find a valid docker environment|docker: (command )?not found|command not found: docker|^[[:space:]]*([A-Za-z0-9_.-]+: )?setup error:'
 repo_base() { # repo_base <dir>: the repo's HARNESS_BASE (harness-base target), cached per HEAD and branch in .harness/
   local dir="$1" cache="$1/.harness/base-cache" key b="" cmd
   key="$(git -C "$dir" rev-parse HEAD 2>/dev/null) $(git -C "$dir" branch --show-current 2>/dev/null)"
   [[ -f "$cache" ]] && b="$(awk -F'\t' -v k="$key" '$1 == k {print $2}' "$cache" 2>/dev/null)"
-  if [[ -z "$b" ]] && cmd="$(harness_cmd "$dir" harness-base 2>/dev/null)"; then
-    b="$(cd "$dir" && eval "$cmd" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -1)"
-    git -C "$dir" rev-parse -q --verify "$b^{commit}" >/dev/null 2>&1 || b=""
-    [[ -n "$b" ]] && mkdir -p "$dir/.harness" 2>/dev/null && printf '%s\t%s\n' "$key" "$b" > "$cache" 2>/dev/null
+  if [[ -z "$b" ]]; then
+    # cached only when the repo's harness-base answered: a fallback writes nothing into the repo
+    b="$(harness_cmd "$dir" --base)" && mkdir -p "$dir/.harness" 2>/dev/null && printf '%s\t%s\n' "$key" "$b" > "$cache" 2>/dev/null
   fi
-  echo "${b:-${HARNESS_BASE:-$(default_base "$dir")}}"
+  echo "$b"
 }
 changed_since() { # changed_since <dir> <base>: uncommitted source changes or commits ahead of base
   local ahead=0

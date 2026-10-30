@@ -249,3 +249,30 @@ t_environment_failure_warns_not_blocks() {
   assert_contains "$out" '"systemMessage":"agent-harness: check-fast could not run (environment, not your change) in: repo' "warns"
   [ ! -e "$d/.harness/stop-blocks" ] || _fail "no block counted"
 }
+t_environment_failure_phrasings() {
+  # Docker missing (not just stopped) and a repo's own "setup error:" line are environment, not code
+  local d out m
+  for m in 'Could not find a valid Docker environment. Please see logs' 'bash: docker: command not found' 'zsh: command not found: docker' \
+           'setup error: no base branch for this checkout'; do
+    d="$(_gate_repo "echo \"$m\"; exit 2")"
+    RC=0; out="$(printf '{"cwd":"%s"}' "$d" | "$GATE" 2>/dev/null)" || RC=$?
+    assert_eq "$RC" 0 "does not block: $m"; assert_contains "$out" "could not run (environment" "warns: $m"
+  done
+}
+t_real_failure_mentioning_docker_blocks() {
+  # a skip reason, test name or log line that mentions Docker is not an environment failure: the real failure blocks
+  local d m
+  for m in 'SKIPPED [1] tests/test_db.py:3: requires docker' 'FAILED tests/test_cli.py::test_prints_setup error_on_bad_flag' \
+           'Tests that need Postgres require Docker'; do
+    d="$(_gate_repo "echo \"$m\"; echo 'FAILED tests/test_x.py::test_a - assert 1 == 2'; exit 2")"
+    RC=0; printf '{"cwd":"%s"}' "$d" | "$GATE" >/dev/null 2>&1 || RC=$?
+    assert_eq "$RC" 2 "blocks: $m"
+  done
+}
+t_setup_error_with_target_prefix_warns() {
+  # a make recipe names itself: "typecheck: setup error: …" (on stderr) is the repo saying its setup is incomplete
+  local d out
+  d="$(_gate_repo 'echo "typecheck: setup error: no fork point with origin/dev: git fetch origin" >&2; exit 2')"
+  RC=0; out="$(printf '{"cwd":"%s"}' "$d" | "$GATE" 2>/dev/null)" || RC=$?
+  assert_eq "$RC" 0 "does not block"; assert_contains "$out" "could not run (environment" "warns"
+}

@@ -329,3 +329,60 @@ setup-migrate:
   _run "$d" >/dev/null
   assert_eq "$(cat "$d/seen" | tr '\n' ' ')" "svc=[] mig=[17777] " "services clean, migrate re-reads .env.local"
 }
+t_compose_only_ports_per_worktree() {
+  # no .env.example: ports come from ${NAME_PORT:-default} in the compose file, else every worktree binds the same one
+  local m w1 w2 bin a b; m="$(_su)"; w1="$(dirname "$m")/w1"; w2="$(dirname "$m")/w2"; bin="$(mktemp -d)"
+  printf '#!/bin/sh\n[ "$2" = version ] && { echo v2.24.6; exit 0; }\nexit 0\n' > "$bin/docker"; chmod +x "$bin/docker"
+  rm -f "$m/.env.example"; printf 'services:\n  db:\n    image: postgres:16\n    ports: ["${LOCAL_PG_PORT:-5442}:5432"]\n' > "$m/docker-compose.yml"
+  ( cd "$m" && git add -A && git -c core.hooksPath=/dev/null commit -qm c && git worktree add -q "$w1" -b w1 && git worktree add -q "$w2" -b w2 ) >/dev/null 2>&1
+  ( cd "$w1" && PATH="$bin:$PATH" make -s setup ) >/dev/null 2>&1; ( cd "$w2" && PATH="$bin:$PATH" make -s setup ) >/dev/null 2>&1
+  a="$(sed -n 's/^LOCAL_PG_PORT=//p' "$w1/.env.local")"; b="$(sed -n 's/^LOCAL_PG_PORT=//p' "$w2/.env.local")"
+  [ -n "$a" ] && [ -n "$b" ] || _fail "LOCAL_PG_PORT not assigned ('$a' '$b')"
+  [ "$a" != "$b" ] || _fail "same port in both worktrees ($a)"
+}
+t_compose_ports_main_checkout_keeps_env() {
+  # main checkout: a compose key without a default is not ours to assign, and a value in .env beats the compose default
+  local m bin; m="$(_su)"; bin="$(mktemp -d)"
+  printf '#!/bin/sh\n[ "$2" = version ] && { echo v2.24.6; exit 0; }\nexit 0\n' > "$bin/docker"; chmod +x "$bin/docker"
+  printf 'services:\n  db:\n    image: postgres:16\n    ports: ["${DB_PORT}:5432"]\n  cache:\n    image: redis:7\n    ports: ["${CACHE_PORT:-47391}:6379"]\n' > "$m/docker-compose.yml"
+  printf 'DB_PORT=5432\nCACHE_PORT=47392\n' > "$m/.env"
+  ( cd "$m" && PATH="$bin:$PATH" make -s setup ) >/dev/null 2>&1
+  assert_not_contains "$(cat "$m/.env.local")" "DB_PORT=" "no default in the compose file: left to .env"
+  assert_contains "$(cat "$m/.env.local")" "CACHE_PORT=47392" ".env beats the compose default"
+}
+t_target_reports_needs_you() {
+  # a step that can't finish without a person exits 0 (setup-proof must pass) but must not look done
+  local d out rc=0; d="$(_su 'setup-services:
+	@echo "x: needs you: set FOO"; echo "plain output kept"')"
+  out="$(_run "$d")" || rc=$?
+  assert_eq "$rc" 0 "exit 0"; assert_contains "$out" "plain output kept" "target output still shown"
+  assert_contains "$out" "services ✓ (needs you)" "step marked"
+  assert_contains "$out" "needs you: " "summary line"; assert_contains "$(grep '^needs you:' <<<"$out")" "setup-services: set FOO" "item named with its target"
+}
+t_step_background_process_does_not_block() {
+  # a step may leave a process running (a dev server, a watcher) that keeps its stdout open: setup must go on and
+  # finish without waiting for it (whoever reads setup's output may still see that process's lines afterwards)
+  local d got; d="$(_su 'setup-services:
+	@sleep 20 & echo "needs you: start the VPN"')"
+  got="$( (cd "$d" && t0="$(date +%s)"; make -s setup 2>&1 | while IFS= read -r l; do
+    case "$l" in ("needs you: "*"setup-services: "*) echo "$(( $(date +%s) - t0 )) $l"; break;; esac; done) )"
+  pkill -f 'sleep 20' 2>/dev/null || true
+  [ -n "$got" ] && [ "${got%% *}" -lt 15 ] || _fail "setup's summary came after ${got%% *}s: $got"
+  assert_contains "$got" "setup-services: start the VPN" "needs you still read"
+}
+t_step_output_streams() {
+  # a long step's lines must show as they happen, not at its end (python block-buffers a pipe): step1 and step2 are
+  # printed 3 s apart, so they must arrive apart (timed against each other, not setup's start, which varies with load)
+  local d gap; d="$(_su 'setup-migrate:
+	@python3 -c "import time; print(\"step1\"); time.sleep(3); print(\"step2\")"')"
+  gap="$( (cd "$d" && make -s setup 2>&1 | while IFS= read -r l; do
+    case "$l" in (step1) a="$(date +%s)";; (step2) echo $(( $(date +%s) - a )); break;; esac; done) )"
+  [ -n "$gap" ] && [ "$gap" -ge 2 ] || _fail "step1 and step2 arrived ${gap:-?}s apart (buffered until the step ended)"
+}
+t_deps_needs_you_is_not_a_failed_deps() {
+  # "✓ (needs you)" is a deps step that ran: no maven-credentials hint for it
+  local d h out; h="$(mktemp -d)"; d="$(_su 'setup-deps:
+	@echo "needs you: accept the licence"')"; touch "$d/settings.xml"
+  out="$(cd "$d" && HOME="$h" make -s setup 2>&1)"
+  assert_contains "$out" "deps ✓ (needs you)" "marked"; assert_not_contains "$out" "maven credentials" "no hint"
+}

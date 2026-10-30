@@ -226,3 +226,27 @@ t_test_command_swallowing_exit_warns() {
   printf '%s\n' 'HARNESS_TEST_ONE = mvn -q test && :' > "$d/Makefile"
   out="$(_run "$d")" || true; assert_not_contains "$out" "ends in '; :'" "&& : keeps the exit code"
 }
+t_check_fast_custom_runner_test_plan() {
+  # a repo's own selector (confirmed) keeps the "tests nothing for <file>" warning through HARNESS_TEST_PLAN
+  local d out
+  d="$(_tp 'HARNESS_TEST_CHANGED = ./t changed\nHARNESS_TEST_CHANGED_ARGS =\nHARNESS_TEST_CHANGED_CONFIRMED = 1\nHARNESS_TEST_PLAN = bash plan.sh')"
+  printf 'echo "checking $#"; for f in "$@"; do case "$f" in *Bar.java) echo "none: $f";; esac; done\n' > "$d/plan.sh"
+  out="$(_run "$d")"
+  assert_contains "$out" "check-fast tests nothing for src/main/java/a/Bar.java" "plan names the untested source"
+  assert_not_contains "$out" "nothing for src/main/java/a/Foo.java" "tested source quiet"
+  assert_not_contains "$out" "does not use related-tests.sh" "no custom-runner warning"
+  assert_contains "$out" "harness-lint: OK" "warning only"
+}
+t_plugin_pin_must_be_exact_tag() {
+  # the marketplace ref is the only pin (a github source has no sha): a branch or no ref follows whatever is pushed there
+  local d out r; d="$(_lr)"; mkdir -p "$d/.claude"
+  for r in '"ref": "main", ' '' '"ref": "v2.0", '; do
+    printf '{"extraKnownMarketplaces": {"agent-harness": {"source": {%s"source": "github", "repo": "salescode-ai/agent-harness"}}}}\n' "$r" > "$d/.claude/settings.json"
+    out="$(_run "$d")"; assert_contains "$out" "warn  .claude/settings.json: the agent-harness marketplace ref" "warns for [$r]"
+    assert_contains "$out" "harness-lint: OK" "a warning only"
+  done
+  printf '{"extraKnownMarketplaces": {"agent-harness": {"source": {"source": "github", "repo": "salescode-ai/agent-harness", "ref": "v2.0.13"}}}}\n' > "$d/.claude/settings.json"
+  assert_not_contains "$(_run "$d")" "marketplace ref" "an exact tag passes"
+  printf '{"permissions": {}}\n' > "$d/.claude/settings.json"
+  assert_not_contains "$(_run "$d")" "marketplace ref" "no agent-harness marketplace: nothing to pin"
+}

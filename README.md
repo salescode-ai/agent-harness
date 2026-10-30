@@ -42,7 +42,7 @@ A harness has two halves:
 1. **Committed repo files: work for everyone and any tool.** The guides (`AGENTS.md`, `INVARIANTS.md`, `CLAUDE.md`, `GLOSSARY.md`, `docs/`), the `Makefile` + `harness.mk` + `scripts/harness/` targets (`make check`, `check-fast`, `test`, `setup`, `seed`/`reset` behind `local-guard.sh`, `harness-lint`, the sensor proofs), the `.githooks/` once `make setup` has run in that clone, and CI if you opted in. Anyone can run `make check` without Claude Code.
 2. **Plugin only (Claude Code).** The hooks (stop gate, Bash and file guards, session orientation), the skills and the reviewer agents. They are not copied into the repo.
 
-**Team rollout.** Commit `.claude/settings.json` with `extraKnownMarketplaces.agent-harness` and `enabledPlugins: {"agent-harness@agent-harness": true}`: every teammate's Claude Code then offers the plugin when they trust the folder. `harness-init` asks before writing it; one-shot leaves it as a TODO; `harness-improve` lists "team rollout settings missing" as a gap until it is there. For other tools, `install-local.sh` copies the skills to `.agents/skills/`; there are no agent hooks there, so enforcement comes from the git hooks and CI.
+**Team rollout.** Commit `.claude/settings.json` with `extraKnownMarketplaces.agent-harness` and `enabledPlugins: {"agent-harness@agent-harness": true}`: every teammate's Claude Code then offers the plugin when they trust the folder. Pin a version by adding `"ref": "vX.Y.Z"` to that `source`: always an exact release tag, never a branch (release tags never move; harness lint warns otherwise). `harness-init` asks before writing it; one-shot leaves it as a TODO; `harness-improve` lists "team rollout settings missing" as a gap until it is there. For other tools, `install-local.sh` copies the skills to `.agents/skills/`; there are no agent hooks there, so enforcement comes from the git hooks and CI.
 
 ## What a harness is
 
@@ -65,13 +65,13 @@ The harness is organised in five layers. Each one acts at a different moment: be
 
 | Piece | What it does |
 |---|---|
-| `make check` | The definition of done: lint + typecheck + all tests + harness lint. |
+| `make check` | The definition of done: lint + typecheck + the test suite (`HARNESS_TEST_ALL`: all tests, or what the repo's own selector picks) + harness lint. |
 | `make check-fast` | The same on changed files only (under ~60 s), including the tests related to changed source files. |
 | `scripts/harness/red-proof.sh` | Test-first, proven: harness-verify runs the change's tests in a scratch worktree with the change (green) and without it (must fail). A plan closes only when its evidence says `Red: proven` or `Red: n/a (<reason>)`. |
 | `scripts/harness/gate-proof.sh` | The gate can fail: init and upgrade plant one failing test in a scratch worktree and check that `make test T=<it>`, `make test T=<no such test>` and `make check-fast` all exit non-zero. A test command ending in `; :` (always green) or passing on 0 tests is caught here and by harness-lint. |
 | `scripts/harness/sensors/` | Project-specific checks (architecture rules, "no production data in seeds", contract checks). Each is wired only after a proof run: clean code passes, a planted violation fails, and the planted fixture is kept so the sensor is re-proved on every lint. Sensors that check only new code read the added lines from `sensors/lib/diffscan.py`. |
-| `scripts/harness/lint.sh` | Structural checks on the harness itself: shim, budgets, broken links, rule format, commands that don't exist. |
-| `.githooks/` | pre-commit runs `check-fast`, pre-push runs `check` (or added to your existing husky / lefthook / pre-commit). They skip only while the gate is not wired yet; a gate that can't be resolved (a broken Makefile) fails the commit or push. pre-push runs only when the checked-out commit is pushed (not for tags, deletions or another branch). pre-commit warns when unstaged or untracked changes are part of its run; `HARNESS_HOOK_STAGED_ONLY=1` checks the staged snapshot only. pre-commit also refuses to close a plan (moved to `plans/done/` or `Status: done`) unless `scripts/harness/plan-check.sh fresh` passes on its local evidence. |
+| `scripts/harness/lint.sh` | Structural checks on the harness itself: shim, budgets, broken links, rule format, commands that don't exist, a plugin pin (`.claude/settings.json` marketplace `ref`) that is not an exact `vX.Y.Z` tag. |
+| `.githooks/` | pre-commit runs `check-fast`, pre-push runs `check` (or added to your existing husky / lefthook / pre-commit). They skip only while the gate is not wired yet; a gate that can't be resolved (a broken Makefile) fails the commit or push. pre-push has two modes. By default it checks the working tree in place: fast, with a warm build, but uncommitted or untracked code can change the result (it says so) and a pushed branch other than the checked-out one is skipped. With `HARNESS_HOOK_STAGED_ONLY=1` it checks exactly each pushed commit in a scratch worktree: a cold build, but the verdict is about what is pushed. pre-commit warns the same way, and with the variable checks only the staged snapshot. Tags and deletions are never checked. A repo with its own `.githooks/pre-commit` keeps it: the plugin hook is installed beside it as `harness-pre-commit`, which the repo's hook calls (`HARNESS_GIT_HOOK=1 bash "$ROOT/.githooks/harness-pre-commit" || exit 1`). pre-commit also refuses to close a plan (moved to `plans/done/` or `Status: done`) unless `scripts/harness/plan-check.sh fresh` passes on its local evidence. |
 
 ### 3. Context & State: what the agent remembers and loads
 
@@ -90,7 +90,7 @@ The harness is organised in five layers. Each one acts at a different moment: be
 | `make setup` | One command for a working dev environment on a fresh machine or any worktree: dependencies, services, migrations, synthetic test data, git hooks, then a smoke check once nothing is left for you to do (`HARNESS_SETUP_SMOKE = 0` keeps a server app's smoke out of setup; unset smoke reports `n/a`, not ✓). |
 | `make dev-check` | With `HARNESS_HEALTH` set (a URL or command meaning "the app is up"): starts `make dev` in the background, waits until healthy, runs `RUN='<cmd>'` against it, and always stops it. `make dev-stop` stops a leftover one. |
 | Guard hooks | Block force-push, `--no-verify`, `git reset --hard`, destructive deletes, and writes to `CLAUDE.md` and `.env`. Ask before `kubectl delete`, `terraform destroy`, `terraform apply -auto-approve`, `helm uninstall`, destructive SQL, any write to `INVARIANTS.md`, and `make` with a variable override other than `T=`/`RUN=`, `--eval`, `-f` or `MAKEFLAGS` (a pre-approved `make test:*` would otherwise run any command). Once `dev-check` is wired, refuse a long-lived `make dev` (also behind `nohup`, `bash -c`, `VAR=`) and the run scripts listed in `HARNESS_DEV_BLOCK`. |
-| Stop gate | Claude can't finish a turn while `check-fast` fails on its changes. It runs only when this session changed code (compared with a fingerprint taken at session start), against the base the repo's Makefile computes (`make harness-base`). A `check-fast` that could not run (Docker not running, a setup error) is a warning, not a block. When a subagent working in its own git worktree (a parallel implementer) stops with `check-fast` failing there, its branch is marked red and the Bash guard refuses to merge or cherry-pick it until a later stop there passes. Reviewers and explorers in the main checkout are never checked. |
+| Stop gate | Claude can't finish a turn while `check-fast` fails on its changes. It runs only when this session changed code (compared with a fingerprint taken at session start), against the base the repo's Makefile computes (`make harness-base`). A `check-fast` that could not run (Docker not running or not installed, a setup error) is a warning, not a block; a repo's gate can print a line starting with `setup error:` (optionally after the target's name: `typecheck: setup error: …`) (e.g. `setup error: no base branch`) to be treated as environmental. Other mentions of Docker (a skip reason, a test name) never soften a real failure. When a subagent working in its own git worktree (a parallel implementer) stops with `check-fast` failing there, its branch is marked red and the Bash guard refuses to merge or cherry-pick it until a later stop there passes. Reviewers and explorers in the main checkout are never checked. |
 | `scripts/harness/local-guard.sh` | `seed` and `reset` refuse anything that isn't a local database. |
 | `.claude/settings.json` | Pins the plugin for the team and denies reading secret files. |
 
@@ -127,6 +127,13 @@ The audit measures the level (`Experimental`, `Functional`, `Robust`, `Enterpris
 | Git hooks: pre-commit runs `check-fast`, pre-push runs `check` | on | If a hook manager exists (husky, lefthook, pre-commit), add to its config. Otherwise use `.githooks/` with `core.hooksPath`, set by `make setup`. The session hook warns when the hooks are off. |
 | CI workflow | opt-in | Generated only on a yes, after the explanation is shown. It is the only check nobody can skip; required for Enterprise. |
 
+### Lines your targets can print
+
+Two lines a repo's own targets can print to talk to the harness (each may start with the target's name, `typecheck: setup error: …`):
+
+- `setup error: <what>` from `check-fast` (stdout or stderr), when the gate can't run here (base not fetched, no local database): the stop gate warns `check-fast could not run (environment, not your change)` instead of blocking. Never for a code failure.
+- `needs you: <what>` on stdout from a setup step (`setup-deps`, `setup-services`, `setup-migrate`, `seed`, `smoke`) that exits 0 but can't finish without a person: `make setup` lists it under "needs you" with the target's name and shows the step as `✓ (needs you)`.
+
 ## Using a runner other than make
 
 Register commands in `.agents/harness.json`. Hooks, the verifier, the audit and git hooks read it first and fall back to `make <target>`:
@@ -143,7 +150,7 @@ Register commands in `.agents/harness.json`. Hooks, the verifier, the audit and 
 ## Settings
 
 - `HARNESS_STOP_GATE=0`: turn off the stop gate (and the red-branch check for worktree subagents) for a session.
-- `HARNESS_HOOK_STAGED_ONLY=1`: pre-commit runs `check-fast` on the staged snapshot (a scratch worktree with `node_modules`/`.venv` linked; build output starts cold) instead of the working tree.
+- `HARNESS_HOOK_STAGED_ONLY=1`: pre-commit runs `check-fast` on the staged snapshot, and pre-push runs `check` on the pushed commit, in a scratch worktree (`node_modules`/`.venv`/`.env`/`.env.local` linked; other gitignored files are absent and build output starts cold) instead of the working tree. By default both hooks check the working tree in place and say when uncommitted code is part of the run.
 - `SKIP_HOOKS=1`: skip the pre-commit and pre-push hooks once (for people; the Bash guard refuses it for agents).
 - `HARNESS_GUARD=0`: turn off the command and file guards for a session (not recommended).
 - `HARNESS_SHARED_SERVICES=1`: `make setup` shares local services instead of giving the checkout its own compose project (and each linked worktree its own free ports; the main checkout keeps the `.env.example` ports).

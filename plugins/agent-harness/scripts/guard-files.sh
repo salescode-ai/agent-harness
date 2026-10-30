@@ -2,6 +2,12 @@
 # PreToolUse(Edit|Write|MultiEdit): protect secrets, the CLAUDE.md shim, and human-owned harness files.
 source "$(dirname "$0")/_lib.sh"
 [[ "${HARNESS_GUARD:-1}" == "0" ]] && exit 0
+if ! command -v python3 >/dev/null 2>&1; then
+  # nothing parses the input without python3: a protected file name in file_path asks instead of passing
+  re='"file_path"[[:space:]]*:[[:space:]]*"[^"]*(/|^)(\.env[^"/]*|CLAUDE\.md|INVARIANTS\.md|init-state\.json|harness-workspace\.json)"'
+  [[ $HOOK_INPUT =~ $re ]] && printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"agent-harness: python3 is missing, so this edit to a file the harness protects could not be checked. Review it yourself."}}'
+  exit 0
+fi
 path="$(json_get "d['tool_input'].get('file_path','')")"
 [[ -z "$path" ]] && exit 0
 base="$(basename "$path")"
@@ -14,6 +20,27 @@ case "$base" in
     fi ;;
   INVARIANTS.md)
     [[ -f "$path" ]] && decide ask "INVARIANTS.md changes need human sign-off (Harness Integrity). Confirm this edit was requested." ;;
+  init-state.json)
+    # the git hooks skip while "gate_wired" is not true: once wired, no edit may unwire it (init/upgrade only set it true)
+    if [[ "$(basename "$(dirname "$path")")" == ".harness" && -f "$path" ]] && ! HOOK_INPUT="$HOOK_INPUT" python3 - "$path" <<'PY' 2>/dev/null
+import json, os, re, sys
+# the hooks' own test (grep -E per line), so a value they read as unwired is refused however it is spelled
+wired = lambda t: any(re.search(r'"gate_wired"\s*:\s*true', l) for l in t.splitlines())
+d = json.loads(os.environ["HOOK_INPUT"])["tool_input"]
+old = open(sys.argv[1]).read()
+if not wired(old):
+    sys.exit(0)
+new = d.get("content")
+if new is None:
+    new = old
+    for e in d.get("edits") or [d]:
+        o, n = e.get("old_string", ""), e.get("new_string", "")
+        new = new.replace(o, n) if e.get("replace_all") else new.replace(o, n, 1)
+sys.exit(0 if wired(new) else 1)
+PY
+    then
+      decide deny "The harness gate is wired: .harness/init-state.json must keep \"gate_wired\": true (the git hooks skip without it). Fix the failing check instead."
+    fi ;;
   harness-workspace.json)
     [[ -f "$path" ]] && decide ask "harness-workspace.json defines which repos own which changes. Confirm this edit was requested." ;;
 esac

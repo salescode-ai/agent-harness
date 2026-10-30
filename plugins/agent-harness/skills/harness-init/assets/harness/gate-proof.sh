@@ -2,6 +2,8 @@
 # scripts/harness/gate-proof.sh — prove the gate can fail: a planted failing test must turn it red.
 # Usage: bash scripts/harness/gate-proof.sh [junit5|pytest|vitest|jest]   (from the repo root; harness-init step 5
 #        and harness-upgrade step 3 run it). No stack given: picked from the root build file, then from the test files.
+# HARNESS_GATE_PROOF_BESIDE=<existing test file> plants the test beside that file (a test the repo's test command runs);
+#        otherwise the first test file found, the root module's (src/test/java/…) before nested projects'.
 # In a scratch worktree holding the current code (committed + uncommitted), one trivial test is planted next to an
 # existing test file, and the repo's own targets (scripts/harness/cmd.sh: make, or .agents/harness.json) must show:
 #   test T=<planted>      exits 0 while the planted test passes (control), non-zero once it fails
@@ -44,7 +46,8 @@ finish() { # finish <exit> <line>
 
 files="$(git ls-files --cached --others --exclude-standard)"
 first() { grep -E "$1" <<<"$files" | grep -vE '(^|/)(node_modules|vendor|target|build|dist)/' | head -200; }
-junit5() { first '(^|/)src/test/java/.*\.java$' | while IFS= read -r f; do grep -q 'org\.junit\.jupiter' "$f" 2>/dev/null && { echo "$f"; break; }; done; }
+# root module first: a nested src/test/java may be a separate project the repo's test command never runs
+junit5() { { first '^src/test/java/.*\.java$'; first '(^|/)src/test/java/.*\.java$'; } | while IFS= read -r f; do grep -q 'org\.junit\.jupiter' "$f" 2>/dev/null && { echo "$f"; break; }; done; }
 stack="${1:-}"
 if [ -z "$stack" ]; then
   for f in pom.xml build.gradle build.gradle.kts package.json pyproject.toml setup.py setup.cfg requirements.txt; do
@@ -69,6 +72,10 @@ case "$stack" in
   "") finish 2 "inconclusive (no supported stack: JUnit 5, pytest or vitest/jest test files)" ;;
   *) finish 2 "inconclusive (unknown stack '$stack': junit5 pytest vitest jest)" ;;
 esac
+if [ -n "${HARNESS_GATE_PROOF_BESIDE:-}" ]; then
+  beside="${HARNESS_GATE_PROOF_BESIDE#./}"
+  [ -f "$beside" ] || finish 2 "inconclusive (HARNESS_GATE_PROOF_BESIDE=$beside is not a file)"
+fi
 [ -n "$beside" ] || finish 2 "inconclusive (no $stack test file to plant a test beside)"
 dir="$(dirname "$beside")"
 

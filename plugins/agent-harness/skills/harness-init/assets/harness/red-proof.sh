@@ -2,7 +2,8 @@
 # scripts/harness/red-proof.sh — prove the change's tests fail without its production code (the red of red → green).
 # Usage: bash scripts/harness/red-proof.sh [<base>]   (from the repo root; harness-verify runs it)
 #   <base>: what "without the change" means: its merge-base with HEAD (a branch that moved on since the fork adds
-#           nothing). Default: origin/HEAD (else origin/main, origin/master); with no remote, HEAD (uncommitted only).
+#           nothing). Default: the repo's base (`cmd.sh . --base`: its harness-base target, HARNESS_BASE, origin/HEAD),
+#           else origin/main, origin/master; with no remote, HEAD (uncommitted only).
 # In a scratch worktree holding the current code (committed + uncommitted), each changed test file is run with the
 # repo's `test T=<file>` target: it must pass (green control), then fail once the changed production files are put
 # back to <base> (red). Last line, and exit code:
@@ -21,8 +22,9 @@ if [ -n "${1:-}" ]; then
   # the fork point, not the tip: a commit already on HEAD's history is its own merge-base
   base="$(git merge-base HEAD "$1" 2>/dev/null)" || { echo "red: inconclusive (unknown base '$1', or no common history with HEAD)"; exit 2; }
 else
-  up="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)"
-  for b in "$up" origin/main origin/master; do
+  # the repo's base first: a branch off dev compared with origin/main would revert everything dev has
+  rb="$(bash "$RES" . --base 2>/dev/null | tail -1)"; up="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)"
+  for b in "$rb" "$up" origin/main origin/master; do
     [ -n "$b" ] && git rev-parse -q --verify "$b" >/dev/null 2>&1 && { base="$(git merge-base HEAD "$b" 2>/dev/null)"; break; }
   done
   base="${base:-HEAD}"

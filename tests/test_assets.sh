@@ -74,3 +74,33 @@ t_assets_released_precommit_refreshed() {
   python3 "$ASSETS" refresh "$d" >/dev/null
   grep -q 'plan-check.sh fresh' "$d/.githooks/pre-commit" || _fail "pre-commit not refreshed"
 }
+_own_hook_repo() { # a repo whose .githooks/pre-commit is its own and calls the plugin's hook as harness-pre-commit
+  local d; d="$(mktemp -d)"; ( cd "$d" && git init -q -b main && printf '# a\n' > AGENTS.md ) >/dev/null
+  mkdir -p "$d/.githooks" "$d/scripts/harness"
+  printf '#!/usr/bin/env bash\n# repo checks\nROOT=$(git rev-parse --show-toplevel)\necho repo-check\nHARNESS_GIT_HOOK=1 bash "$ROOT/.githooks/harness-pre-commit" || exit 1\n' > "$d/.githooks/pre-commit"
+  chmod +x "$d/.githooks/pre-commit"; echo "$d"
+}
+t_assets_repo_own_precommit_tracks_harness_copy() {
+  # salescodeai-lite layout: the plugin hook lives beside the repo's hook as harness-pre-commit and is refreshed there
+  local d out c own; d="$(_own_hook_repo)"; own="$(cat "$d/.githooks/pre-commit")"
+  c="$(git -C "$ROOT" log --format=%H -1 v2.0.12 2>/dev/null)"; [ -n "$c" ] || skip assets_history "no v2.0.12 tag"
+  git -C "$ROOT" show "$c:plugins/agent-harness/skills/harness-init/assets/githooks/pre-commit" > "$d/.githooks/harness-pre-commit"
+  out="$(python3 "$ASSETS" status "$d")"
+  assert_contains "$out" "stale     .githooks/harness-pre-commit" "hand-copied 2.0.12 hook recognised as stale"
+  assert_not_contains "$out" "modified  .githooks/pre-commit" "the repo's own hook is not ours"
+  out="$(python3 "$ASSETS" install "$d")"
+  cmp -s "$d/.githooks/harness-pre-commit" "$PLUGIN/skills/harness-init/assets/githooks/pre-commit" || _fail "not refreshed"
+  [ -f "$d/.githooks/snapshot.sh" ] || _fail "snapshot.sh not installed beside it"
+  assert_eq "$(cat "$d/.githooks/pre-commit")" "$own" "repo hook untouched"
+  assert_contains "$(cat "$d/scripts/harness/assets.json")" '".githooks/harness-pre-commit"' "tracked"
+  assert_not_contains "$(cat "$d/scripts/harness/assets.json")" '".githooks/pre-commit"' "repo hook not tracked"
+  assert_not_contains "$out" "must call" "already wired: no note"
+  assert_eq "$(python3 "$ASSETS" count "$d")" 0 "nothing stale after install"
+}
+t_assets_repo_own_precommit_not_calling_harness_gets_note() {
+  local d out; d="$(_own_hook_repo)"; printf '#!/bin/sh\necho mine\n' > "$d/.githooks/pre-commit"
+  out="$(python3 "$ASSETS" install "$d")"
+  assert_contains "$out" "installed .githooks/harness-pre-commit" "installed beside"
+  assert_contains "$out" 'HARNESS_GIT_HOOK=1 bash "$ROOT/.githooks/harness-pre-commit" || exit 1' "says how to call it"
+  assert_eq "$(cat "$d/.githooks/pre-commit")" "$(printf '#!/bin/sh\necho mine')" "repo hook untouched"
+}

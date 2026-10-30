@@ -47,8 +47,28 @@ def assets(root):
     pairs += [(A + "/lint.sh", "scripts/harness/lint.sh"), (A + "/harness.mk", "harness.mk")]
     pairs += [p for p in harness_files() if not repo_owned(p[1])]
     for f in sorted(os.listdir(os.path.join(PLUGIN, A, "githooks"))):
-        pairs.append((A + "/githooks/" + f, ".githooks/" + f))
+        pairs.append((A + "/githooks/" + f, hook_dest(root, f)))
     return pairs
+
+
+HOOK_MARK = "agent-harness git hook"  # in the first lines of every released plugin hook
+
+
+def own_hook(root, f):
+    """True if the repo's .githooks/<f> is its own hook (not a plugin copy, edited or not)."""
+    p = os.path.join(root, ".githooks", f)
+    if not os.path.isfile(p):
+        return False
+    with open(p, errors="replace") as fh:
+        return HOOK_MARK not in fh.read(2000) and sha(p) not in load(HISTORY).get(A + "/githooks/" + f, {})
+
+
+def hook_dest(root, f):
+    """.githooks/<f>, or .githooks/harness-<f> beside a repo's own <f> hook, which calls it."""
+    if root is not None and f in ("pre-commit", "pre-push") and (
+            os.path.isfile(os.path.join(root, ".githooks", "harness-" + f)) or own_hook(root, f)):
+        return ".githooks/harness-" + f
+    return ".githooks/" + f
 
 
 def repo_owned(dest):  # starters the repo then edits: its own sensor registry and planted fixtures
@@ -122,6 +142,15 @@ def main(argv):
                 os.makedirs(os.path.dirname(p), exist_ok=True)
                 shutil.copy(os.path.join(PLUGIN, src), p)
                 print("installed %s" % dest)
+    for src, dest in assets(root):
+        if dest.startswith(".githooks/harness-"):
+            f = dest[len(".githooks/harness-"):]
+            shas.pop(".githooks/" + f, None)  # the repo's own hook: not ours to track
+            if own_hook(root, f):
+                with open(os.path.join(root, ".githooks", f), errors="replace") as fh:
+                    if "harness-" + f not in fh.read():
+                        print("note      .githooks/%s is the repo's own hook; it must call the harness gate: "
+                              "HARNESS_GIT_HOOK=1 bash \"$ROOT/.githooks/harness-%s\" || exit 1" % (f, f))
     if cmd != "status" and shas:
         p = os.path.join(root, MANIFEST)
         os.makedirs(os.path.dirname(p), exist_ok=True)

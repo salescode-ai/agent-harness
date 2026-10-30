@@ -146,3 +146,10 @@ t_diff_sensor_proof() {
   out="$(_proof "$d" swallow)" && return 1; assert_contains "$out" "FAIL step 2c" "swallowed base error caught"
   assert_eq "$(git -C "$d" status --short --untracked-files=all)" "" "no planted copies or index entries left"
 }
+t_diffscan_default_base_from_the_repo() {
+  # a repo whose features branch from dev: new code is what came after dev, not every commit since origin/main
+  local d; d="$(_dr)"; cp "$PLUGIN/scripts/harness-cmd.sh" "$d/scripts/harness/cmd.sh"
+  ( cd "$d" && git checkout -q -b dev && printf 'harness-base:\n\t@echo dev\n' > Makefile && echo devline > src/dev.txt \
+    && git add -A && git -c core.hooksPath=/dev/null commit -qm dev && git checkout -q -b feat && echo featline > src/f.txt ) >/dev/null
+  assert_eq "$(_ds "$d")" "src/f.txt:1:featline" "only the feature's lines"
+}

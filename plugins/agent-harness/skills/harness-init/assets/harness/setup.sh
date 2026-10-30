@@ -2,6 +2,8 @@
 # setup.sh -- one-command dev setup (run from the repo root via `make setup`). Safe to re-run, never sudo,
 # never fetches secrets, never overwrites .env. Repo steps run only if they resolve; `setup` itself is never resolved (recursion).
 # Exit 1 only when a resolved step failed; "needs you" items alone exit 0.
+# A repo step that can't finish without a person exits 0 and prints a line `needs you: <what>` (optionally
+# `<target>: needs you: <what>`): it is listed under "needs you" and the step shows "✓ (needs you)".
 NEEDS=""; ST_deps="skipped"; ST_services="skipped"; ST_migrate="skipped"; ST_seed="skipped"; ST_smoke="skipped"; FAILED=""; RT_UNSET=""
 need() { NEEDS="${NEEDS:+$NEEDS, }$1"; }
 has() { command -v "$1" >/dev/null 2>&1; }
@@ -64,6 +66,7 @@ s.close(); c=socket.socket(); c.settimeout(0.5); sys.exit(c.connect_ex(("127.0.0
 }
 port_ours() { has docker && docker ps --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Ports}}' 2>/dev/null | grep -q ":$1->"; }
 ev() { sed -n "s/^\(export \)\{0,1\}$2=//p" "$1" 2>/dev/null | head -1 | sed "s/^[\"']//; s/[\"']\$//"; }
+cdef() { [ -n "$COMPOSE" ] && sed -n "s/.*\${$1:-\([0-9]*\)}.*/\1/p" "$COMPOSE" | head -1; }  # ${NAME_PORT:-5442} -> 5442
 if [ -f .env.example ]; then
   [ -f .env ] || { cp .env.example .env; FRESH=1; }
   keys="$(sed -n 's/^\(export \)\{0,1\}\([A-Za-z_][A-Za-z0-9_]*\)=.*/\2/p' .env.example)"
@@ -75,7 +78,10 @@ if [ -f .env.example ]; then
 fi
 SHARED="${HARNESS_SHARED_SERVICES:-$(ev .env.local HARNESS_SHARED_SERVICES)}"
 if [ -f .env.example ] || [ -n "$COMPOSE" ]; then
-  pk=""; [ -f .env.example ] && pk="$(printf '%s\n' $keys | grep '_PORT$')"
+  # port keys from .env.example and from ${NAME_PORT:-<port>} in the compose file (a repo may have only the latter);
+  # a ${NAME_PORT} without a default is set elsewhere (.env, the shell) and left alone
+  pk="$( { [ -f .env.example ] && printf '%s\n' $keys | grep '_PORT$'
+    [ -n "$COMPOSE" ] && grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*_PORT:-[0-9]+\}' "$COMPOSE" | sed -E 's/^\$\{([A-Za-z0-9_]+).*/\1/'; } | awk 'NF && !s[$0]++')"
   managed="COMPOSE_PROJECT_NAME DB_NAME $pk"
   new="$(mktemp)"; : > "$new"
   if [ "$SHARED" != 1 ]; then
@@ -91,9 +97,10 @@ print(*[x.getsockname()[1] for x in s])' "$n" 2>/dev/null)"
       set -- $free
       for k in $pk; do
         # main checkout keeps the example's port while it is free or held by this compose project; otherwise,
-        # and in linked worktrees (.git is a file), a free one. A value already in .env.local always wins.
+        # and in linked worktrees (.git is a file), a free one. A value already in .env.local always wins; for a key
+        # only the compose file names, the main checkout takes .env's value before the compose default.
         p="$(ev .env.local "$k")"
-        if [ -z "$p" ] && [ -z "$WT" ]; then p="$(ev .env.example "$k")"; [ -n "$p" ] && ! port_free "$p" && ! port_ours "$p" && p=""; fi
+        if [ -z "$p" ] && [ -z "$WT" ]; then p="$(ev .env.example "$k")"; [ -z "$p" ] && ! grep -qs "^\(export \)\{0,1\}$k=" .env.example && { p="$(ev .env "$k")"; [ -z "$p" ] && p="$(cdef "$k")"; }; [ -n "$p" ] && ! port_free "$p" && ! port_ours "$p" && p=""; fi
         [ -z "$p" ] && p="${1:-}"; shift 2>/dev/null
         [ -n "$p" ] && { echo "$k=$p" >> "$new"; PORTS="$PORTS ${k%_PORT}=$p"; export "$k=$p"; }
       done
@@ -120,11 +127,22 @@ run_target() { # <var-suffix> <target> [fallback-cmd...]
   if [ "$rc" = 0 ] && [ -n "$cmd" ]; then :
   elif [ $# -gt 0 ]; then cmd="$*"
   else return 0; fi
-  if ( [ -n "$RT_UNSET" ] && unset $RT_UNSET; eval "$cmd" ); then eval "ST_$v='✓'"; else eval "ST_$v='✗'"; FAILED="$v"; fi
+  local log n i z=-1; log="$(mktemp)"
+  # stdout is copied to $log by a tee in a process substitution, not a pipe: the step's exit code is its own, and a
+  # process it leaves running (a server, a watcher) holding stdout doesn't make setup wait. PYTHONUNBUFFERED: python
+  # would block-buffer the pipe and show a long step's lines only at its end.
+  if ( [ -n "$RT_UNSET" ] && unset $RT_UNSET; export PYTHONUNBUFFERED=1; eval "$cmd" ) > >(tee "$log"); then eval "ST_$v='✓'"; else eval "ST_$v='✗'"; FAILED="$v"; fi
+  # tee may lag the step's exit: read the log once it stops growing (at most ~2 s)
+  for i in 1 2 3 4 5 6 7 8 9 10; do n="$(wc -c < "$log")"; [ "$n" = "$z" ] && break; z="$n"; sleep 0.2; done
+  n="$(sed -n 's/^\([A-Za-z0-9_.-]*: \)\{0,1\}needs you: //p' "$log")"; rm -f "$log"
+  if [ -n "$n" ]; then
+    while IFS= read -r l; do need "$t: $l"; done <<<"$n"
+    eval "[ \"\$ST_$v\" = '✓' ] && ST_$v='✓ (needs you)'"
+  fi
 }
 run_target deps setup-deps
 # only when deps did not succeed: a repo passing `-s settings.xml` (or a registry extension) needs no ~/.m2 copy
-if [ "$ST_deps" != '✓' ] && [ -f settings.xml ] && [ ! -f "$HOME/.m2/settings.xml" ]; then need "maven credentials: copy settings.xml to ~/.m2 and add your server login"; fi
+if [ "${ST_deps#✓}" = "$ST_deps" ] && [ -f settings.xml ] && [ ! -f "$HOME/.m2/settings.xml" ]; then need "maven credentials: copy settings.xml to ~/.m2 and add your server login"; fi
 dc=""
 if [ -n "$COMPOSE" ]; then
   if has docker; then

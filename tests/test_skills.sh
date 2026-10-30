@@ -67,7 +67,8 @@ for f in files:
             elif t.startswith("scripts/harness/"):
                 cands = ["skills/harness-init/assets/harness/" + t[16:]]
             elif t.startswith(".githooks/"):
-                cands = ["skills/harness-init/assets/githooks/" + t[10:]]
+                # .githooks/harness-<hook>: the plugin hook installed beside a repo's own hook
+                cands = ["skills/harness-init/assets/githooks/" + t[10:], "skills/harness-init/assets/githooks/" + t[10:].replace("harness-", "", 1)]
             elif t.startswith(("assets/", "references/")):
                 cands = [os.path.relpath(os.path.join(skill, t), plugin), "skills/harness-init/" + t]
             else:
@@ -174,4 +175,20 @@ t_verify_writes_local_evidence() {
   grep -qF 'one block per repo' "$v" || _fail "workspace per repo"
   grep -qF '**Never set Status: done or move the plan to `docs/plans/done/` until `bash scripts/harness/plan-check.sh fresh .harness/evidence/<plan file name>` exits 0**' "$s" || _fail "done needs fresh PASS"
   grep -qF 'branch `<KEY>-<n>-<slug>` and the plan `docs/plans/active/YYYY-MM-DD-<KEY>-<n>-<slug>.md`' "$s" || _fail "ticket-keyed naming"
+}
+t_no_prefix_make_allow_rules() {
+  # make takes variable overrides and harness.mk runs HARNESS_* as recipes: `make test:*` would run any command unprompted.
+  # Every mention of a make prefix rule must be a warning (never / not / pre-approved … just before it), not a suggestion.
+  local out
+  out="$(python3 - "$PLUGIN"/skills/*/assets/claude-settings.json $(_doc_files) "$ROOT"/docs/manual/*.md <<'PY'
+import re, sys
+for f in sys.argv[1:]:
+    for n, line in enumerate(open(f), 1):
+        for m in re.finditer(r"Bash\(make (?:[a-z-]+:)?\*\)", line):
+            if not re.search(r"(?i)(never|not|pre-approved)\b", line[max(0, m.start() - 60):m.start()]):
+                print("%s:%d" % (f, n))
+PY
+)"
+  assert_eq "$out" "" "an allow rule recommends a make prefix pattern"
+  grep -q 'Bash(make check)' "$PLUGIN/skills/harness-init/references/layers.md" || _fail "layers.md: exact make allow rules"
 }

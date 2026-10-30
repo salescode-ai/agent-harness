@@ -3,7 +3,7 @@
 
 Parses the command into segments and argv tokens (quotes respected), so text inside
 commit messages or grep patterns never triggers a rule. Prints a PreToolUse decision
-JSON for deny/ask; prints nothing to allow. Fails open on any internal error.
+JSON for deny/ask; prints nothing to allow. An internal error asks (fails closed).
 """
 import json
 import os
@@ -234,6 +234,107 @@ def writes_target(cmd, segs, is_target):
     return False
 
 
+HOOKS_OFF = {"HUSKY", "SKIP_HOOKS", "SKIP"}
+DECLARERS = {"export", "declare", "typeset", "readonly", "local"}
+HOOKS_OFF_MSG = "Disabling git hooks via environment is blocked by INVARIANTS.md. Fix the failing check instead."
+
+
+def hooks_off_names(env, argv):
+    """HOOKS_OFF names a segment sets: a bare `X=1`, export/declare X[=1], or a prefix (`X=1 cmd`, `env X=1 cmd`).
+    A prefix reaches only its own command: HUSKY/SKIP count before git, SKIP_HOOKS before anything."""
+    prog = os.path.basename(argv[0]) if argv else ""
+    names = set(env) if prog in ("", "git") else set(env) & {"SKIP_HOOKS"}
+    if argv and os.path.basename(argv[0]) in DECLARERS:
+        names |= {a.split("=", 1)[0] for a in argv[1:] if not a.startswith("-")}
+    return names & HOOKS_OFF
+
+
+INIT_STATE_MSG = ("The harness gate is wired: .harness/init-state.json must keep \"gate_wired\": true (the git hooks skip "
+                  "without it). Fix the failing check instead; a human can rerun /agent-harness:harness-upgrade.")
+
+
+def _is_init_state(t):  # any folder: `cd .harness && … > init-state.json` names it relative to a cd
+    return os.path.basename(t.rstrip("/")) == "init-state.json"
+
+
+def _expanded(t):  # a target the shell expands ($f, `…`, a glob): what it names is unknown here
+    return bool(re.search(r"[$`*?\[]", t))
+
+
+# the git hooks' own test (a line grep), so the guards protect exactly what keeps the hooks running
+WIRED_RE = re.compile(r'"gate_wired"\s*:\s*true')
+
+
+def wired_text(text):
+    return any(WIRED_RE.search(line) for line in text.splitlines())
+
+
+def gate_wired(cwd):
+    """True if the repo at cwd has .harness/init-state.json with "gate_wired": true."""
+    roots = {cwd}
+    try:
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True,
+                             timeout=3, cwd=cwd).stdout.strip()
+        if top:
+            roots.add(top)
+    except Exception:
+        pass
+    for r in roots:
+        try:
+            if wired_text(open(os.path.join(r, ".harness", "init-state.json")).read()):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def writes_init_state(cmd, segs):
+    """"deny" for a shell write to .harness/init-state.json (redirect/tee/cp/sed -i), "ask" for an inline
+    interpreter that may write it, else None. Redirects are judged by their target, so reads piped elsewhere pass."""
+    if writes_target(cmd, segs, _is_init_state):
+        return "deny"
+    if writes_target(cmd, segs, _expanded):
+        return "ask"
+    # shortcut: an inline script naming the file plus a write call only asks (a script file: script_names_init_state)
+    progs = {os.path.basename(strip_prefix(s)[1][0]) for s in segs if strip_prefix(s)[1]}
+    interp = any(re.match(r"^(python[0-9.]*|node|perl|ruby)$", p) for p in progs)
+    if interp and "init-state.json" in cmd and re.search(r"""open\([^)]*['"][wax+]|\.write\(|writeFile|-i\b""", cmd):
+        return "ask"
+    return None
+
+
+SCRIPT_RUNNERS = re.compile(r"^(bash|sh|zsh|dash|python[0-9.]*|node|perl|ruby)$")
+PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def script_names_init_state(segs, cwd):
+    """True if the command runs a script file (`bash f.sh`, `python3 f.py`, `./f`) whose text names init-state.json.
+    The harness's own scripts (scripts/harness/, the plugin's) keep the gate wired and are not counted."""
+    # shortcut: names only, one level deep; a script it calls in turn, or a name it builds, is not followed
+    for seg in segs:
+        argv = strip_prefix(seg)[1]
+        if not argv:
+            continue
+        if SCRIPT_RUNNERS.match(os.path.basename(argv[0])):
+            f = next((a for a in argv[1:] if not a.startswith("-")), None)
+            if f is None or any(a in ("-c", "-e") for a in argv[1:argv.index(f)]):
+                continue
+        elif "/" in argv[0]:
+            f = argv[0]
+        else:
+            continue
+        p = os.path.realpath(os.path.join(cwd, os.path.expanduser(f)))
+        if p.startswith(PLUGIN_ROOT + os.sep) or "/scripts/harness/" in p or not os.path.isfile(p):
+            continue
+        try:
+            with open(p, errors="replace") as fh:
+                if "init-state.json" in fh.read(512 * 1024):
+                    return True
+        except OSError:
+            continue
+    return False
+
+
 def _is_invariants(t):
     return os.path.basename(t.rstrip("/")) == "INVARIANTS.md"
 
@@ -349,6 +450,13 @@ def check(cmd, cwd, depth=0):
     except ValueError:  # unbalanced quotes: let the shell report it
         return
     asks = []
+    off = set()
+    for seg in segs:
+        off |= hooks_off_names(*strip_prefix(seg))
+    runs_git = any(strip_prefix(s)[1][:1] == ["git"] for s in segs)
+    # SKIP_HOOKS is the harness's own switch: refused however it is set; HUSKY/SKIP when this line runs git
+    if "SKIP_HOOKS" in off or (off and runs_git):
+        decide("deny", HOOKS_OFF_MSG)
     for seg in segs:
         env, argv = strip_prefix(seg)
         if argv[:1] == ["cd"] and len(argv) > 1:
@@ -356,8 +464,6 @@ def check(cmd, cwd, depth=0):
             if os.path.isdir(nxt):
                 cwd = nxt
             continue
-        if any(e in ("HUSKY", "SKIP_HOOKS", "SKIP") for e in env) and argv[:1] == ["git"]:
-            decide("deny", "Disabling git hooks via environment is blocked by INVARIANTS.md. Fix the failing check instead.")
         if not argv:
             continue
         prog = os.path.basename(argv[0])
@@ -377,6 +483,12 @@ def check(cmd, cwd, depth=0):
         decide("deny", CLAUDE_MD_MSG)
     if writes_target(cmd, segs, _is_env):
         decide("deny", ENV_MSG)
+    how = "init-stat" in cmd and writes_init_state(cmd, segs)
+    if how and gate_wired(cwd):
+        decide(how, INIT_STATE_MSG)
+    if script_names_init_state(segs, cwd) and gate_wired(cwd):
+        decide("ask", "This script names .harness/init-state.json; it may unwire the harness gate (\"gate_wired\": true). "
+                      "Confirm it was requested.")
     if writes_target(cmd, segs, _is_invariants):
         decide("ask", "INVARIANTS.md changes need human sign-off (Harness Integrity). Confirm this edit was requested.")
     if asks:
@@ -389,11 +501,8 @@ def check(cmd, cwd, depth=0):
 def main():
     if os.environ.get("HARNESS_GUARD", "1") == "0":
         return
-    try:
-        data = json.load(sys.stdin)
-        cmd = data.get("tool_input", {}).get("command", "") or ""
-    except Exception:
-        return
+    data = json.load(sys.stdin)
+    cmd = data.get("tool_input", {}).get("command", "") or ""
     cwd = data.get("cwd") or os.getcwd()
     if not os.path.isdir(cwd):
         cwd = os.getcwd()
@@ -405,5 +514,5 @@ if __name__ == "__main__":
         main()
     except SystemExit:
         raise
-    except Exception:
-        pass
+    except Exception as e:  # fail closed: an unparsed command could be anything
+        decide("ask", "agent-harness Bash guard error (%s: %s); review this command yourself." % (type(e).__name__, e))

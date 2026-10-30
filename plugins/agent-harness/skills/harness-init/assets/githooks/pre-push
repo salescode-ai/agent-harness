@@ -1,27 +1,28 @@
 #!/usr/bin/env bash
-# agent-harness git hook: runs the repo's check gate when the checked-out commit is pushed. Skips only while the gate
+# agent-harness git hook: runs the repo's check gate on push. Skips only while the gate
 # isn't wired yet; a gate that can't be resolved (broken Makefile) fails the push. SKIP_HOOKS=1 skips it (people
-# only: the Bash guard refuses it for agents).
+# only: the Bash guard refuses it for agents). HARNESS_HOOK_STAGED_ONLY=1 checks the pushed commit alone, in a scratch
+# worktree, when there is uncommitted code.
 [ "${SKIP_HOOKS:-}" = 1 ] && { echo "harness: SKIP_HOOKS=1, skipping pre-push"; exit 0; }
 # harness-init writes .harness/init-state.json first and sets "gate_wired": true last; skip until then
 if [ -f .harness/init-state.json ] && ! grep -qE '"gate_wired"[[:space:]]*:[[:space:]]*true' .harness/init-state.json; then
   echo "harness: setup in progress, skipping"; exit 0
 fi
-# git passes "<local ref> <local sha> <remote ref> <remote sha>" per pushed ref. check tests the working tree, so it
-# runs only when one of them is HEAD; tags, deletions (local sha all zeros) and other branches are skipped.
+# git passes "<local ref> <local sha> <remote ref> <remote sha>" per pushed ref; tags and deletions (local sha all
+# zeros) are skipped. A manual run (no ref lines) checks HEAD.
+head="$(git rev-parse -q --verify HEAD || echo HEAD)"; shas=""
 if [ ! -t 0 ]; then
-  head="$(git rev-parse -q --verify HEAD)"; refs=0; mine=0
-  while read -r -t 5 lref lsha rref rsha; do  # -t: an inherited stdin that never closes (a manual run) is not git
+  refs=0
+  while read -r -t 5 lref lsha _; do  # -t: an inherited stdin that never closes (a manual run) is not git
     [ -n "$lref" ] || continue
     refs=$((refs+1))
     case "$lsha" in *[!0]*) ;; *) continue;; esac
     case "$lref" in refs/tags/*) continue;; esac
-    [ "$lsha" = "$head" ] && mine=1
+    case " $shas " in *" $lsha "*) ;; *) shas="$shas $lsha";; esac
   done
-  if [ $refs -gt 0 ] && [ $mine = 0 ]; then
-    echo "harness: no pushed ref is the checked-out HEAD (tags, deletions or another branch), skipping check"; exit 0
-  fi
+  [ $refs -gt 0 ] && [ -z "$shas" ] && { echo "harness: only tags or deletions pushed, skipping check"; exit 0; }
 fi
+shas="${shas:-$head}"
 [ -f scripts/harness/cmd.sh ] || { echo "harness: scripts/harness/cmd.sh missing, skipping"; exit 0; }
 cmd="$(bash scripts/harness/cmd.sh . check)"; rc=$?
 if [ $rc != 0 ]; then
@@ -35,4 +36,25 @@ if [ $rc != 0 ]; then
   echo "  Run make -n check and fix the Makefile (or .agents/harness.json)." >&2
   exit 1
 fi
-eval "$cmd"
+# in place (default): the working tree stands in for HEAD, uncommitted code included (said so). HARNESS_HOOK_STAGED_ONLY=1
+# checks exactly each pushed commit in a scratch worktree instead, opt-in because gitignored inputs (local config,
+# generated code, caches) aren't there
+dirty="$( { git diff --name-only HEAD; git ls-files --others --exclude-standard; } 2>/dev/null | grep -vE '^docs/|\.md$' | sort -u)"
+snap="$(dirname "$0")/snapshot.sh"
+for s in $shas; do
+  h="$(git rev-parse --short "$s" 2>/dev/null || echo "$s")"
+  if [ "$s" = "$head" ] && { [ -z "$dirty" ] || [ "${HARNESS_HOOK_STAGED_ONLY:-}" != 1 ] || [ ! -f "$snap" ]; }; then
+    if [ -n "$dirty" ] && [ "${HARNESS_HOOK_STAGED_ONLY:-}" = 1 ]; then
+      echo "harness: .githooks/snapshot.sh missing (run /agent-harness:harness-upgrade); checking in place" >&2
+    elif [ -n "$dirty" ]; then
+      echo "harness: unstaged or untracked changes are part of this check ($(head -3 <<<"$dirty" | tr '\n' ' ' | sed 's/ $//')); HARNESS_HOOK_STAGED_ONLY=1 checks only the pushed commit $h" >&2
+    fi
+    eval "$cmd" || exit
+  elif [ "${HARNESS_HOOK_STAGED_ONLY:-}" != 1 ] || [ ! -f "$snap" ]; then
+    echo "harness: pushed commit $h is not the checked-out HEAD, so the working tree can't stand in for it; skipping (HARNESS_HOOK_STAGED_ONLY=1 checks it in a scratch worktree)"
+  else
+    . "$(dirname "$0")/snapshot.sh" || exit 1
+    echo "harness: checking the pushed commit $h in a scratch worktree"
+    ( snapshot_check "$s" check ) || exit
+  fi
+done

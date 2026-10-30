@@ -10,6 +10,7 @@
 # T is kept literal and must match [A-Za-z0-9_./#,*?:@+=[] -] (no word starting with -), else `test` exits 2 before
 # running anything; changed file names outside [A-Za-z0-9_.@+=,:/-] are left out of CHANGED. `make test:*` is often
 # pre-approved, so neither may carry shell or make code.
+# A repo may describe what its targets really do: set _HELP_<target> := <text> after the include (any text prints verbatim).
 
 HARNESS_MK := $(lastword $(MAKEFILE_LIST))
 override T := $(value T)
@@ -46,6 +47,10 @@ HARNESS_TEST_CHANGED ?=
 HARNESS_TEST_CHANGED_ARGS ?= $(CHANGED)
 # 1 = a custom HARNESS_TEST_CHANGED (not related-tests.sh) was reviewed: harness-lint stops warning about it
 HARNESS_TEST_CHANGED_CONFIRMED ?=
+# With a custom HARNESS_TEST_CHANGED, keeps harness-lint's "check-fast tests nothing for <file>" warning: a command
+# that gets the changed files (at {CHANGED}, else appended), runs no tests and prints "none: <file>" for each one
+# HARNESS_TEST_CHANGED would test nothing for (the format of related-tests.sh with RELATED_TESTS_DRY=1).
+HARNESS_TEST_PLAN ?=
 # Seconds the full suite took at init (its green baseline). With HARNESS_TEST_CHANGED empty and this <= 60,
 # check-fast runs the full suite (HARNESS_TEST_ALL). Both empty: check-fast runs no tests.
 HARNESS_TEST_SECS ?=
@@ -58,6 +63,10 @@ CHANGED            = $(shell { git diff --name-only --diff-filter=ACMR $(HARNESS
 harness_changed = $(patsubst $(1)%,%,$(filter $(foreach e,$(2),$(1)%.$(e)),$(CHANGED)))
 # $(call harness_args,<command>,<placeholder>,<args>): args substituted at the placeholder, else appended
 harness_args = $(if $(findstring $(2),$(1)),$(subst $(2),$(3),$(1)),$(1) $(3))
+# $(call harness_sq,<text>): text safe inside single quotes in a recipe
+harness_sq = $(subst ','\'',$(1))
+# HARNESS_TEST_SECS if it is digits only, else empty: the value reaches a shell test, so it must not carry code
+_harness_secs = $(if $(strip $(subst 0,,$(subst 1,,$(subst 2,,$(subst 3,,$(subst 4,,$(subst 5,,$(subst 6,,$(subst 7,,$(subst 8,,$(subst 9,,$(1)))))))))))),,$(1))
 
 # Optional single-test selector: make test T=tests/test_auth.py
 T ?=
@@ -71,15 +80,15 @@ _HARNESS_TARGETS += help
 _HELP_help := List targets (delete this one if your Makefile already defines help)
 help: ## List targets (delete this one if your Makefile already defines help)
 	@echo "Agents: run only these make targets."
-	@$(foreach t,$(_HARNESS_TARGETS),printf '  %-14s %s\n' '$(t)' '$(_HELP_$(t))';)
+	@$(foreach t,$(_HARNESS_TARGETS),printf '  %-14s %s\n' '$(t)' '$(call harness_sq,$(_HELP_$(t)))';)
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(filter-out $(HARNESS_MK),$(MAKEFILE_LIST)) | awk 'BEGIN {FS=":.*## "} {printf "  %-14s %s\n", $$1, $$2}' || true
 endif
 
 ifneq ($(HARNESS_DEFINE_CHECK),0)
 .PHONY: check
 _HARNESS_TARGETS += check
-_HELP_check := Completion gate: lint + typecheck + all tests + harness lint
-check: lint typecheck test harness-lint ## Completion gate: lint + typecheck + all tests + harness lint
+_HELP_check := Completion gate: lint + typecheck + test (as configured: HARNESS_TEST_ALL) + harness lint
+check: lint typecheck test harness-lint ## Completion gate: lint + typecheck + test (as configured: HARNESS_TEST_ALL) + harness lint
 	@echo "check: OK"
 endif
 
@@ -91,7 +100,7 @@ check-fast: lint typecheck ## Quick gate (< 60 s): lint + typecheck + tests for 
 ifneq ($(strip $(HARNESS_TEST_CHANGED)),)
 	$(call harness_args,$(HARNESS_TEST_CHANGED),{CHANGED},$(HARNESS_TEST_CHANGED_ARGS))
 else
-ifeq ($(shell [ "$(strip $(HARNESS_TEST_SECS))" -le 60 ] 2>/dev/null && echo y),y)
+ifeq ($(shell [ "$(call _harness_secs,$(strip $(HARNESS_TEST_SECS)))" -le 60 ] 2>/dev/null && echo y),y)
 	$(HARNESS_TEST_ALL)
 endif
 endif
@@ -108,10 +117,14 @@ harness-base:
 .PHONY: harness-test-plan
 harness-test-plan:
 	$(info secs=$(strip $(HARNESS_TEST_SECS)))
-	$(info mode=$(if $(strip $(HARNESS_TEST_CHANGED)),$(if $(findstring related-tests.sh,$(HARNESS_TEST_CHANGED)),related,$(if $(filter 1,$(strip $(HARNESS_TEST_CHANGED_CONFIRMED))),custom-confirmed,custom)),none))
+	$(info mode=$(if $(strip $(HARNESS_TEST_CHANGED)),$(if $(findstring related-tests.sh,$(HARNESS_TEST_CHANGED)),related,$(if $(strip $(HARNESS_TEST_PLAN)),plan,$(if $(filter 1,$(strip $(HARNESS_TEST_CHANGED_CONFIRMED))),custom-confirmed,custom))),none))
 	$(foreach f,$(CHANGED),$(info file=$(f)))
 ifneq ($(findstring related-tests.sh,$(HARNESS_TEST_CHANGED)),)
 	@RELATED_TESTS_DRY=1; export RELATED_TESTS_DRY; $(patsubst @%,%,$(call harness_args,$(HARNESS_TEST_CHANGED),{CHANGED},$(CHANGED)))
+else ifneq ($(strip $(HARNESS_TEST_CHANGED)),)
+ifneq ($(strip $(HARNESS_TEST_PLAN)),)
+	@$(patsubst @%,%,$(call harness_args,$(HARNESS_TEST_PLAN),{CHANGED},$(CHANGED)))
+endif
 endif
 
 ifneq ($(HARNESS_DEFINE_LINT),0)
@@ -133,8 +146,8 @@ endif
 ifneq ($(HARNESS_DEFINE_TEST),0)
 .PHONY: test
 _HARNESS_TARGETS += test
-_HELP_test := All tests, or one file/test with T=<path>
-test: ## All tests, or one file/test with T=<path>
+_HELP_test := Tests as configured (HARNESS_TEST_ALL), or one file/test with T=<path>
+test: ## Tests as configured (HARNESS_TEST_ALL), or one file/test with T=<path>
 ifeq ($(strip $(T)),)
 	$(HARNESS_TEST_ALL)
 else
