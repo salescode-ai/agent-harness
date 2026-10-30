@@ -54,6 +54,8 @@ trap cleanup EXIT
   unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE
   git worktree add -q --detach "$w" HEAD >/dev/null 2>&1 && git -C "$w" read-tree -u --reset "$tree" \
     || { echo "harness: could not check out the staged snapshot (no commit yet?); unset HARNESS_HOOK_STAGED_ONLY" >&2; exit 1; }
+  # a merge being committed stays a merge there: repo logic that reads MERGE_HEAD must not see every merged file as changed
+  mh="$(git rev-parse -q --verify MERGE_HEAD)" && (cd "$w" && echo "$mh" > "$(git rev-parse --git-path MERGE_HEAD)")
   # shortcut: shares the usual gitignored dependency/env folders by symlink (as red-proof.sh); build output starts cold
   for d in $(find . -maxdepth 3 \( -name node_modules -o -name .venv -o -name venv \) -type d -prune 2>/dev/null) .env .env.local; do
     [ -e "$d" ] && [ ! -e "$w/$d" ] && { mkdir -p "$w/$(dirname "$d")"; ln -s "$PWD/${d#./}" "$w/${d#./}"; }

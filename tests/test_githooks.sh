@@ -102,6 +102,21 @@ t_precommit_staged_snapshot() {
   git -C "$d" rm -q --cached c.sh; echo 'echo a' > "$d/a.sh"; echo 'echo d' > "$d/d.sh"; git -C "$d" add d.sh
   _commit "$d"; assert_eq "$RC" 0 "clean tree"; assert_not_contains "$OUT" "unstaged" "no warning"
 }
+t_precommit_staged_snapshot_keeps_merge_head() {
+  # merge-aware test selection in the repo reads MERGE_HEAD; the scratch worktree must see the real one
+  local d m; d="$(_staged_repo)"; printf 'check-fast:\n\t@echo "MH=$$(git rev-parse -q --verify MERGE_HEAD)"\n' > "$d/Makefile"
+  ( cd "$d" && git add Makefile && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qm mk && git checkout -qb side \
+    && echo 'echo s' > s.sh && git add s.sh && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qm s \
+    && git checkout -q main && echo 'echo u' > u.sh ) >/dev/null   # u.sh untracked: the staged-only path runs
+  m="$(git -C "$d" rev-parse side)"
+  RC=0; OUT="$(cd "$d" && HARNESS_HOOK_STAGED_ONLY=1 bash "$HOOKS/pre-commit" 2>&1)" || RC=$?
+  assert_eq "$RC" 0 "no merge: $OUT"; assert_contains "$OUT" "MH=" "ran"; assert_not_contains "$OUT" "MH=$m" "no MERGE_HEAD without a merge"
+  git -C "$d" -c user.email=t@e -c user.name=t merge -q --no-ff --no-commit side >/dev/null 2>&1
+  RC=0; OUT="$(cd "$d" && HARNESS_HOOK_STAGED_ONLY=1 bash "$HOOKS/pre-commit" 2>&1)" || RC=$?
+  assert_eq "$RC" 0 "merge: $OUT"; assert_contains "$OUT" "MH=$m" "MERGE_HEAD visible in the staged snapshot"
+  assert_eq "$(git -C "$d" worktree list | wc -l | tr -d ' ')" 1 "scratch worktree removed"
+  assert_eq "$(git -C "$d" rev-parse MERGE_HEAD)" "$m" "the real merge is untouched"
+}
 _push() { # _push <dir> <stdin> [env...]: run pre-push with git's ref lines
   local d="$1" in="$2"; shift 2; RC=0
   OUT="$(cd "$d" && printf '%s\n' "$in" | env "$@" bash "$HOOKS/pre-push" 2>&1)" || RC=$?
