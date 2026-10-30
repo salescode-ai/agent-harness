@@ -269,3 +269,10 @@ t_real_failure_mentioning_docker_blocks() {
     assert_eq "$RC" 2 "blocks: $m"
   done
 }
+t_setup_error_with_target_prefix_warns() {
+  # a make recipe names itself: "typecheck: setup error: …" (on stderr) is the repo saying its setup is incomplete
+  local d out
+  d="$(_gate_repo 'echo "typecheck: setup error: no fork point with origin/dev: git fetch origin" >&2; exit 2')"
+  RC=0; out="$(printf '{"cwd":"%s"}' "$d" | "$GATE" 2>/dev/null)" || RC=$?
+  assert_eq "$RC" 0 "does not block"; assert_contains "$out" "could not run (environment" "warns"
+}
