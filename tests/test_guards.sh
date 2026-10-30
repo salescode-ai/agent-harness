@@ -207,3 +207,25 @@ t_hooks_off_prefix_on_other_command_allowed() {
     assert_contains "$(guard "$c")" '"deny"' "deny: $c"
   done
 }
+t_bash_guard_without_python3_asks_for_risky() {
+  # no python3 (and an empty PATH): commands the guard exists for must ask, not pass, and the session is told once
+  local bin t out sid c; bin="$(mktemp -d)"; t="$(mktemp -d)"; sid="nopy-$$-$RANDOM"
+  _nopy() { python3 -c 'import json,sys;print(json.dumps({"session_id":sys.argv[2],"tool_input":{"command":sys.argv[1]},"cwd":"/"}))' "$1" "$sid" \
+    | PATH="$bin" TMPDIR="$t" /bin/bash "$PLUGIN/scripts/guard-bash.sh"; }
+  out="$(_nopy 'ls -la')"; assert_contains "$out" "python3 not found" "told once"; assert_not_contains "$out" '"ask"' "ls allowed"
+  assert_eq "$(_nopy 'npm test')" "" "allowed, not told again"
+  for c in 'git push --no-verify' 'SKIP_HOOKS=1 git commit -m x' 'git push -f origin main' 'rm -rf build' \
+           "echo '{}' > .harness/init-state.json" 'git reset --hard HEAD~3' 'psql -c "DROP TABLE users"'; do
+    assert_contains "$(_nopy "$c")" '"ask"' "asks: $c"
+  done
+  for c in 'git status' 'git log --oneline' 'git diff' 'make check-fast'; do assert_eq "$(_nopy "$c")" "" "allow: $c"; done
+}
+t_file_guard_without_python3_asks_for_protected() {
+  # no python3: the file guard can't parse its input; a write to a file it protects asks instead of passing
+  local bin f; bin="$(mktemp -d)"; ln -s "$(command -v cat)" "$bin/cat"; ln -s "$(command -v dirname)" "$bin/dirname"
+  _nopyf() { printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":"x"}}' "$1" | PATH="$bin" /bin/bash "$PLUGIN/scripts/guard-files.sh"; }
+  for f in /r/.env /r/.env.local /r/CLAUDE.md /r/INVARIANTS.md /r/.harness/init-state.json; do
+    assert_contains "$(_nopyf "$f")" '"ask"' "asks: $f"
+  done
+  assert_eq "$(_nopyf /r/src/app.py)" "" "other files allowed"
+}

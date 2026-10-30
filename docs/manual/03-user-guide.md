@@ -19,7 +19,7 @@ The plugin brings:
 - **Agents:** `repo-cartographer`, `verifier`, `invariants-reviewer`, `scope-guard`, `cross-repo-reviewer`, `harness-auditor`, `sensor-smith`, `setup-smith`.
 - **Hooks:** SessionStart (`session-context.sh`), PreToolUse on Bash (`guard-bash.sh`), PreToolUse on Edit/Write/MultiEdit (`guard-files.sh`), Stop (`stop-gate.sh`), SubagentStop (`stop-gate.sh --subagent`).
 
-Requirements: `git`, `bash`, `python3` (3.8+ syntax; macOS system Python 3.9 works) and `make` unless you register another runner. The guard hooks fail open when `python3` is missing: they allow the action and stay quiet.
+Requirements: `git`, `bash`, `python3` (3.8+ syntax; macOS system Python 3.9 works) and `make` unless you register another runner. Without `python3` the guard hooks can't parse commands, so they fail closed for what they protect: a Bash command that may skip hooks, change git history, delete, or write a protected file, and an edit to `.env*`, `CLAUDE.md`, `INVARIANTS.md` or `.harness/init-state.json`, asks instead of being checked; other actions pass. The session is told once.
 
 ### Without the plugin installed
 

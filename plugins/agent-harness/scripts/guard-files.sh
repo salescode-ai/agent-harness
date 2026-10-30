@@ -2,6 +2,12 @@
 # PreToolUse(Edit|Write|MultiEdit): protect secrets, the CLAUDE.md shim, and human-owned harness files.
 source "$(dirname "$0")/_lib.sh"
 [[ "${HARNESS_GUARD:-1}" == "0" ]] && exit 0
+if ! command -v python3 >/dev/null 2>&1; then
+  # nothing parses the input without python3: a protected file name in file_path asks instead of passing
+  re='"file_path"[[:space:]]*:[[:space:]]*"[^"]*(/|^)(\.env[^"/]*|CLAUDE\.md|INVARIANTS\.md|init-state\.json|harness-workspace\.json)"'
+  [[ $HOOK_INPUT =~ $re ]] && printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"agent-harness: python3 is missing, so this edit to a file the harness protects could not be checked. Review it yourself."}}'
+  exit 0
+fi
 path="$(json_get "d['tool_input'].get('file_path','')")"
 [[ -z "$path" ]] && exit 0
 base="$(basename "$path")"
