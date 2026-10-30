@@ -175,3 +175,11 @@ t_verify_writes_local_evidence() {
   grep -qF '**Never set Status: done or move the plan to `docs/plans/done/` until `bash scripts/harness/plan-check.sh fresh .harness/evidence/<plan file name>` exits 0**' "$s" || _fail "done needs fresh PASS"
   grep -qF 'branch `<KEY>-<n>-<slug>` and the plan `docs/plans/active/YYYY-MM-DD-<KEY>-<n>-<slug>.md`' "$s" || _fail "ticket-keyed naming"
 }
+t_no_prefix_make_allow_rules() {
+  # make takes variable overrides and harness.mk runs HARNESS_* as recipes: `make test:*` would run any command unprompted
+  local out
+  out="$(grep -nE 'Bash\(make [a-z-]+:\*\)' "$PLUGIN"/skills/*/assets/claude-settings.json $(_doc_files) "$ROOT"/docs/manual/*.md \
+    | grep -vE 'matches|would|often' || true)"
+  assert_eq "$out" "" "an allow rule recommends a make prefix pattern"
+  grep -q 'Bash(make check)' "$PLUGIN/skills/harness-init/references/layers.md" || _fail "layers.md: exact make allow rules"
+}

@@ -199,7 +199,7 @@ Repo-specific setup steps live in your `Makefile` (or `.agents/harness.json`) as
 |---|---|---|---|---|
 | tools | Team-shared: pins the plugin (`extraKnownMarketplaces`, `enabledPlugins`) and adds permission **deny** rules on top of the guard hooks | init after you approve the rules (Claude Code may refuse the write; then you add it yourself from the shown JSON) | Claude Code; `level.py` (deny rules → Robust, pinned plugin → Enterprise) | Yes. Review it like code. |
 
-Proposed deny rules: secrets files, `Read(./**/secrets/**)`, `Read(./**/*.pem)`, `Read(./**/*.key)`, plus dangerous infra/production commands found in the repo (e.g. `Bash(terraform apply:*)`), each with its `file:line`. Allow rules for the runner (e.g. `Bash(make check:*)`). The `.env` rules deny `.env`, `.env.local` and real environment files, while `.env.example` / `.env.sample` stay readable.
+Proposed deny rules: secrets files, `Read(./**/secrets/**)`, `Read(./**/*.pem)`, `Read(./**/*.key)`, plus dangerous infra/production commands found in the repo (e.g. `Bash(terraform apply:*)`), each with its `file:line`. Allow rules for the runner as exact commands (`Bash(make check)`, `Bash(make check-fast)`, `Bash(make help)`), never a prefix like `Bash(make test:*)`: make takes variable overrides and harness.mk runs `HARNESS_*` variables as commands, so a prefix rule would let `make test T=x HARNESS_TEST_ONE='<any command>'` run unprompted. The `.env` rules deny `.env`, `.env.local` and real environment files, while `.env.example` / `.env.sample` stay readable.
 
 ### `scripts/harness/*`
 
