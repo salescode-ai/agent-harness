@@ -295,12 +295,44 @@ def writes_init_state(cmd, segs):
         return "deny"
     if writes_target(cmd, segs, _expanded):
         return "ask"
-    # shortcut: an inline script naming the file plus a write call only asks; a script file it runs is not inspected
+    # shortcut: an inline script naming the file plus a write call only asks (a script file: script_names_init_state)
     progs = {os.path.basename(strip_prefix(s)[1][0]) for s in segs if strip_prefix(s)[1]}
     interp = any(re.match(r"^(python[0-9.]*|node|perl|ruby)$", p) for p in progs)
     if interp and "init-state.json" in cmd and re.search(r"""open\([^)]*['"][wax+]|\.write\(|writeFile|-i\b""", cmd):
         return "ask"
     return None
+
+
+SCRIPT_RUNNERS = re.compile(r"^(bash|sh|zsh|dash|python[0-9.]*|node|perl|ruby)$")
+PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def script_names_init_state(segs, cwd):
+    """True if the command runs a script file (`bash f.sh`, `python3 f.py`, `./f`) whose text names init-state.json.
+    The harness's own scripts (scripts/harness/, the plugin's) keep the gate wired and are not counted."""
+    # shortcut: names only, one level deep; a script it calls in turn, or a name it builds, is not followed
+    for seg in segs:
+        argv = strip_prefix(seg)[1]
+        if not argv:
+            continue
+        if SCRIPT_RUNNERS.match(os.path.basename(argv[0])):
+            f = next((a for a in argv[1:] if not a.startswith("-")), None)
+            if f is None or any(a in ("-c", "-e") for a in argv[1:argv.index(f)]):
+                continue
+        elif "/" in argv[0]:
+            f = argv[0]
+        else:
+            continue
+        p = os.path.realpath(os.path.join(cwd, os.path.expanduser(f)))
+        if p.startswith(PLUGIN_ROOT + os.sep) or "/scripts/harness/" in p or not os.path.isfile(p):
+            continue
+        try:
+            with open(p, errors="replace") as fh:
+                if "init-state.json" in fh.read(512 * 1024):
+                    return True
+        except OSError:
+            continue
+    return False
 
 
 def _is_invariants(t):
@@ -454,6 +486,9 @@ def check(cmd, cwd, depth=0):
     how = "init-stat" in cmd and writes_init_state(cmd, segs)
     if how and gate_wired(cwd):
         decide(how, INIT_STATE_MSG)
+    if script_names_init_state(segs, cwd) and gate_wired(cwd):
+        decide("ask", "This script names .harness/init-state.json; it may unwire the harness gate (\"gate_wired\": true). "
+                      "Confirm it was requested.")
     if writes_target(cmd, segs, _is_invariants):
         decide("ask", "INVARIANTS.md changes need human sign-off (Harness Integrity). Confirm this edit was requested.")
     if asks:

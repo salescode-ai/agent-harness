@@ -229,3 +229,19 @@ t_file_guard_without_python3_asks_for_protected() {
   done
   assert_eq "$(_nopyf /r/src/app.py)" "" "other files allowed"
 }
+t_init_state_script_file_asks() {
+  # a script file that names init-state.json may unwire the gate: running it asks once the gate is wired
+  local d c; d="$(mktemp -d)"; mkdir -p "$d/.harness" "$d/scripts/harness"; ( cd "$d" && git init -q )
+  echo '{"gate_wired": true}' > "$d/.harness/init-state.json"
+  printf '#!/bin/sh\necho {} > .harness/init-state.json\n' > "$d/fix.sh"; chmod +x "$d/fix.sh"
+  printf 'open(".harness/init-state.json", "w").write("{}")\n' > "$d/tool.py"; printf 'echo hi\n' > "$d/other.sh"
+  printf 'f=.harness/init-state.json\n' > "$d/scripts/harness/gate-proof.sh"
+  for c in 'bash fix.sh' './fix.sh' 'sh ./fix.sh arg' 'python3 tool.py' 'cd . && bash fix.sh'; do
+    assert_contains "$(cd "$d" && guard "$c")" '"ask"' "asks: $c"
+  done
+  for c in 'bash other.sh' 'bash scripts/harness/gate-proof.sh' 'python3 -c "print(1)"' 'bash -c "echo hi"'; do
+    assert_eq "$(cd "$d" && guard "$c")" "" "allow: $c"
+  done
+  echo '{"gate_wired": false}' > "$d/.harness/init-state.json"
+  assert_eq "$(cd "$d" && guard 'bash fix.sh')" "" "not wired yet: nothing to protect"
+}
