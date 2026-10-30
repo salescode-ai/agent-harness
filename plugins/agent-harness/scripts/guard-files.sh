@@ -17,13 +17,12 @@ case "$base" in
   init-state.json)
     # the git hooks skip while "gate_wired" is not true: once wired, no edit may unwire it (init/upgrade only set it true)
     if [[ "$(basename "$(dirname "$path")")" == ".harness" && -f "$path" ]] && ! HOOK_INPUT="$HOOK_INPUT" python3 - "$path" <<'PY' 2>/dev/null
-import json, os, sys
+import json, os, re, sys
+# the hooks' own test (grep -E per line), so a value they read as unwired is refused however it is spelled
+wired = lambda t: any(re.search(r'"gate_wired"\s*:\s*true', l) for l in t.splitlines())
 d = json.loads(os.environ["HOOK_INPUT"])["tool_input"]
-try:
-    old = open(sys.argv[1]).read()
-    if json.loads(old).get("gate_wired") is not True:
-        sys.exit(0)
-except ValueError:
+old = open(sys.argv[1]).read()
+if not wired(old):
     sys.exit(0)
 new = d.get("content")
 if new is None:
@@ -31,10 +30,7 @@ if new is None:
     for e in d.get("edits") or [d]:
         o, n = e.get("old_string", ""), e.get("new_string", "")
         new = new.replace(o, n) if e.get("replace_all") else new.replace(o, n, 1)
-try:
-    sys.exit(0 if json.loads(new).get("gate_wired") is True else 1)
-except (ValueError, AttributeError):
-    sys.exit(1)
+sys.exit(0 if wired(new) else 1)
 PY
     then
       decide deny "The harness gate is wired: .harness/init-state.json must keep \"gate_wired\": true (the git hooks skip without it). Fix the failing check instead."

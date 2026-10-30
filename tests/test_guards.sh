@@ -188,3 +188,14 @@ t_init_state_reads_allowed() {
   done
   assert_contains "$(cd "$d" && guard "node -e \"require('fs').writeFileSync('.harness/init-state.json','{}')\"")" '"ask"' "inline write asks"
 }
+t_init_state_bypasses_closed() {
+  # the hooks read gate_wired with a line grep: a guard that parses JSON, or ignores a cd, lets an agent unwire them
+  local d f; d="$(mktemp -d)"; mkdir "$d/.harness"; f="$d/.harness/init-state.json"; ( cd "$d" && git init -q )
+  echo '{"gate_wired": true}' > "$f"
+  assert_contains "$(fguard "$f" "$(printf '{"gate_wired":\n true}')")" '"deny"' "Write the hooks' grep reads as unwired"
+  assert_eq "$(fguard "$f" '{"gate_wired": true, "layers_done": []}')" "" "a Write that keeps it wired"
+  assert_contains "$(cd "$d" && guard "cd .harness && echo '{}' > init-state.json")" '"deny"' "write after cd"
+  assert_contains "$(cd "$d" && guard 'f=.harness/init-state.json; echo "{}" > $f')" '"ask"' "write through a variable"
+  assert_contains "$(cd "$d" && guard 'echo e30= | base64 -d > .harness/init-stat?.json')" '"ask"' "write through a glob"
+  assert_eq "$(cd "$d" && guard 'npm test > $LOG 2>&1')" "" "an unrelated variable target"
+}

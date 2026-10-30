@@ -251,9 +251,20 @@ INIT_STATE_MSG = ("The harness gate is wired: .harness/init-state.json must keep
                   "without it). Fix the failing check instead; a human can rerun /agent-harness:harness-upgrade.")
 
 
-def _is_init_state(t):
-    t = t.rstrip("/")
-    return os.path.basename(t) == "init-state.json" and os.path.basename(os.path.dirname(t)) == ".harness"
+def _is_init_state(t):  # any folder: `cd .harness && … > init-state.json` names it relative to a cd
+    return os.path.basename(t.rstrip("/")) == "init-state.json"
+
+
+def _expanded(t):  # a target the shell expands ($f, `…`, a glob): what it names is unknown here
+    return bool(re.search(r"[$`*?\[]", t))
+
+
+# the git hooks' own test (a line grep), so the guards protect exactly what keeps the hooks running
+WIRED_RE = re.compile(r'"gate_wired"\s*:\s*true')
+
+
+def wired_text(text):
+    return any(WIRED_RE.search(line) for line in text.splitlines())
 
 
 def gate_wired(cwd):
@@ -268,7 +279,7 @@ def gate_wired(cwd):
         pass
     for r in roots:
         try:
-            if json.load(open(os.path.join(r, ".harness", "init-state.json"))).get("gate_wired") is True:
+            if wired_text(open(os.path.join(r, ".harness", "init-state.json")).read()):
                 return True
         except Exception:
             continue
@@ -280,6 +291,8 @@ def writes_init_state(cmd, segs):
     interpreter that may write it, else None. Redirects are judged by their target, so reads piped elsewhere pass."""
     if writes_target(cmd, segs, _is_init_state):
         return "deny"
+    if writes_target(cmd, segs, _expanded):
+        return "ask"
     # shortcut: an inline script naming the file plus a write call only asks; a script file it runs is not inspected
     progs = {os.path.basename(strip_prefix(s)[1][0]) for s in segs if strip_prefix(s)[1]}
     interp = any(re.match(r"^(python[0-9.]*|node|perl|ruby)$", p) for p in progs)
@@ -436,7 +449,7 @@ def check(cmd, cwd, depth=0):
         decide("deny", CLAUDE_MD_MSG)
     if writes_target(cmd, segs, _is_env):
         decide("deny", ENV_MSG)
-    how = "init-state.json" in cmd and writes_init_state(cmd, segs)
+    how = "init-stat" in cmd and writes_init_state(cmd, segs)
     if how and gate_wired(cwd):
         decide(how, INIT_STATE_MSG)
     if writes_target(cmd, segs, _is_invariants):
