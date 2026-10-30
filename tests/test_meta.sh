@@ -4,8 +4,8 @@ t_no_named_packs() {
   assert_eq "$out" "" "no named packs"
 }
 t_version_2() {
-  grep -q '"version": "2.0.11"' "$PLUGIN/.claude-plugin/plugin.json"
-  grep -q '"version": "2.0.11"' "$ROOT/.claude-plugin/marketplace.json"
+  grep -q '"version": "2.0.12"' "$PLUGIN/.claude-plugin/plugin.json"
+  grep -q '"version": "2.0.12"' "$ROOT/.claude-plugin/marketplace.json"
 }
 t_no_pycache() {
   local out

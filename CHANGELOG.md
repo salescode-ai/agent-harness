@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.12
+
+From a review of the harness install in a repo on 2.0.9 whose features branch from `dev`.
+
+- **red-proof.sh compares with the fork point.** An explicit base (`red-proof.sh origin/dev`) was used as-is, so commits `dev` gained after the branch forked counted as "production code changed" and were checked out into the scratch worktree: a mixed tree and a wrong verdict. Now any base is turned into its merge-base with HEAD, as the default already was.
+- **Git hooks fail closed on a broken gate.** When `make -n check-fast` failed (a Makefile syntax error, a bad `$(shell …)`, a missing include), `cmd.sh` exited 3 and both hooks skipped silently. They now skip only while there is nothing to resolve the gate from and init never wired it; otherwise they print make's error and `Run make -n check-fast (check)` and exit 1.
+- **pre-commit and the staged snapshot.** check-fast tests the working tree, so unstaged edits could block a good commit or let a broken one through. pre-commit now warns when unstaged or untracked code is part of the run, and `HARNESS_HOOK_STAGED_ONLY=1` runs check-fast on exactly what is staged (a scratch worktree from `git write-tree`, with `node_modules`, `.venv` and `.env` linked). Opt-in, because build output starts cold there.
+- **pre-push tests only what it pushes.** It reads git's ref lines and runs `check` only when a pushed ref is the checked-out HEAD: tag pushes, branch deletions and pushes of another branch skip with a message. `SKIP_HOOKS=1` now skips both hooks (people only; the Bash guard still refuses it for agents).
+- **Stop gate: the repo's base, this session's changes.** The base came from `HARNESS_BASE` or `origin/HEAD`, so on a repo whose Makefile picks `dev` per branch every `dev` checkout looked thousands of commits ahead and check-fast ran at the end of every turn. The gate now asks the repo (new hidden target `make harness-base`, cached per HEAD and branch in `.harness/base-cache`), then `HARNESS_BASE`, then `origin/HEAD`. The session hook records a code fingerprint in `.harness/session-<id>` at start (kept across resume and compaction), and the gate runs only when this session changed code: investigating with scratch files left from before no longer triggers it. A check-fast that fails because the environment is down (`Docker is not running`, `Cannot connect to the Docker daemon`, `setup error`) warns instead of blocking. `HARNESS_STOP_GATE=0` still turns it off.
+- **`HARNESS_TEST_CHANGED_ARGS`** (default `$(CHANGED)`) is what check-fast passes to `HARNESS_TEST_CHANGED`. A repo whose runner picks its own tests sets it empty, and check-fast no longer runs CHANGED's three git commands.
+- **Upgrade:** `/agent-harness:harness-upgrade` refreshes `harness.mk`, `red-proof.sh`, `.githooks/pre-commit` and `.githooks/pre-push` (unmodified copies). No repo-owned file changes; no migration.
+
 ## 2.0.11
 
 Security fix, from a report on a repo using 2.0.8: `make test T=…` could run any command without a permission prompt.
