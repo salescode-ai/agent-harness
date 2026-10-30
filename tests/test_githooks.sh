@@ -135,20 +135,32 @@ t_prepush_tests_only_what_is_pushed() {
   RC=0; (cd "$d" && SKIP_HOOKS=1 bash "$HOOKS/pre-commit" >/dev/null 2>&1) || RC=$?; assert_eq "$RC" 0 "pre-commit too"
 }
 t_prepush_tests_the_pushed_commit() {
-  # check must judge what is pushed: an uncommitted fix must not hide a broken commit, nor a half-edit block a good one
+  # opted in, check judges what is pushed: an uncommitted fix must not hide a broken commit, nor a half-edit block a good one
   local d h z=0000000000000000000000000000000000000000; d="$(_staged_repo)"
   printf 'check:\n\t@for f in *.sh; do sh -n $$f || exit 1; done\n' > "$d/Makefile"
   ( cd "$d" && git add Makefile && echo 'if then' > b.sh && git add b.sh \
     && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qm broken && echo 'echo b' > b.sh ) >/dev/null
   h="$(git -C "$d" rev-parse HEAD)"
-  _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 2 "broken commit, fixed tree: blocked: $OUT"
+  _push "$d" "refs/heads/main $h refs/heads/main $z" HARNESS_HOOK_STAGED_ONLY=1; assert_eq "$RC" 2 "broken commit, fixed tree: blocked: $OUT"
   assert_contains "$OUT" "scratch worktree" "says it checked the pushed commit"
   assert_eq "$(cat "$d/b.sh")" "echo b" "working tree untouched"
   ( cd "$d" && git add b.sh && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qm fix && echo 'if then' > b.sh ) >/dev/null
   h="$(git -C "$d" rev-parse HEAD)"
-  _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 0 "good commit, broken edit: passes: $OUT"
+  _push "$d" "refs/heads/main $h refs/heads/main $z" HARNESS_HOOK_STAGED_ONLY=1; assert_eq "$RC" 0 "good commit, broken edit: passes: $OUT"
   assert_eq "$(git -C "$d" worktree list | wc -l | tr -d ' ')" 1 "scratch worktree removed"
   echo 'echo b' > "$d/b.sh"
   _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 0 "clean tree passes"
   assert_contains "$OUT" "in place" "clean tree runs in place"
+}
+t_prepush_dirty_tree_checks_in_place_by_default() {
+  # a scratch worktree lacks gitignored inputs (local config, generated code, build caches): opt-in only
+  local d h z=0000000000000000000000000000000000000000 hk; d="$(_staged_repo)"
+  printf 'check:\n\t@test -f local.cfg && echo GATE-OK\n' > "$d/Makefile"; printf 'local.cfg\n' >> "$d/.gitignore"; touch "$d/local.cfg"
+  ( cd "$d" && git add -A && git -c user.email=t@e -c user.name=t -c commit.gpgsign=false commit -qm cfg && echo 'echo w' > w.sh ) >/dev/null
+  h="$(git -C "$d" rev-parse HEAD)"
+  _push "$d" "refs/heads/main $h refs/heads/main $z"; assert_eq "$RC" 0 "gitignored input present in place: $OUT"
+  assert_contains "$OUT" "HARNESS_HOOK_STAGED_ONLY=1" "names the opt-in"; assert_contains "$OUT" "GATE-OK" "ran"
+  hk="$(mktemp -d)"; cp "$HOOKS/pre-push" "$hk/"   # an upgrade that never installed snapshot.sh
+  RC=0; OUT="$(cd "$d" && printf '%s\n' "refs/heads/main $h refs/heads/main $z" | HARNESS_HOOK_STAGED_ONLY=1 bash "$hk/pre-push" 2>&1)" || RC=$?
+  assert_eq "$RC" 0 "no snapshot.sh: in place: $OUT"; assert_contains "$OUT" "snapshot.sh missing" "says so"
 }

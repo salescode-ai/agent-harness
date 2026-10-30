@@ -71,7 +71,7 @@ The harness is organised in five layers. Each one acts at a different moment: be
 | `scripts/harness/gate-proof.sh` | The gate can fail: init and upgrade plant one failing test in a scratch worktree and check that `make test T=<it>`, `make test T=<no such test>` and `make check-fast` all exit non-zero. A test command ending in `; :` (always green) or passing on 0 tests is caught here and by harness-lint. |
 | `scripts/harness/sensors/` | Project-specific checks (architecture rules, "no production data in seeds", contract checks). Each is wired only after a proof run: clean code passes, a planted violation fails, and the planted fixture is kept so the sensor is re-proved on every lint. Sensors that check only new code read the added lines from `sensors/lib/diffscan.py`. |
 | `scripts/harness/lint.sh` | Structural checks on the harness itself: shim, budgets, broken links, rule format, commands that don't exist. |
-| `.githooks/` | pre-commit runs `check-fast`, pre-push runs `check` (or added to your existing husky / lefthook / pre-commit). They skip only while the gate is not wired yet; a gate that can't be resolved (a broken Makefile) fails the commit or push. pre-push runs only when the checked-out commit is pushed (not for tags, deletions or another branch). pre-commit warns when unstaged or untracked changes are part of its run; `HARNESS_HOOK_STAGED_ONLY=1` checks the staged snapshot only. pre-commit also refuses to close a plan (moved to `plans/done/` or `Status: done`) unless `scripts/harness/plan-check.sh fresh` passes on its local evidence. |
+| `.githooks/` | pre-commit runs `check-fast`, pre-push runs `check` (or added to your existing husky / lefthook / pre-commit). They skip only while the gate is not wired yet; a gate that can't be resolved (a broken Makefile) fails the commit or push. pre-push runs only when the checked-out commit is pushed (not for tags, deletions or another branch). Both warn when uncommitted or untracked code is part of their run; `HARNESS_HOOK_STAGED_ONLY=1` checks only the staged snapshot (pre-commit) or the pushed commit (pre-push). pre-commit also refuses to close a plan (moved to `plans/done/` or `Status: done`) unless `scripts/harness/plan-check.sh fresh` passes on its local evidence. |
 
 ### 3. Context & State: what the agent remembers and loads
 
@@ -143,7 +143,7 @@ Register commands in `.agents/harness.json`. Hooks, the verifier, the audit and 
 ## Settings
 
 - `HARNESS_STOP_GATE=0`: turn off the stop gate (and the red-branch check for worktree subagents) for a session.
-- `HARNESS_HOOK_STAGED_ONLY=1`: pre-commit runs `check-fast` on the staged snapshot (a scratch worktree with `node_modules`/`.venv` linked; build output starts cold) instead of the working tree.
+- `HARNESS_HOOK_STAGED_ONLY=1`: pre-commit runs `check-fast` on the staged snapshot, and pre-push runs `check` on the pushed commit, in a scratch worktree (`node_modules`/`.venv`/`.env`/`.env.local` linked; other gitignored files are absent and build output starts cold) instead of the working tree.
 - `SKIP_HOOKS=1`: skip the pre-commit and pre-push hooks once (for people; the Bash guard refuses it for agents).
 - `HARNESS_GUARD=0`: turn off the command and file guards for a session (not recommended).
 - `HARNESS_SHARED_SERVICES=1`: `make setup` shares local services instead of giving the checkout its own compose project (and each linked worktree its own free ports; the main checkout keeps the `.env.example` ports).

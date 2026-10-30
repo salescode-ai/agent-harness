@@ -313,7 +313,7 @@ Scope: pin only `agent-harness` in project settings; keep other packs in user sc
 | Variable | Effect |
 |---|---|
 | `HARNESS_STOP_GATE=0` | Turns off the stop gate (and the red-branch check for worktree subagents) for the session |
-| `HARNESS_HOOK_STAGED_ONLY=1` | pre-commit runs `check-fast` on the staged snapshot only (scratch worktree; `node_modules`, `.venv`, `.env` linked, build output cold). Without it, pre-commit tests the working tree and warns when unstaged or untracked code is part of the run |
+| `HARNESS_HOOK_STAGED_ONLY=1` | pre-commit runs `check-fast` on the staged snapshot only, pre-push runs `check` on the pushed commit only (scratch worktree; `node_modules`, `.venv`, `.env`, `.env.local` linked, other gitignored files absent, build output cold). Without it, both test the working tree and warn when uncommitted or untracked code is part of the run |
 | `SKIP_HOOKS=1` | Skips the pre-commit and pre-push hooks once. For people: the Bash guard refuses it for agents |
 | `HARNESS_GUARD=0` | Turns off the Bash and file guards for the session (not recommended) |
 | `HARNESS_SHARED_SERVICES=1` | `make setup` shares local services instead of an isolated compose project and ports (env or `.env.local`) |
@@ -337,7 +337,7 @@ Scope: pin only `agent-harness` in project settings; keep other packs in user sc
 
 **`agent-harness: check-fast could not run (environment, not your change) in: repo (Docker is not running)`.** The stop gate saw an environment failure, not a code failure, and let the turn end: Docker not running or not installed (`Could not find a valid Docker environment`, `docker: command not found`), or a line starting with `setup error:`, which a repo's gate can print for its own setup problems (`setup error: no base branch`). Free text such as a skip reason `requires docker` is not enough: a real failure next to it still blocks. Start Docker (or fix setup) and run `make check-fast`.
 
-**`harness: no pushed ref is the checked-out HEAD …, skipping check`.** pre-push tests the checked-out commit (in a scratch worktree when there are uncommitted changes), so it runs `check` only when one of the pushed refs is that commit. Tags, branch deletions and other branches are pushed without it.
+**`harness: no pushed ref is the checked-out HEAD …, skipping check`.** pre-push tests the checked-out commit (the working tree, or with `HARNESS_HOOK_STAGED_ONLY=1` that commit alone in a scratch worktree), so it runs `check` only when one of the pushed refs is that commit. Tags, branch deletions and other branches are pushed without it.
 
 **The stop gate or a git hook says nothing during setup.** That's intended. While `.harness/init-state.json` exists without `"gate_wired": true`, the stop gate is silent and git hooks print `harness: setup in progress, skipping`. Finish or resume `/agent-harness:harness-init`.
 

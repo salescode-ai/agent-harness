@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # agent-harness git hook: runs the repo's check gate when the checked-out commit is pushed. Skips only while the gate
 # isn't wired yet; a gate that can't be resolved (broken Makefile) fails the push. SKIP_HOOKS=1 skips it (people
-# only: the Bash guard refuses it for agents). With uncommitted code it checks the pushed commit in a scratch worktree.
+# only: the Bash guard refuses it for agents). HARNESS_HOOK_STAGED_ONLY=1 checks the pushed commit alone, in a scratch
+# worktree, when there is uncommitted code.
 [ "${SKIP_HOOKS:-}" = 1 ] && { echo "harness: SKIP_HOOKS=1, skipping pre-push"; exit 0; }
 # harness-init writes .harness/init-state.json first and sets "gate_wired": true last; skip until then
 if [ -f .harness/init-state.json ] && ! grep -qE '"gate_wired"[[:space:]]*:[[:space:]]*true' .harness/init-state.json; then
@@ -35,10 +36,17 @@ if [ $rc != 0 ]; then
   echo "  Run make -n check and fix the Makefile (or .agents/harness.json)." >&2
   exit 1
 fi
-# check judges what is pushed (HEAD, as above): uncommitted edits must neither hide a broken commit nor block a good one
+# uncommitted code is part of an in-place check (said so); HARNESS_HOOK_STAGED_ONLY=1 checks exactly the pushed commit
+# in a scratch worktree instead, opt-in because gitignored inputs (local config, generated code, caches) aren't there
 dirty="$( { git diff --name-only HEAD; git ls-files --others --exclude-standard; } 2>/dev/null | grep -vE '^docs/|\.md$' | sort -u)"
 h="$(git rev-parse --short HEAD 2>/dev/null)"
 if [ -z "$dirty" ]; then echo "harness: checking the pushed commit $h in place (clean tree)"; eval "$cmd"; exit; fi
+if [ "${HARNESS_HOOK_STAGED_ONLY:-}" != 1 ]; then
+  echo "harness: uncommitted changes are part of this check ($(head -3 <<<"$dirty" | tr '\n' ' ' | sed 's/ $//')); HARNESS_HOOK_STAGED_ONLY=1 checks only the pushed commit $h" >&2
+  eval "$cmd"; exit
+fi
+[ -f "$(dirname "$0")/snapshot.sh" ] || {
+  echo "harness: .githooks/snapshot.sh missing (run /agent-harness:harness-upgrade); checking in place" >&2; eval "$cmd"; exit; }
 . "$(dirname "$0")/snapshot.sh" || exit 1
 echo "harness: uncommitted changes ($(head -3 <<<"$dirty" | tr '\n' ' ' | sed 's/ $//')); checking the pushed commit $h in a scratch worktree"
 snapshot_check HEAD check
