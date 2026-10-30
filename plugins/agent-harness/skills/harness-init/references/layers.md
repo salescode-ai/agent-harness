@@ -74,6 +74,7 @@ Scope by target level: `Functional` → Guides and Sensors; `Robust` → all fiv
   - `husky` → append `bash .githooks/pre-commit  # harness check-fast` to `.husky/pre-commit` and `bash .githooks/pre-push  # harness check` to `.husky/pre-push`.
   - `lefthook` → in `lefthook.yml`: `pre-commit: commands: harness-check-fast: run: bash .githooks/pre-commit`, and `pre-push: commands: harness-check: run: bash .githooks/pre-push`.
   - `pre-commit` → a `repo: local` hook in `.pre-commit-config.yaml`: `id: harness-check-fast`, `entry: bash .githooks/pre-commit`, `language: system`, `pass_filenames: false`; and `id: harness-check`, `entry: bash .githooks/pre-push`, `stages: [pre-push]`.
+  - A repo that already has its own `.githooks/pre-commit` (or `pre-push`): `assets.py` installs and tracks the plugin hook beside it as `.githooks/harness-pre-commit` (with `snapshot.sh`), refreshes it on upgrade and never touches the repo's hook. The repo's hook calls it as its last step: `HARNESS_GIT_HOOK=1 bash "$ROOT/.githooks/harness-pre-commit" || exit 1` (`ROOT=$(git rev-parse --show-toplevel)`; `HARNESS_GIT_HOOK=1` lets the Makefile tell a hook run from a manual one). `assets.py` prints this line while the repo's hook does not call it.
 
 **Questions (defaults).**
 1. Proposed invariants, each with severity: a) Critical (fails `check`, blocks the stop gate) b) Important ➡️ (warning; `harness-verify` sends it to a human) c) Nice-to-have (audit only). Format: `- <rule> — Severity: <tier> — Enforced by: <target | hook | sensor | human review | not yet enforced>`.

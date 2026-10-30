@@ -164,3 +164,27 @@ t_prepush_dirty_tree_checks_in_place_by_default() {
   RC=0; OUT="$(cd "$d" && printf '%s\n' "refs/heads/main $h refs/heads/main $z" | HARNESS_HOOK_STAGED_ONLY=1 bash "$hk/pre-push" 2>&1)" || RC=$?
   assert_eq "$RC" 0 "no snapshot.sh: in place: $OUT"; assert_contains "$OUT" "snapshot.sh missing" "says so"
 }
+t_repo_own_precommit_calls_harness_copy() {
+  # a repo hook calling .githooks/harness-pre-commit: the gate runs (also staged-only, snapshot.sh beside it)
+  local d; d="$(_staged_repo)"; mkdir -p "$d/.githooks"
+  printf 'check-fast:\n\t@echo "GATE hook=$$HARNESS_GIT_HOOK"; for f in *.sh; do sh -n $$f || exit 1; done\n' > "$d/Makefile"
+  cp "$HOOKS/pre-commit" "$d/.githooks/harness-pre-commit"; cp "$HOOKS/snapshot.sh" "$d/.githooks/"
+  printf '#!/usr/bin/env bash\nROOT=$(git rev-parse --show-toplevel)\necho repo-check\nHARNESS_GIT_HOOK=1 bash "$ROOT/.githooks/harness-pre-commit" || exit 1\n' > "$d/.githooks/pre-commit"
+  chmod +x "$d/.githooks/"*; git -C "$d" add -A >/dev/null
+  _commit_with "$d" .githooks; assert_eq "$RC" 0 "commit: $OUT"; assert_contains "$OUT" "repo-check" "repo hook ran"
+  assert_contains "$OUT" "GATE hook=1" "harness gate ran from the repo hook"
+  echo 'echo b' > "$d/b.sh"; git -C "$d" add b.sh; echo 'if then' > "$d/u.sh"   # broken untracked file
+  _commit_with "$d" .githooks HARNESS_HOOK_STAGED_ONLY=1; assert_eq "$RC" 0 "staged-only ignores the untracked file: $OUT"
+  assert_contains "$OUT" "staged snapshot only" "snapshot.sh found beside harness-pre-commit"
+}
+t_precommit_staged_only_without_snapshot_checks_in_place() {
+  # an upgrade that only refreshed the hook: no snapshot.sh beside it, so say so and check the working tree
+  local d hk; d="$(_staged_repo)"; hk="$(mktemp -d)"; cp "$HOOKS/pre-commit" "$hk/"
+  echo 'echo b' > "$d/b.sh"; git -C "$d" add b.sh; echo 'echo u' > "$d/u.sh"
+  RC=0; OUT="$(cd "$d" && HARNESS_HOOK_STAGED_ONLY=1 bash "$hk/pre-commit" 2>&1)" || RC=$?
+  assert_eq "$RC" 0 "checks in place: $OUT"; assert_contains "$OUT" "snapshot.sh missing" "says so"
+}
+_commit_with() { # _commit_with <dir> <hooksPath> [env...]
+  local d="$1" hp="$2"; shift 2; RC=0
+  OUT="$(cd "$d" && env "$@" git -c user.email=t@e -c user.name=t -c commit.gpgsign=false -c core.hooksPath="$hp" commit -qm x 2>&1)" || RC=$?
+}

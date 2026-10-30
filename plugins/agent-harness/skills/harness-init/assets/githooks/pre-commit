@@ -47,6 +47,8 @@ if [ "${HARNESS_HOOK_STAGED_ONLY:-}" != 1 ]; then
 fi
 # the staged snapshot in a scratch worktree (git write-tree honours the commit's index, GIT_INDEX_FILE)
 tree="$(git write-tree)" || exit 1
+[ -f "$(dirname "$0")/snapshot.sh" ] || {
+  echo "harness: .githooks/snapshot.sh missing (run /agent-harness:harness-upgrade); checking the working tree" >&2; eval "$cmd"; exit; }
 . "$(dirname "$0")/snapshot.sh" || exit 1
 echo "harness: checking the staged snapshot only (HARNESS_HOOK_STAGED_ONLY=1)"
 snapshot_check "$tree" check-fast merge
