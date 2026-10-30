@@ -363,20 +363,21 @@ t_step_background_process_does_not_block() {
   # a step may leave a process running (a dev server, a watcher) that keeps its stdout open: setup must go on and
   # finish without waiting for it (whoever reads setup's output may still see that process's lines afterwards)
   local d got; d="$(_su 'setup-services:
-	@sleep 6 & echo "needs you: start the VPN"')"
+	@sleep 20 & echo "needs you: start the VPN"')"
   got="$( (cd "$d" && t0="$(date +%s)"; make -s setup 2>&1 | while IFS= read -r l; do
     case "$l" in ("needs you: "*"setup-services: "*) echo "$(( $(date +%s) - t0 )) $l"; break;; esac; done) )"
-  pkill -f 'sleep 6' 2>/dev/null || true
-  [ -n "$got" ] && [ "${got%% *}" -lt 4 ] || _fail "setup's summary came after ${got%% *}s: $got"
+  pkill -f 'sleep 20' 2>/dev/null || true
+  [ -n "$got" ] && [ "${got%% *}" -lt 15 ] || _fail "setup's summary came after ${got%% *}s: $got"
   assert_contains "$got" "setup-services: start the VPN" "needs you still read"
 }
 t_step_output_streams() {
-  # a long step's lines must show as they happen, not at its end (python block-buffers a pipe)
-  local d first; d="$(_su 'setup-migrate:
+  # a long step's lines must show as they happen, not at its end (python block-buffers a pipe): step1 and step2 are
+  # printed 3 s apart, so they must arrive apart (timed against each other, not setup's start, which varies with load)
+  local d gap; d="$(_su 'setup-migrate:
 	@python3 -c "import time; print(\"step1\"); time.sleep(3); print(\"step2\")"')"
-  first="$( (cd "$d" && t0="$(date +%s)"; make -s setup 2>&1 | while IFS= read -r l; do
-    [ "$l" = step1 ] && { echo $(( $(date +%s) - t0 )); break; }; done) )"
-  [ -n "$first" ] && [ "$first" -lt 2 ] || _fail "step1 shown after ${first:-?}s"
+  gap="$( (cd "$d" && make -s setup 2>&1 | while IFS= read -r l; do
+    case "$l" in (step1) a="$(date +%s)";; (step2) echo $(( $(date +%s) - a )); break;; esac; done) )"
+  [ -n "$gap" ] && [ "$gap" -ge 2 ] || _fail "step1 and step2 arrived ${gap:-?}s apart (buffered until the step ended)"
 }
 t_deps_needs_you_is_not_a_failed_deps() {
   # "✓ (needs you)" is a deps step that ran: no maven-credentials hint for it

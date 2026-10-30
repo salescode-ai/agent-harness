@@ -67,7 +67,8 @@ for f in files:
             elif t.startswith("scripts/harness/"):
                 cands = ["skills/harness-init/assets/harness/" + t[16:]]
             elif t.startswith(".githooks/"):
-                cands = ["skills/harness-init/assets/githooks/" + t[10:]]
+                # .githooks/harness-<hook>: the plugin hook installed beside a repo's own hook
+                cands = ["skills/harness-init/assets/githooks/" + t[10:], "skills/harness-init/assets/githooks/" + t[10:].replace("harness-", "", 1)]
             elif t.startswith(("assets/", "references/")):
                 cands = [os.path.relpath(os.path.join(skill, t), plugin), "skills/harness-init/" + t]
             else:
