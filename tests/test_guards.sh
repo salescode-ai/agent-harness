@@ -170,10 +170,21 @@ t_init_state_gate_cannot_be_switched_off() {
   ( cd "$d" && git init -q )
   local c
   for c in "echo '{}' > .harness/init-state.json" "printf x | tee .harness/init-state.json" "sed -i '' s/true/false/ .harness/init-state.json" \
-           "cp /tmp/x .harness/init-state.json" "python3 -c \"open('.harness/init-state.json','w').write('{}')\""; do
+           "cp /tmp/x .harness/init-state.json"; do
     assert_contains "$(cd "$d" && guard "$c")" '"deny"' "deny: $c"
   done
+  assert_contains "$(cd "$d" && guard "python3 -c \"open('.harness/init-state.json','w').write('{}')\"")" '"ask"' "inline write asks"
   assert_eq "$(cd "$d" && guard 'cat .harness/init-state.json')" "" "reading is fine"
   printf '{"gate_wired": false}\n' > "$f"
   assert_eq "$(cd "$d" && guard "echo '{}' > .harness/init-state.json")" "" "not wired yet: nothing to protect"
+}
+t_init_state_reads_allowed() {
+  # reading a wired gate's state is ordinary; only a write to the file is refused, and a guessed one only asks
+  local d c; d="$(mktemp -d)"; mkdir "$d/.harness"; ( cd "$d" && git init -q ); echo '{"gate_wired": true}' > "$d/.harness/init-state.json"
+  for c in 'jq .gate_wired .harness/init-state.json 2>/dev/null' 'cat .harness/init-state.json | jq . 2>&1' \
+           'jq -r .gate_wired .harness/init-state.json > /tmp/out' \
+           "python3 -c \"import json; print(json.dumps(json.load(open('.harness/init-state.json'))))\""; do
+    assert_eq "$(cd "$d" && guard "$c")" "" "allow: $c"
+  done
+  assert_contains "$(cd "$d" && guard "node -e \"require('fs').writeFileSync('.harness/init-state.json','{}')\"")" '"ask"' "inline write asks"
 }

@@ -276,14 +276,16 @@ def gate_wired(cwd):
 
 
 def writes_init_state(cmd, segs):
-    """A shell write to .harness/init-state.json: redirect/tee/cp/sed -i, or an inline interpreter that writes it."""
+    """"deny" for a shell write to .harness/init-state.json (redirect/tee/cp/sed -i), "ask" for an inline
+    interpreter that may write it, else None. Redirects are judged by their target, so reads piped elsewhere pass."""
     if writes_target(cmd, segs, _is_init_state):
-        return True
-    # shortcut: an inline script naming the file plus any write-ish call; a script file it runs is not inspected
+        return "deny"
+    # shortcut: an inline script naming the file plus a write call only asks; a script file it runs is not inspected
     progs = {os.path.basename(strip_prefix(s)[1][0]) for s in segs if strip_prefix(s)[1]}
-    interp = any(re.match(r"^(python[0-9.]*|node|perl|ruby|jq)$", p) for p in progs)
-    return interp and "init-state.json" in cmd and bool(
-        re.search(r"""open\([^)]*['"][wax+]|\.write|dump|writeFile|-i\b|>""", cmd))
+    interp = any(re.match(r"^(python[0-9.]*|node|perl|ruby)$", p) for p in progs)
+    if interp and "init-state.json" in cmd and re.search(r"""open\([^)]*['"][wax+]|\.write\(|writeFile|-i\b""", cmd):
+        return "ask"
+    return None
 
 
 def _is_invariants(t):
@@ -434,8 +436,9 @@ def check(cmd, cwd, depth=0):
         decide("deny", CLAUDE_MD_MSG)
     if writes_target(cmd, segs, _is_env):
         decide("deny", ENV_MSG)
-    if "init-state.json" in cmd and writes_init_state(cmd, segs) and gate_wired(cwd):
-        decide("deny", INIT_STATE_MSG)
+    how = "init-state.json" in cmd and writes_init_state(cmd, segs)
+    if how and gate_wired(cwd):
+        decide(how, INIT_STATE_MSG)
     if writes_target(cmd, segs, _is_invariants):
         decide("ask", "INVARIANTS.md changes need human sign-off (Harness Integrity). Confirm this edit was requested.")
     if asks:
