@@ -176,10 +176,18 @@ t_verify_writes_local_evidence() {
   grep -qF 'branch `<KEY>-<n>-<slug>` and the plan `docs/plans/active/YYYY-MM-DD-<KEY>-<n>-<slug>.md`' "$s" || _fail "ticket-keyed naming"
 }
 t_no_prefix_make_allow_rules() {
-  # make takes variable overrides and harness.mk runs HARNESS_* as recipes: `make test:*` would run any command unprompted
+  # make takes variable overrides and harness.mk runs HARNESS_* as recipes: `make test:*` would run any command unprompted.
+  # Every mention of a make prefix rule must be a warning (never / not / pre-approved … just before it), not a suggestion.
   local out
-  out="$(grep -nE 'Bash\(make [a-z-]+:\*\)' "$PLUGIN"/skills/*/assets/claude-settings.json $(_doc_files) "$ROOT"/docs/manual/*.md \
-    | grep -vE 'matches|would|often' || true)"
+  out="$(python3 - "$PLUGIN"/skills/*/assets/claude-settings.json $(_doc_files) "$ROOT"/docs/manual/*.md <<'PY'
+import re, sys
+for f in sys.argv[1:]:
+    for n, line in enumerate(open(f), 1):
+        for m in re.finditer(r"Bash\(make (?:[a-z-]+:)?\*\)", line):
+            if not re.search(r"(?i)(never|not|pre-approved)\b", line[max(0, m.start() - 60):m.start()]):
+                print("%s:%d" % (f, n))
+PY
+)"
   assert_eq "$out" "" "an allow rule recommends a make prefix pattern"
   grep -q 'Bash(make check)' "$PLUGIN/skills/harness-init/references/layers.md" || _fail "layers.md: exact make allow rules"
 }

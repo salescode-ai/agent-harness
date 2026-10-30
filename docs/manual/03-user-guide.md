@@ -46,7 +46,7 @@ claude -p "/agent-harness:harness-init one-shot" \
   --permission-mode auto
 ```
 
-Instead of `--permission-mode auto`, you can keep the default mode and pre-approve only what the skills run: `--allowedTools "Read(~/.claude/plugins/cache/agent-harness/**)" "Bash(python3 *agent-harness*)" "Bash(bash *agent-harness*)" "Bash(make *)"`. The hooks (guards, stop gate) run the same way in headless sessions; `bypassPermissions` does not turn them off.
+Instead of `--permission-mode auto`, you can keep the default mode and pre-approve only what the skills run: `--allowedTools "Read(~/.claude/plugins/cache/agent-harness/**)" "Bash(python3 *agent-harness*)" "Bash(bash *agent-harness*)" "Bash(make check)" "Bash(make check-fast)" "Bash(make help)"`. Not `Bash(make *)`: make takes variable overrides and harness.mk runs `HARNESS_*` variables as commands, so it would also approve `make test T=x HARNESS_TEST_ONE='<any command>'`; other make targets the skills run ask. The hooks (guards, stop gate) run the same way in headless sessions; `bypassPermissions` does not turn them off.
 
 ### Codex, Cursor, Copilot, Gemini
 
@@ -337,7 +337,7 @@ Scope: pin only `agent-harness` in project settings; keep other packs in user sc
 
 **`agent-harness: check-fast could not run (environment, not your change) in: repo (Docker is not running)`.** The stop gate saw an environment failure, not a code failure, and let the turn end. Start Docker (or fix setup) and run `make check-fast`.
 
-**`harness: no pushed ref is the checked-out HEAD …, skipping check`.** pre-push tests the working tree, so it runs `check` only when one of the pushed refs is the checked-out commit. Tags, branch deletions and other branches are pushed without it.
+**`harness: no pushed ref is the checked-out HEAD …, skipping check`.** pre-push tests the checked-out commit (in a scratch worktree when there are uncommitted changes), so it runs `check` only when one of the pushed refs is that commit. Tags, branch deletions and other branches are pushed without it.
 
 **The stop gate or a git hook says nothing during setup.** That's intended. While `.harness/init-state.json` exists without `"gate_wired": true`, the stop gate is silent and git hooks print `harness: setup in progress, skipping`. Finish or resume `/agent-harness:harness-init`.
 
