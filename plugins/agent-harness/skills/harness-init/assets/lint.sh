@@ -227,6 +227,14 @@ for f in $mk *.mk; do
     line ~ /^[ \t]*HARNESS_TEST_[A-Z_]+[ \t]*[:?+]?=.*;[ \t]*:[ \t]*$/ { sub(/[ \t]*[:?+]?=.*/, "", line); sub(/^[ \t]*/, "", line); print line }' "$f")
 done
 
+# 16. The plugin pin is an exact release tag: a github marketplace source has no sha, so a branch (or no ref) runs
+# whatever is pushed there next as every teammate's hooks
+if [[ -f .claude/settings.json ]] && command -v python3 >/dev/null 2>&1; then
+  ref="$(python3 -c 'import json,sys; s=json.load(open(sys.argv[1])).get("extraKnownMarketplaces",{}).get("agent-harness"); print("-" if s is None else (s.get("source") or {}).get("ref") or "(none)")' .claude/settings.json 2>/dev/null)"
+  [[ -n "$ref" && "$ref" != - && ! "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+    && warn ".claude/settings.json: the agent-harness marketplace ref is $ref, not an exact release tag; set source.ref to \"vX.Y.Z\" (tags never move; a branch or no ref installs whatever is pushed there next)"
+fi
+
 # 8. Gitignore covers harness scratch
 if [[ -f .gitignore ]]; then
   grep -qE '^/?\.harness/?$' .gitignore || warn ".harness/ is not in .gitignore"
