@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shlex
+import stat
 import subprocess
 import sys
 
@@ -159,11 +160,16 @@ LEASE_SAFE_LONGS = ("--force-with-lease", "--force-if-includes", "--set-upstream
 
 def own_branch_push(refspecs, longs, flags, cwd, default):
     """True if every ref pushed is the checked-out branch and it isn't the default one (`origin feat/x`, `origin HEAD`,
-    `origin feat/x:refs/heads/feat/x`). Anything else (no refspec, --all/--tags, -o, another ref) can't be resolved here."""
+    `origin feat/x:refs/heads/feat/x`) on origin or the branch's configured remote. Anything else (no refspec, --all/--tags, -o, another ref) can't be resolved here."""
     cur = current_branch(cwd)
     own = {cur, "refs/heads/" + cur, "HEAD"}
+    try:
+        remotes = {"origin", subprocess.run(["git", "config", "branch.%s.remote" % cur], capture_output=True,
+                                            text=True, timeout=3, cwd=cwd).stdout.strip()}
+    except Exception:
+        remotes = {"origin"}
     # a long option counts as safe when it abbreviates a safe one: git rejects an abbreviation that is also a dangerous option's
-    return bool(cur) and cur != default and len(refspecs) >= 2 and flags <= set("uvqn") \
+    return bool(cur) and cur != default and len(refspecs) >= 2 and refspecs[0] in remotes and flags <= set("uvqn") \
         and all(any(s.startswith(l) for s in LEASE_SAFE_LONGS) for l in longs) \
         and all(side in own for r in refspecs[1:] for side in r.split(":"))
 
@@ -415,23 +421,26 @@ SQL_RE = re.compile(r"(?i)(^|[^A-Za-z_])(drop|truncate)\s+(table|database|schema
 SQL_MSG = "Destructive SQL detected. Confirm this targets a local or dev database."
 
 
+def client_words(argv):
+    return {os.path.basename(w) for a in argv for w in a.split()} & DB_CLIENTS
+
+
 def db_client(prog, argv):
-    """True if the segment runs a DB client, directly or through `docker|podman|kubectl exec … <client>`."""
-    if prog in DB_CLIENTS:
-        return True
-    return prog in ("docker", "podman", "kubectl", "oc", "docker-compose") and "exec" in argv \
-        and any(os.path.basename(w) in DB_CLIENTS for a in argv[1:] for w in a.split())
+    """True if the segment runs a DB client: as its program, or behind anything that isn't a reader
+    (`sudo -u pg psql`, `timeout 10 psql`, `ssh db 'psql …'`, `docker|kubectl exec … psql`)."""
+    return prog in DB_CLIENTS or (prog not in READERS and bool(client_words(argv)))
 
 
 def sql_file_destructive(argv, cwd):
     """True if a client segment reads SQL from a file (psql -f/--file, sqlcmd -i/--input-file, `< f`) that holds
     destructive SQL, or that file can't be read (fail closed)."""
     # shortcut: `cat f.sql | psql` and a client's own script commands (`\i`, `source`) are not followed; add them if agents use them
-    files = []
+    files, words = [], client_words(argv)
     for a, n in zip(argv, argv[1:] + [""]):
-        if a == "<" or (a in ("-f", "--file") and os.path.basename(argv[0]) == "psql") \
-                or (a in ("-i", "--input-file") and os.path.basename(argv[0]) == "sqlcmd"):
+        if a == "<" or (a in ("-f", "--file") and "psql" in words) or (a in ("-i", "--input-file") and "sqlcmd" in words):
             files.append(n)
+        elif a.startswith("-f") and len(a) > 2 and not a.startswith("--") and "psql" in words:
+            files.append(a[2:])
         elif a.startswith(("--file=", "--input-file=")):
             files.append(a.split("=", 1)[1])
         elif a.startswith("<") and not a.startswith("<<") and len(a) > 1:
@@ -439,8 +448,11 @@ def sql_file_destructive(argv, cwd):
     for f in files:
         if f == "-":
             continue
+        path = os.path.join(cwd, os.path.expanduser(f))
         try:
-            with open(os.path.join(cwd, os.path.expanduser(f)), errors="replace") as fh:
+            if not stat.S_ISREG(os.stat(path).st_mode):  # a FIFO or device would block the hook
+                return True
+            with open(path, errors="replace") as fh:
                 if SQL_RE.search(fh.read(4 * 1024 * 1024)):
                     return True
         except OSError:

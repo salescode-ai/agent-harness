@@ -277,3 +277,21 @@ t_force_with_lease_own_branch_allowed() {
   ( cd "$d" && git checkout -q main )
   assert_contains "$(cd "$d" && guard 'git push --force-with-lease origin main')" '"ask"' "default branch asks even when current"
 }
+t_destructive_sql_wrappers_and_odd_files_ask() {
+  local d c; d="$(mktemp -d)"; printf 'DROP TABLE t;\n' > "$d/drop.sql"; mkfifo "$d/pipe.sql"
+  for c in 'timeout 10 psql -c "drop table t"' 'sudo -u postgres psql -c "drop table t"' "ssh db 'psql -c \"drop table t\"'" \
+           'nice -n 5 mysql -e "truncate table t"' 'psql -fdrop.sql' 'timeout 5 psql -f drop.sql' 'psql -f pipe.sql'; do
+    assert_contains "$(cd "$d" && guard "$c")" 'Destructive SQL' "ask: $c"
+  done
+  for c in 'grep -rn "drop table" psql/' 'git commit -m "psql: drop table t"'; do
+    assert_eq "$(cd "$d" && guard "$c")" "" "allow (reader): $c"
+  done
+}
+t_force_with_lease_other_remote_asks() {
+  local d; d="$(mktemp -d)"; ( cd "$d" && git init -q -b main && git commit -q --allow-empty -m x && git checkout -q -b feat/x \
+    && git config branch.feat/x.remote fork )
+  assert_eq "$(cd "$d" && guard 'git push --force-with-lease fork feat/x')" "" "configured remote allowed"
+  assert_eq "$(cd "$d" && guard 'git push --force-with-lease origin feat/x')" "" "origin allowed"
+  assert_contains "$(cd "$d" && guard 'git push --force-with-lease upstream feat/x')" '"ask"' "other remote asks"
+  assert_contains "$(cd "$d" && guard 'git push --force-with-lease https://github.com/x/y feat/x')" '"ask"' "url asks"
+}
