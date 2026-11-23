@@ -245,3 +245,53 @@ t_init_state_script_file_asks() {
   echo '{"gate_wired": false}' > "$d/.harness/init-state.json"
   assert_eq "$(cd "$d" && guard 'bash fix.sh')" "" "not wired yet: nothing to protect"
 }
+t_destructive_sql_asks_only_for_db_clients() {
+  # headless `claude -p` can't answer "ask", so it acts as deny: SQL that only reaches a reader must pass
+  local d c; d="$(mktemp -d)"; printf 'DROP TABLE t;\n' > "$d/drop.sql"; printf 'select 1;\n' > "$d/ok.sql"
+  for c in 'grep -rn "DROP TABLE" db/migration/' "rg 'truncate table' src/" 'git commit -m "fix: avoid drop table in V12"' \
+           "echo 'drop table demo'" $'cat <<\'EOF\' > notes.md\nwe never DROP TABLE users here\nEOF' 'psql -f ok.sql' \
+           "python3 -c \"p='V12.sql';open(p,'w').write(open(p).read().replace('DROP TABLE u','DROP TABLE IF EXISTS u'))\"" \
+           $'python3 - <<\'PY\'\nopen("V13.sql","w").write("DROP TABLE tmp;")\nPY' "sed -i '' 's/drop table x/DROP TABLE x/' V12.sql" \
+           "perl -pi -e 's/drop table/DROP TABLE/' V12.sql" "node -e \"require('fs').writeFileSync('m.sql','drop schema s')\""; do
+    assert_eq "$(cd "$d" && guard "$c")" "" "allow: $c"
+  done
+  for c in 'psql -c "DROP TABLE t"' 'echo "drop table t" | psql' "mysql -e 'truncate table t'" 'docker exec db psql -c "drop schema s"' \
+           'psql -f drop.sql' 'psql --file=drop.sql' 'mysql app < drop.sql' 'psql -f missing.sql' $'psql <<EOF\nDROP TABLE t;\nEOF' \
+           'PGPASSWORD=x /usr/bin/psql -h db -c "drop database app"' 'kubectl exec -it pg -- psql -c "drop table t"' \
+           'bash -c "psql -c \"drop table t\""' $'cat <<EOF | psql\ndon\'t DROP TABLE t\nEOF'; do
+    assert_contains "$(cd "$d" && guard "$c")" 'Destructive SQL' "ask: $c"
+  done
+}
+t_force_with_lease_own_branch_allowed() {
+  local d c; d="$(mktemp -d)"; ( cd "$d" && git init -q -b main && git commit -q --allow-empty -m x && git checkout -q -b feat/x )
+  for c in 'git push --force-with-lease origin feat/x' 'git push --force-with-lease -u origin feat/x' \
+           'git push --force-with-lease origin HEAD' 'git push --force-with-lease origin feat/x:refs/heads/feat/x'; do
+    assert_eq "$(cd "$d" && guard "$c")" "" "allow: $c"
+  done
+  for c in 'git push --force-with-lease origin main' 'git push --force-with-lease origin other-branch' 'git push --force-with-lease' \
+           'git push --force-with-lease origin other:feat/x' 'git push --force-with-lease --tags origin feat/x' \
+           'git push --force-with-lease origin feat/x other-branch'; do
+    assert_contains "$(cd "$d" && guard "$c")" '"ask"' "ask: $c"
+  done
+  assert_contains "$(cd "$d" && guard 'git push --force origin feat/x')" '"deny"' "plain --force still denied"
+  ( cd "$d" && git checkout -q main )
+  assert_contains "$(cd "$d" && guard 'git push --force-with-lease origin main')" '"ask"' "default branch asks even when current"
+}
+t_destructive_sql_wrappers_and_odd_files_ask() {
+  local d c; d="$(mktemp -d)"; printf 'DROP TABLE t;\n' > "$d/drop.sql"; mkfifo "$d/pipe.sql"
+  for c in 'timeout 10 psql -c "drop table t"' 'sudo -u postgres psql -c "drop table t"' "ssh db 'psql -c \"drop table t\"'" \
+           'nice -n 5 mysql -e "truncate table t"' 'psql -fdrop.sql' 'timeout 5 psql -f drop.sql' 'psql -f pipe.sql'; do
+    assert_contains "$(cd "$d" && guard "$c")" 'Destructive SQL' "ask: $c"
+  done
+  for c in 'grep -rn "drop table" psql/' 'git commit -m "psql: drop table t"'; do
+    assert_eq "$(cd "$d" && guard "$c")" "" "allow (reader): $c"
+  done
+}
+t_force_with_lease_other_remote_asks() {
+  local d; d="$(mktemp -d)"; ( cd "$d" && git init -q -b main && git commit -q --allow-empty -m x && git checkout -q -b feat/x \
+    && git config branch.feat/x.remote fork )
+  assert_eq "$(cd "$d" && guard 'git push --force-with-lease fork feat/x')" "" "configured remote allowed"
+  assert_eq "$(cd "$d" && guard 'git push --force-with-lease origin feat/x')" "" "origin allowed"
+  assert_contains "$(cd "$d" && guard 'git push --force-with-lease upstream feat/x')" '"ask"' "other remote asks"
+  assert_contains "$(cd "$d" && guard 'git push --force-with-lease https://github.com/x/y feat/x')" '"ask"' "url asks"
+}

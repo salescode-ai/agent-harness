@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shlex
+import stat
 import subprocess
 import sys
 
@@ -133,7 +134,7 @@ def check_git(argv, env, cwd):
         names = [r.split(":")[-1] for r in refspecs[1:]]
         if target in names or f"refs/heads/{target}" in names or (not names and current_branch(cwd) == target):
             decide("ask", f"Pushing to {target}. AGENTS.md Agent Authorization normally requires a human for this.")
-        if has_long(longs, "--force-with-lease"):
+        if has_long(longs, "--force-with-lease") and not own_branch_push(refspecs, longs, flags, cwd, target):
             decide("ask", "Force-with-lease push rewrites remote history. Confirm this is your own branch.")
     if sub in ("merge", "cherry-pick") or (sub == "pull" and args[:1] == ["."]):
         red = red_branch(cwd, [r for a in args if not a.startswith("-") for r in a.split("..") if r])
@@ -152,6 +153,25 @@ def check_git(argv, env, cwd):
         decide("deny", "Force-deleting a branch can drop unmerged work. Use git branch -d, or ask a human.")
     if sub == "stash" and args[:1] == ["clear"]:
         decide("deny", "git stash clear deletes every stash permanently. Drop specific stashes, or ask a human.")
+
+
+LEASE_SAFE_LONGS = ("--force-with-lease", "--force-if-includes", "--set-upstream", "--verbose", "--quiet", "--dry-run", "--porcelain")
+
+
+def own_branch_push(refspecs, longs, flags, cwd, default):
+    """True if every ref pushed is the checked-out branch and it isn't the default one (`origin feat/x`, `origin HEAD`,
+    `origin feat/x:refs/heads/feat/x`) on origin or the branch's configured remote. Anything else (no refspec, --all/--tags, -o, another ref) can't be resolved here."""
+    cur = current_branch(cwd)
+    own = {cur, "refs/heads/" + cur, "HEAD"}
+    try:
+        remotes = {"origin", subprocess.run(["git", "config", "branch.%s.remote" % cur], capture_output=True,
+                                            text=True, timeout=3, cwd=cwd).stdout.strip()}
+    except Exception:
+        remotes = {"origin"}
+    # a long option counts as safe when it abbreviates a safe one: git rejects an abbreviation that is also a dangerous option's
+    return bool(cur) and cur != default and len(refspecs) >= 2 and refspecs[0] in remotes and flags <= set("uvqn") \
+        and all(any(s.startswith(l) for s in LEASE_SAFE_LONGS) for l in longs) \
+        and all(side in own for r in refspecs[1:] for side in r.split(":"))
 
 
 def red_branch(cwd, refs):
@@ -396,6 +416,50 @@ def make_ask(env, prog, args):
     return None
 
 
+DB_CLIENTS = {"psql", "mysql", "mariadb", "sqlite3", "sqlcmd", "clickhouse-client", "mongosh", "redis-cli", "cqlsh"}
+SQL_RE = re.compile(r"(?i)(^|[^A-Za-z_])(drop|truncate)\s+(table|database|schema)\b")
+SQL_MSG = "Destructive SQL detected. Confirm this targets a local or dev database."
+
+
+def client_words(argv):
+    return {os.path.basename(w) for a in argv for w in a.split()} & DB_CLIENTS
+
+
+def db_client(prog, argv):
+    """True if the segment runs a DB client: as its program, or behind anything that isn't a reader
+    (`sudo -u pg psql`, `timeout 10 psql`, `ssh db 'psql …'`, `docker|kubectl exec … psql`)."""
+    return prog in DB_CLIENTS or (prog not in READERS and bool(client_words(argv)))
+
+
+def sql_file_destructive(argv, cwd):
+    """True if a client segment reads SQL from a file (psql -f/--file, sqlcmd -i/--input-file, `< f`) that holds
+    destructive SQL, or that file can't be read (fail closed)."""
+    # shortcut: `cat f.sql | psql` and a client's own script commands (`\i`, `source`) are not followed; add them if agents use them
+    files, words = [], client_words(argv)
+    for a, n in zip(argv, argv[1:] + [""]):
+        if a == "<" or (a in ("-f", "--file") and "psql" in words) or (a in ("-i", "--input-file") and "sqlcmd" in words):
+            files.append(n)
+        elif a.startswith("-f") and len(a) > 2 and not a.startswith("--") and "psql" in words:
+            files.append(a[2:])
+        elif a.startswith(("--file=", "--input-file=")):
+            files.append(a.split("=", 1)[1])
+        elif a.startswith("<") and not a.startswith("<<") and len(a) > 1:
+            files.append(a[1:])
+    for f in files:
+        if f == "-":
+            continue
+        path = os.path.join(cwd, os.path.expanduser(f))
+        try:
+            if not stat.S_ISREG(os.stat(path).st_mode):  # a FIFO or device would block the hook
+                return True
+            with open(path, errors="replace") as fh:
+                if SQL_RE.search(fh.read(4 * 1024 * 1024)):
+                    return True
+        except OSError:
+            return True
+    return False
+
+
 READERS = {"grep", "rg", "cat", "less", "head", "tail", "sed", "awk", "echo", "printf", "git", "ls", "find", "diff", "wc"}
 DEV_MSG = ("Agents don't leave the dev server running. Use `make dev-check` (starts it, waits for HARNESS_HEALTH, "
            "runs RUN='<cmd>' if given, then stops it); `make dev-stop` stops a leftover one. "
@@ -447,9 +511,12 @@ def check(cmd, cwd, depth=0):
         return
     try:
         segs = list(segments(cmd))
-    except ValueError:  # unbalanced quotes: let the shell report it
+    except ValueError:  # unbalanced quotes: let the shell report it, but fail closed on SQL we couldn't place
+        if SQL_RE.search(cmd):
+            decide("ask", SQL_MSG)
         return
     asks = []
+    sql_client = sql_file = False
     off = set()
     for seg in segs:
         off |= hooks_off_names(*strip_prefix(seg))
@@ -467,6 +534,9 @@ def check(cmd, cwd, depth=0):
         if not argv:
             continue
         prog = os.path.basename(argv[0])
+        if db_client(prog, argv):
+            sql_client = True
+            sql_file = sql_file or sql_file_destructive(argv, cwd)
         a = infra_ask(prog, argv[1:]) or make_ask(env, prog, argv[1:])
         if a:
             asks.append(a)
@@ -493,9 +563,11 @@ def check(cmd, cwd, depth=0):
         decide("ask", "INVARIANTS.md changes need human sign-off (Harness Integrity). Confirm this edit was requested.")
     if asks:
         decide("ask", asks[0])
-    # SQL lives inside quoted strings, so check the raw text here
-    if re.search(r"(?i)(^|[^A-Za-z_])(drop|truncate)\s+(table|database|schema)\b", cmd):
-        decide("ask", "Destructive SQL detected. Confirm this targets a local or dev database.")
+    # SQL reaches a database only through a client: in its args, piped or heredoc'd to it, or from its -f/< file.
+    # shortcut: the SQL text may be anywhere in a command that runs a client, so `grep "drop table" x; psql -c "select 1"`
+    # still asks; tie text to its client segment if that shows up in practice
+    if (sql_client and SQL_RE.search(cmd)) or sql_file:
+        decide("ask", SQL_MSG)
 
 
 def main():
